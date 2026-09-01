@@ -12,15 +12,15 @@ const (
 	UpdateAdmin           = consts.OperationId("Ad-3-UpdateAdmin")
 )
 
-var PlatformAdminOperationMap = map[consts.OperationId]models.OperationAccess{
-	OffsetPaginatedAdmins: {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ""},
-	GetOneAdminById:       {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ".."},
-	UpdateAdmin:           {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ".."},
+var PlatformAdminOperationMap = map[consts.OperationId]models.OperationAccessDto{
+	OffsetPaginatedAdmins: {AllowedRoles: []string{enums.Admin.S()}, Description: ""},
+	GetOneAdminById:       {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
+	UpdateAdmin:           {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
 	//companies related
-	OffsetPaginatedCompanies: {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ""},
-	GetOneCompanyById:        {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ".."},
-	UpdateCompany:            {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ".."},
-	ApproveCompany:           {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ".."},
+	OffsetPaginatedCompanies: {AllowedRoles: []string{enums.Admin.S()}, Description: ""},
+	GetOneCompanyById:        {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
+	UpdateCompany:            {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
+	ApproveCompany:           {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
 }
 
 const (
@@ -40,9 +40,9 @@ const (
 	DeleteUsersSession = consts.OperationId("Ad-3-DeleteUsersSession")
 )
 
-var SessionOperationMap = map[consts.OperationId]models.OperationAccess{
+var SessionOperationMap = map[consts.OperationId]models.OperationAccessDto{
 	GetMySessions:       {AllowedRoles: []string{}, Description: ""},
 	DeleteMySessionById: {AllowedRoles: []string{}, Description: ".."},
-	GetUsersSessions:    {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ""},
-	DeleteUsersSession:  {AllowedRoles: []string{enums.PLATFORM_ADMIN.S()}, Description: ".."},
+	GetUsersSessions:    {AllowedRoles: []string{enums.Admin.S()}, Description: ""},
+	DeleteUsersSession:  {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
 }

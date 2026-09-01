@@ -40,13 +40,13 @@ func (aus Service[T]) GenerateTokens(user *ICrypt.CustomClaims) (*AuthTokens, er
 
 // VerifyCode TODO: add reason of error, like code expires
 func (aus Service[T]) VerifyCode(tx *gorm.DB, ctx context.Context, verifyInfo string, code string, verifyBy models.UpsertField) bool {
-	filter := models.VerificationCode{}
+	filter := models.Verification{}
 	if verifyBy == models.UpsertByEmail {
 		filter.Email = verifyInfo
 	} else {
 		filter.UserId = verifyInfo
 	}
-	codeModel, err := generic.DbGetOne[models.VerificationCode](tx, ctx, filter, nil)
+	codeModel, err := generic.DbGetOne[models.Verification](tx, ctx, filter, nil)
 	if err != nil {
 		return false
 	}
@@ -59,7 +59,7 @@ func (aus Service[T]) VerifyCode(tx *gorm.DB, ctx context.Context, verifyInfo st
 		return false
 	}
 	//5: invalidate the code by deleting it
-	_, err = generic.DbDeleteByFilter[models.VerificationCode](tx, ctx, filter, nil)
+	_, err = generic.DbDeleteByFilter[models.Verification](tx, ctx, filter, nil)
 	if err != nil {
 		logger.LogError("Deleting user sessions errors", err.Error())
 		// return dtos.InternalErrMS[bool]("Deleting verification code errors"), err
@@ -129,10 +129,6 @@ func (aus Service[T]) UTIL_MakeSession(ctx context.Context, sessionId, role, use
 	return tokens, nil
 }
 
-// func (aus Service[T]) DestroySessions(ctx context.Context, email, userId string) (dtos.GResp[bool], error) {
-
-// }
-
 func (aus Service[T]) UTIL_SendEmailVerification(tx *gorm.DB, ctx context.Context, email, userId string, upsertField models.UpsertField, purpose models.CodePurpose) (dtos.GResp[bool], error) {
 	//TODO genereate code here
 	// verificationCode := "000000"
@@ -154,8 +150,8 @@ func (aus Service[T]) UTIL_SendEmailVerification(tx *gorm.DB, ctx context.Contex
 
 	//TODO: we need to specify which field to upsert, for signup it is email, but for pwd reset it is userId
 
-	verificationResp, err := generic.DbUpsertOneListedFields[models.VerificationCode](tx, ctx, models.VerificationCode{
-		ExpiresAt:   util.Ptr(time.Now().Add(time.Minute * 30)),
+	verificationResp, err := generic.DbUpsertOneListedFields[models.Verification](tx, ctx, models.Verification{
+		ExpiresAt:   time.Now().Add(time.Minute * 30),
 		CodeHash:    codeHash,
 		Purpose:     purpose,
 		UserId:      userId,
@@ -168,31 +164,3 @@ func (aus Service[T]) UTIL_SendEmailVerification(tx *gorm.DB, ctx context.Contex
 	}
 	return dtos.SuccessS(true, verificationResp.RowsAffected), nil
 }
-
-// //====================.  Currently unused functions
-
-// func (aus Service[T]) UTIL_SendVerification(ctx context.Context, email, userId string, purpose models.CodePurpose) (dtos.GResp[bool], error) {
-// 	//TODO genereate code here
-// 	verificationCode := "000000"
-
-// 	codeHash, err := ICrypt.BcryptCreateHash(verificationCode)
-// 	if err != nil {
-// 		return dtos.InternalErrMS[bool]("Hashing Error"), err
-// 	}
-// 	// emailerr := aus.Provider.VerificationCodeSender.SendVerificationCode(email, verificationCode)
-// 	// if emailerr != nil {
-// 	// 	return dtos.InternalErrMS[bool]("Sending Email error"), emailerr
-// 	// }
-// 	verificationResp, err := generic.DbUpsertOneAllFields[models.VerificationCode](aus.Provider.GormConn, ctx, models.VerificationCode{
-// 		ExpiresAt: util.Ptr(time.Now().Add(time.Minute * 30)),
-// 		CodeHash:  codeHash,
-// 		Purpose:   purpose,
-// 		UserId:    userId,
-// 		Email:     email,
-// 	}, []clause.Column{{Name: "email"}}, &generic.Opt{Debug: false})
-// 	if err != nil {
-// 		logger.LogTrace("error crating", err)
-// 		return dtos.InternalErrMS[bool]("creating Error"), err
-// 	}
-// 	return dtos.SuccessS(true, verificationResp.RowsAffected), nil
-// }

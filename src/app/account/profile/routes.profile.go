@@ -29,7 +29,7 @@ const (
 	ChangeEmailVerify = consts.OperationId("Pr_5-ChangeEmailVerify")
 )
 
-var ProfilePermissionsMap = map[consts.OperationId]models.OperationAccess{
+var ProfilePermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	GetMyProfile:    {AllowedRoles: []string{}, Description: "Creating A User"},
 	UpdateMyProfile: {AllowedRoles: []string{}},
 	ChangeMyPwd:     {AllowedRoles: []string{}},

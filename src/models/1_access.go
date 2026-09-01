@@ -7,7 +7,7 @@ import (
 
 //=================.  OPERATION RELATED. =======
 
-type OperationAccess struct {
+type OperationAccessDto struct {
 	OperationId  consts.OperationId `gorm:"primaryKey" json:"operation_id"`
 	AllowedRoles pq.StringArray     `gorm:"type:text[]" json:"allowedRoles,omitempty"`
 	GroupName    string

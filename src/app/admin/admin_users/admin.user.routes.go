@@ -24,13 +24,13 @@ func NewService(genServ *providers.IProviderS) *Service {
 
 type HumaHandler struct {
 	Service  *Service
-	GHandler *generic.IGenericController[models.User, models.UserDto, models.UserUpdateDto, models.UserFilter, models.UserQuery]
+	GHandler *generic.IGenericController[models.User, models.UserDto, models.AdminUserUpdateDto, models.UserFilter, models.UserQuery]
 }
 
 func NewHandler(serv *Service) *HumaHandler {
 	return &HumaHandler{
 		Service:  serv,
-		GHandler: generic.NewGenericController[models.User, models.UserDto, models.UserUpdateDto, models.UserFilter, models.UserQuery](serv.ProvServ.GormConn)}
+		GHandler: generic.NewGenericController[models.User, models.UserDto, models.AdminUserUpdateDto, models.UserFilter, models.UserQuery](serv.ProvServ.GormConn)}
 }
 func SetupManageAdminUsersRoutes(humaRouter huma.API, cmnServ *providers.IProviderS, serv *Service) {
 	genericController := NewHandler(serv)

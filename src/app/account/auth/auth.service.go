@@ -62,7 +62,7 @@ func (aus Service[T]) Register(ctx context.Context, input models.RegisterClientI
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
 	userModel.Password = hash
-	userModel.Role = enums.UnverifiedUser
+	userModel.Role = enums.User
 	userModel.AccountStatus = enums.AccountPendingVerification
 	userModel.Active = util.Ptr(false)
 
@@ -127,7 +127,7 @@ func (aus Service[T]) VerifyRegisteredUser(ctx context.Context, input Verificati
 	}
 
 	//Update the users status
-	user, err := generic.DbUpdateByFilter[T](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{AccountStatus: enums.AccountVerified, Active: util.Ptr(true)}, nil)
+	user, err := generic.DbUpdateByFilter[T](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{AccountStatus: enums.AccountActive, Active: util.Ptr(true)}, nil)
 	if err != nil {
 		tx.Rollback()
 		// cmn.LogTrace("error crating", err)

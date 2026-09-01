@@ -9,7 +9,6 @@ import (
 	"github.com/birukbelay/gocmn/src/dtos"
 	"github.com/birukbelay/gocmn/src/generic"
 	cmn "github.com/birukbelay/gocmn/src/logger"
-	"github.com/birukbelay/gocmn/src/util"
 )
 
 func (aus Service[T]) UTIL_SendVerification(ctx context.Context, email, userId string, purpose models.CodePurpose) (dtos.GResp[bool], error) {
@@ -24,9 +23,9 @@ func (aus Service[T]) UTIL_SendVerification(ctx context.Context, email, userId s
 	if emailerr != nil {
 		return dtos.InternalErrMS[bool]("Sending Email error"), emailerr
 	}
-	_, _ = generic.DbDeleteByFilter[models.VerificationCode](aus.ProvServ.GormConn, ctx, models.VerificationCode{UserId: userId}, nil)
-	verificationResp, err := generic.DbCreateOne[models.VerificationCode](aus.ProvServ.GormConn, ctx, models.VerificationCode{
-		ExpiresAt: util.Ptr(time.Now().Add(time.Minute * 3)),
+	_, _ = generic.DbDeleteByFilter[models.Verification](aus.ProvServ.GormConn, ctx, models.Verification{UserId: userId}, nil)
+	verificationResp, err := generic.DbCreateOne[models.Verification](aus.ProvServ.GormConn, ctx, models.Verification{
+		ExpiresAt: time.Now().Add(time.Minute * 3),
 		CodeHash:  codeHash,
 		Purpose:   purpose,
 		UserId:    userId,
@@ -39,7 +38,7 @@ func (aus Service[T]) UTIL_SendVerification(ctx context.Context, email, userId s
 	return dtos.SuccessS(true, verificationResp.RowsAffected), nil
 }
 func (aus Service[T]) VerifyCode(ctx context.Context, userId string, code string) (bool, string) {
-	codeModel, err := generic.DbGetOne[models.VerificationCode](aus.ProvServ.GormConn, ctx, models.VerificationCode{UserId: userId}, nil)
+	codeModel, err := generic.DbGetOne[models.Verification](aus.ProvServ.GormConn, ctx, models.Verification{UserId: userId}, nil)
 	if err != nil {
 		return false, ""
 	}

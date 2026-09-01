@@ -22,3 +22,9 @@ type EnvConfig struct {
 	UseTestContainers           string `koanf:"USE_TEST_CONTAINERS"`
 	// WebLink                     string `koanf:"WEB_LINK"`
 }
+
+
+type VerificationConfig struct{
+	CodeLen int 
+	
+}
