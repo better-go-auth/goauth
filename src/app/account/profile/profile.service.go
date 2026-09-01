@@ -2,6 +2,7 @@ package profile
 
 import (
 	"context"
+	"strings"
 
 	ICrypt "github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
@@ -9,6 +10,7 @@ import (
 	"github.com/birukbelay/gocmn/src/provider/db/redis"
 	ICnst "github.com/birukbelay/gocmn/src/resp_const"
 
+	"github.com/better-go-auth/goauth/src/app/account/interfaces"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
 )
@@ -97,7 +99,8 @@ func (aus *Service[T]) SendChangeEmail(ctx context.Context, userId string, input
 	// 	LogAudit:    true,
 	// 	LogActivity: true,
 	// })
-	return aus.UTIL_SendVerification(ctx, input.NewEmail, models.GetID(resp.Body), models.ChangeEmail)
+	// return aus.UTIL_SendVerification(ctx, input.NewEmail, models.GetID(resp.Body), models.ChangeEmail)
+	return aus.ProvServ.VerificatinService.SendVerification(ctx, input.NewEmail, models.PurposeChangeEmail, &interfaces.VerOpt{UserId: resp.Body.GetID()})
 }
 
 // VerifyChangeEmail .change the users email
@@ -108,16 +111,26 @@ func (aus *Service[T]) VerifyChangeEmail(ctx context.Context, userId string, inp
 		return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
 	}
 	//2. Validate the code
-	codeValid, email := aus.VerifyCode(ctx, models.GetID(resp.Body), input.Code)
-	if !codeValid {
-		return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
-	}
-	//3. update the email
-	updateResp, err := sql_db.DbUpdateOneById[T](aus.ProvServ.GormConn, ctx, userId, models.UserDto{Email: &email}, nil)
+	// codeValid, email := aus.VerifyCode(ctx, models.GetID(resp.Body), input.Code)
+	// if !codeValid {
+	// 	return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
+	// }
+	//2. Validate the code
+	codeValid, err := aus.ProvServ.VerificatinService.VerifyCode(ctx, input.NewEmail, models.PurposeChangeEmail, input.Code)
 	if err != nil {
 		return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
 	}
-	//4. delete all the users session
+	//3. check if the code is for the same user
+	if resp.Body.GetID() != codeValid.Body.UserId {
+		return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
+	}
+	email := strings.Split(codeValid.Body.Identifier, ":")
+	//4. update the email
+	updateResp, err := sql_db.DbUpdateOneById[T](aus.ProvServ.GormConn, ctx, userId, models.UserDto{Email: &email[1]}, nil)
+	if err != nil {
+		return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
+	}
+	//5. delete all the users session
 	_, err = sql_db.DbDeleteMany[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserId: userId}, nil)
 	if err != nil {
 		return dtos.InternalErrMS[bool](err.Error()), err

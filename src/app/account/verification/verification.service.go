@@ -2,8 +2,10 @@ package verification
 
 import (
 	"context"
+	"errors"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/app/account/interfaces"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
@@ -18,10 +20,18 @@ import (
 type Service struct {
 	VerificationCodeSender email.VerificationSender
 	GormDB                 *gorm.DB
+	// Config Verification Config
+}
+
+func NewVerificationService(dg *gorm.DB, verificationServ email.VerificationSender) interfaces.VerificationService {
+	return Service{
+		GormDB:                 dg,
+		VerificationCodeSender: verificationServ,
+	}
 }
 
 // TODO get the transaction from the context
-func (aus Service) SendVerification(ctx context.Context, identifier, userId string, purpose models.VerificationPurpose) (dtos.GResp[bool], error) {
+func (aus Service) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *interfaces.VerOpt) (dtos.GResp[bool], error) {
 	//TODO make the mock and generation with a config
 	// verificationCode := "000000"
 	verificationCode := util.GenerateRandomString(6)
@@ -39,7 +49,7 @@ func (aus Service) SendVerification(ctx context.Context, identifier, userId stri
 		ExpiresAt:  time.Now().Add(time.Minute * 30), //todo make this in a config
 		Value:      codeHash,
 		Identifier: purpose.Make(identifier),
-		UserId:     userId,
+		UserId:     opt.UserId,
 	}, []clause.Column{{Name: "identifier"}}, []string{"expires_at", "value"}, nil)
 	if err != nil {
 		logger.LogTrace("error crating verification", err)
@@ -49,30 +59,25 @@ func (aus Service) SendVerification(ctx context.Context, identifier, userId stri
 }
 
 // VerifyCode TODO: add reason of error, like code expires
-func (aus Service) VerifyCode(ctx context.Context, verifyInfo string, code string, verifyBy models.UpsertField) bool {
-	filter := models.Verification{}
-	if verifyBy == models.UpsertByEmail {
-		filter.Email = verifyInfo
-	} else {
-		filter.UserId = verifyInfo
-	}
-	codeModel, err := generic.DbGetOne[models.Verification](aus.GormDB, ctx, filter, nil)
+func (aus Service) VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, code string) (dtos.GResp[models.Verification], error) {
+	filter := models.Verification{Identifier: purpose.Make(identifier)}
+	verificationModel, err := generic.DbGetOne[models.Verification](aus.GormDB, ctx, filter, nil)
 	if err != nil {
-		return false
+		return dtos.InternalErrMS[models.Verification]("Hashing Error"), err
 	}
 	//if the expiration has passed, beofre now
-	if codeModel.Body.ExpiresAt.Before(time.Now()) {
-		return false
+	if verificationModel.Body.ExpiresAt.Before(time.Now()) {
+		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("hashing error")
 	}
-	valid := crypto.BcryptPasswordsMatch(code, codeModel.Body.CodeHash)
+	valid := crypto.BcryptPasswordsMatch(code, verificationModel.Body.Value)
 	if !valid {
-		return false
+		return dtos.InternalErrMS[models.Verification]("Hashing Error"), err
 	}
 	//5: invalidate the code by deleting it
-	_, err = generic.DbDeleteByFilter[models.Verification](aus.GormDB, ctx, filter, nil)
+	delResp, err := generic.DbDeleteByFilter[models.Verification](aus.GormDB, ctx, filter, nil)
 	if err != nil {
 		logger.LogError("Deleting user sessions errors", err.Error())
 		// return dtos.InternalErrMS[bool]("Deleting verification code errors"), err
 	}
-	return true
+	return dtos.SuccessS(verificationModel.Body, delResp.RowsAffected), nil
 }

@@ -1,7 +1,5 @@
 package models
 
-import "github.com/better-go-auth/goauth/src/models/enums"
-
 type RegisterClientInput struct {
 	FirstName string `json:"fName" binding:"required,min=2" `
 	LastName  string `json:"lName" `
@@ -9,15 +7,6 @@ type RegisterClientInput struct {
 	Password  string `json:"password" binding:"required,min=6"`
 	Avatar    string `json:"avatar,omitempty" `
 	Country   string `json:"country,omitempty"`
-}
-
-// this is for when the admin manually creates the user
-type AdminRegisterUsersInput struct {
-	FirstName string     `json:"fName" binding:"required,min=2" `
-	LastName  string     `json:"lName" `
-	Email     string     `json:"email" binding:"required,email" `
-	Role      enums.Role `default:"RESPONDER" json:"role" enum:"OPERATOR,RESPONDER,CLIENT"`
-	Avatar    string     `json:"avatar,omitempty" `
 }
 
 // ProfileUpdateDto This is Used for creating and updating the user
@@ -40,5 +29,6 @@ type ChangeEmailReqDto struct {
 }
 
 type VerifyEmailDto struct {
-	Code string `json:"code" `
+	Code     string `json:"code" `
+	NewEmail string `json:"new_email"`
 }

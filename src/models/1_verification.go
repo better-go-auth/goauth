@@ -34,8 +34,8 @@ const (
 	PurposeEmailVerification VerificationPurpose = "email-verification"
 	PurposePasswordReset     VerificationPurpose = "password-reset"
 	PurposeChangeEmail       VerificationPurpose = "change-email"
-	PurposeTwoFactor         VerificationPurpose = "two-factor"
-	PurposeMagicLink         VerificationPurpose = "magic-link"
+	// PurposeTwoFactor         VerificationPurpose = "two-factor"
+	// PurposeMagicLink         VerificationPurpose = "magic-link"
 )
 
 // IsExpired returns true if the token is past its expiry.

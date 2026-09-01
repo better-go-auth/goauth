@@ -1,4 +1,4 @@
-package account
+package interfaces
 
 import (
 	"context"
@@ -12,5 +12,5 @@ type VerOpt struct {
 }
 type VerificationService interface {
 	SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *VerOpt) (dtos.GResp[bool], error)
-	VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, value string) (bool, error)
+	VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, value string) (dtos.GResp[models.Verification], error)
 }

@@ -18,6 +18,7 @@ import (
 	"github.com/oklog/ulid/v2"
 	"gorm.io/gorm/clause"
 
+	"github.com/better-go-auth/goauth/src/app/account/interfaces"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/config"
 	"github.com/better-go-auth/goauth/src/models/enums"
@@ -84,7 +85,7 @@ func (aus Service[T]) Register(ctx context.Context, input models.RegisterClientI
 		logger.LogTrace("error crating", err)
 		return dtos.InternalErrMS[bool]("creating Error"), err
 	}
-	resp, err := aus.UTIL_SendEmailVerification(tx, ctx, input.Email, models.GetID(user.Body), models.UpsertByEmail, models.SignupVerification)
+	resp, err := aus.Provider.VerificatinService.SendVerification(ctx, input.Email, models.PurposeEmailVerification, &interfaces.VerOpt{UserId: user.Body.GetID()})
 	if err != nil {
 		tx.Rollback()
 		return dtos.InternalErrMS[bool]("Sending Email error"), err
@@ -120,14 +121,15 @@ func (aus Service[T]) VerifyRegisteredUser(ctx context.Context, input Verificati
 		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
 	}
 	//Validate the code, but because this is sign up it is upderted via email
-	codeValid := aus.VerifyCode(tx, ctx, usr.Body.GetInfo(), input.Code, models.UpsertByEmail)
-	if !codeValid {
+	//todo add the tx into the ctx
+	_, err = aus.Provider.VerificatinService.VerifyCode(ctx, usr.Body.GetInfo(), models.PurposeEmailVerification, input.Code)
+	if err != nil {
 		tx.Rollback()
 		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
 	}
 
 	//Update the users status
-	user, err := generic.DbUpdateByFilter[T](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{AccountStatus: enums.AccountActive, Active: util.Ptr(true)}, nil)
+	user, err := generic.DbUpdateByFilter[T](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{AccountStatus: enums.AccountActive, Active: new(true)}, nil)
 	if err != nil {
 		tx.Rollback()
 		// cmn.LogTrace("error crating", err)
@@ -357,9 +359,7 @@ func (aus Service[T]) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos
 	// 	LogActivity: true,
 	// })
 
-	return aus.UTIL_SendEmailVerification(
-		aus.Provider.GormConn, ctx,
-		input.Email, models.GetID(usr.Body), models.UpsertByEmail, models.PasswordReset)
+	return aus.Provider.VerificatinService.SendVerification(ctx, input.Email, models.PurposePasswordReset, &interfaces.VerOpt{UserId: usr.Body.GetID()})
 }
 
 // ResetPwd [ID]
@@ -381,11 +381,12 @@ func (aus Service[T]) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.G
 		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
 	}
 	//2. Validate the code
-	codeValid := aus.VerifyCode(tx, ctx, input.Info, input.Code, models.UpsertByEmail)
-	if !codeValid {
+	_, err = aus.Provider.VerificatinService.VerifyCode(ctx, input.Info, models.PurposePasswordReset, input.Code)
+	if err != nil {
 		tx.Rollback()
 		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
 	}
+
 	//3. hash the new Password
 	hash, err := crypto.BcryptCreateHash(input.NewPassword)
 	if err != nil {
@@ -433,73 +434,3 @@ func (aus Service[T]) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.G
 
 	return dtos.SuccessS(true, user.RowsAffected), nil
 }
-
-// func (aus Service[T]) ChangeActiveCompany(ctx context.Context, userId string, input ChangeActiveCompanyInput) (dtos.GResp[TokenResponse], error) {
-// 	// 1. Verify membership
-// 	var targetMember models.CompanyMember
-// 	err := aus.Provider.GormConn.Where("user_id = ? AND company_id = ?", userId, input.CompanyID).First(&targetMember).Error
-// 	if err != nil {
-// 		return dtos.NotFoundErrS[TokenResponse]("User is not a member of this company"), err
-// 	}
-// 	if targetMember.Status == enums.MembershipBlocked {
-// 		return dtos.BadReqM[TokenResponse]("User is blocked from this company"), errors.New("blocked from company")
-// 	}
-
-// 	// 2. Begin transaction to update current status
-// 	tx := aus.Provider.GormConn.Begin()
-// 	if tx.Error != nil {
-// 		return dtos.InternalErrMS[TokenResponse](tx.Error.Error()), tx.Error
-// 	}
-
-// 	// Set all memberships for this user to is_current = false
-// 	if err := tx.Model(&models.CompanyMember{}).Where(models.CompanyMemberFilter{UserID: userId}).Update("is_current", false).Error; err != nil {
-// 		tx.Rollback()
-// 		return dtos.InternalErrMS[TokenResponse]("Failed to reset active company"), err
-// 	}
-
-// 	// Set target membership to is_current = true
-// 	if err := tx.Model(&models.CompanyMember{}).Where(models.CompanyMemberFilter{UserID: userId, CompanyID: input.CompanyID}).Update("is_current", true).Error; err != nil {
-// 		tx.Rollback()
-// 		return dtos.InternalErrMS[TokenResponse]("Failed to set active company"), err
-// 	}
-
-// 	// Fetch user details for response
-// 	usr, err := generic.DbGetOneByID[T](tx, ctx, userId, nil)
-// 	if err != nil {
-// 		tx.Rollback()
-// 		return dtos.NotFoundErrS[TokenResponse]("User not found"), err
-// 	}
-
-// 	// 3. Generate new session/token
-// 	sessionID := ulid.Make().String()
-// 	userRole := string(usr.Body.GetRole())
-// 	if targetMember.RoleGroup != "" {
-// 		userRole = string(targetMember.RoleGroup)
-// 	}
-
-// 	// Commit transaction before generating/saving session to avoid deadlock
-// 	if err := tx.Commit().Error; err != nil {
-// 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
-// 	}
-
-// 	tokens, err := aus.UTIL_MakeSession(ctx, sessionID, userRole, userId, input.CompanyID, "", &SessionOpt{ClearSession: true})
-// 	if err != nil {
-// 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
-// 	}
-
-// 	tasks.EnqueueAuditActivityLog(ctx, aus.Provider.QueueClient, aus.Provider.GormConn, tasks.AuditActivityLogPayload{
-// 		CompanyID:   input.CompanyID,
-// 		UserID:      userId,
-// 		Action:      "CHANGE_ACTIVE_COMPANY",
-// 		EntityType:  "user",
-// 		EntityID:    userId,
-// 		Summary:     "Switched active organization context",
-// 		LogAudit:    true,
-// 		LogActivity: true,
-// 	})
-
-// 	return dtos.SuccessS(TokenResponse{
-// 		AuthTokens: *tokens,
-// 		UserData:   usr.Body,
-// 	}, 1), nil
-// }

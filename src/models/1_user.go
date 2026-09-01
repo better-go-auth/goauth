@@ -65,18 +65,7 @@ func (u *User) GetFullname() string {
 	return u.FirstName + " " + u.LastName
 }
 
-// cant update the email, accountstatus
-type AdminUserUpdateDto struct {
-	FirstName string  `json:"firsName,omitempty"`
-	LastName  string  `json:"lastName,omitempty" `
-	Username  string  `json:"username,omitempty"`
-	Image     *string `json:"image,omitempty"                        bun:"image"`
-	Active    *bool   `json:"active,omitempty"` //if false will not be alloed to login
 
-	Role enums.Role ` json:"role,omitempty" enum:"COMPANY_ADMIN,OPERATOR,RESPONDER,CLIENT" `
-
-	AccountStatus enums.AccountStatus `json:"account_status,omitempty" enum:"active,banned"` //will only be allowed to disable and enable
-}
 type UserFilter struct {
 	ID              string              `query:"id"`
 	FName           string              `query:"fName"`
@@ -91,11 +80,7 @@ type UserFilter struct {
 	// Availability    Availability        `query:"availability,omitempty"  enum:"Available,NotAvailable,OnMission"`
 	Country string `query:"country"`
 }
-type AvailableUsersFilter struct {
-	Role          enums.Role `query:"role" enum:"OPERATOR,RESPONDER,CLIENT" `
-	CompanyRoleID string     `query:"company_role_id"`
-	Country       string     `query:"country"`
-}
+
 
 type UserQuery struct {
 	Imdl.PaginationInput `mapstructure:",squash"`
