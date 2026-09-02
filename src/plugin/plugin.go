@@ -6,11 +6,13 @@ import (
 
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/models/migration"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 // InitContext carries runtime dependencies and configuration passed to plugins during initialization.
 type InitContext struct {
 	Ctx context.Context
+	Api huma.API
 	// Config      config.AuthConfig
 	// UserRepo    repoimpl2.IUserRepo
 	// SessionRepo repoimpl2.ISessionRepo

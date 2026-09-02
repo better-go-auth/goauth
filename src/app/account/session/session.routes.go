@@ -6,7 +6,7 @@ import (
 	"github.com/birukbelay/gocmn/src/consts"
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/better-go-auth/goauth/src/models/ops"
+	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
 )
 
@@ -24,27 +24,42 @@ func NewSessionHandler(serv *Service) *HumaSessionHandler {
 	}
 }
 
-func SetupSessionRoutes(humaRouter huma.API, cmnServ *providers.IProviderS, serv *Service) {
+const (
+	GetMySessions       = consts.OperationId("Se-1-GetMySessions")
+	DeleteMySessionById = consts.OperationId("Ad-2-DeleteMySessionById")
+	//
+	// GetUsersSessions   = consts.OperationId("Se-1-GetUsersSessions")
+	// DeleteUsersSession = consts.OperationId("Ad-3-DeleteUsersSession")
+)
+
+var SessionOperationMap = map[consts.OperationId]models.OperationAccessDto{
+	GetMySessions:       {AllowedRoles: []string{}, Description: ""},
+	DeleteMySessionById: {AllowedRoles: []string{}, Description: ".."},
+	// GetUsersSessions:    {AllowedRoles: []string{enums.Admin.S()}, Description: ""},
+	// DeleteUsersSession:  {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
+}
+
+func SetupSessionRoutes(humaRouter huma.API, provServ *providers.IProviderS, serv *Service) {
 	genericController := NewSessionHandler(serv)
 
 	tags := []string{"01-session"}
 	path := consts.ApiV1 + "/01-session"
 	pathId := path + "/{id}"
 	huma.Register(humaRouter, huma.Operation{
-		OperationID: ops.GetMySessions.Str(),
+		OperationID: GetMySessions.Str(),
 		Description: "Get the users Sessions",
 		Method:      http.MethodGet,
 		Path:        path,
 		Tags:        tags,
-		Middlewares: huma.Middlewares{cmnServ.MiddleWare.Authenticate(), cmnServ.MiddleWare.Authorize(ops.GetMySessions, ops.SessionOperationMap[ops.GetMySessions].AllowedRoles)},
+		Middlewares: huma.Middlewares{provServ.MiddleWare.Authenticate(), provServ.MiddleWare.Authorize(GetMySessions, SessionOperationMap[GetMySessions].AllowedRoles)},
 	}, genericController.GetMySession,
 	)
 	huma.Register(humaRouter, huma.Operation{
-		OperationID: ops.DeleteMySessionById.Str(),
+		OperationID: DeleteMySessionById.Str(),
 		Method:      http.MethodPost,
 		Path:        pathId,
 		Tags:        tags,
-		Middlewares: huma.Middlewares{cmnServ.MiddleWare.Authenticate(), cmnServ.MiddleWare.Authorize(ops.DeleteMySessionById, ops.SessionOperationMap[ops.DeleteMySessionById].AllowedRoles)},
+		Middlewares: huma.Middlewares{provServ.MiddleWare.Authenticate(), provServ.MiddleWare.Authorize(DeleteMySessionById, SessionOperationMap[DeleteMySessionById].AllowedRoles)},
 	}, genericController.DelteMySession,
 	)
 	// huma.Register(humaRouter, huma.Operation{

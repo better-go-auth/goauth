@@ -1,44 +1,26 @@
 package providers
 
 import (
-	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/birukbelay/gocmn/src/provider/db"
-	"github.com/birukbelay/gocmn/src/provider/upload"
 	"github.com/birukbelay/gocmn/src/server/middleware"
 	"gorm.io/gorm"
-
-	"github.com/birukbelay/gocmn/src/provider/email"
 )
 
 type IProviderS struct {
-	EnvConf *config.EnvConfig
+	EnvConf *config.SessionConfig
 	//Infrastructure
 	GormConn *gorm.DB
 
-	KeyValServ db.KeyValServ
-	UploadServ upload.FileUploadWithPresigning
-	//verification related
-	VerificationCodeSender email.VerificationSender
+	KeyValServ db.KeyValServ//used for blacklisting session
 
-	MiddleWare         middleware.AuthMiddleware
-	VerificatinService account_interfaces.IVerificationService
+	MiddleWare middleware.AuthMiddleware
 }
 
-func NewProvider(
-	env *config.EnvConfig,
-	//db related
-	conn *gorm.DB,
-	keyValServ db.KeyValServ,
-	//verification related
-	verificationSender email.VerificationSender,
-) *IProviderS {
+func NewProvider(env *config.SessionConfig, conn *gorm.DB, keyValServ db.KeyValServ) *IProviderS {
 
 	return &IProviderS{
 		EnvConf: env,
-		//verification related
-		VerificationCodeSender: verificationSender,
-		//db related
 		GormConn:   conn,
 		KeyValServ: keyValServ,
 	}

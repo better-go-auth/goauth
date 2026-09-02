@@ -2,12 +2,26 @@ package config
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/birukbelay/gocmn/src/provider/email"
 )
 
 type EmailVerification struct {
-	SendVerificationEmail SendVerificationEmail
+
+	/**
+	 * Number of seconds the verification token is
+	 * valid for.
+	 * @default 30 minutes
+	 */
+	ExpiresIn time.Duration
+
+	VerificationCodeSender email.VerificationSender
+
+	//===================================    TO USE NOW ===================================
+
+	// SendVerificationEmail SendVerificationEmail
 	/**
 	 * Send a verification email automatically after sign up.
 	 *
@@ -17,34 +31,28 @@ type EmailVerification struct {
 	 *
 	 * @default nil
 	 */
-	SendOnSignUp *bool
+	// SendOnSignUp *bool
 	/**
 	 * Send a verification email automatically
 	 * on sign in when the user's email is not verified
 	 *
 	 * @default false
 	 */
-	SendOnSignIn *bool
+	// SendOnSignIn *bool
 	/**
 	 * Auto signin the user after they verify their email
 	 */
-	AutoSignInAfterVerification *bool
-	/**
-	 * Number of seconds the verification token is
-	 * valid for.
-	 * @default 3600 seconds (1 hour)
-	 */
-	ExpiresIn int
+	// AutoSignInAfterVerification *bool// create sign in after verification
 	/**
 	 * A callback function that is triggered
 	 * before a user's email is verified.
 	 */
-	BeforeEmailVerification func(user models.User, request *http.Request) error
+	// BeforeEmailVerification func(user models.User, request *http.Request) error
 	/**
 	 * A callback function that is triggered
 	 * after a user's email is verified successfully.
 	 */
-	AfterEmailVerification func(user models.User, request *http.Request) error
+	// AfterEmailVerification func(user models.User, request *http.Request) error
 }
 
 type SendVerificationEmail func(data EmailVerificationData, request *http.Request) error

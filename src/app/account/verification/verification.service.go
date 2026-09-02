@@ -8,6 +8,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
@@ -20,15 +21,16 @@ import (
 )
 
 type Service struct {
-	VerificationCodeSender email.VerificationSender
+	VerificationCodeSender email.VerificationSender //put this also on the cofig
 	GormDB                 *gorm.DB
-	// Config Verification Config
+	Config                 config.EmailVerification
 }
 
-func NewVerificationService(dg *gorm.DB, verificationServ email.VerificationSender) account_interfaces.IVerificationService {
+func NewVerificationService(dg *gorm.DB, config config.EmailVerification) account_interfaces.IVerificationService {
 	return Service{
 		GormDB:                 dg,
-		VerificationCodeSender: verificationServ,
+		VerificationCodeSender: config.VerificationCodeSender,
+		Config:                 config,
 	}
 }
 
@@ -48,7 +50,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 	}
 
 	verificationResp, err := generic.DbUpsertOneListedFields[models.Verification](gormutil.GetDB(ctx, vSvc.GormDB), ctx, models.Verification{
-		ExpiresAt:  time.Now().Add(time.Minute * 30), //todo make this in a config
+		ExpiresAt:  time.Now().Add(vSvc.Config.ExpiresIn),
 		Value:      codeHash,
 		Identifier: purpose.Make(identifier),
 		UserId:     opt.UserId,

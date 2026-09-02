@@ -1,6 +1,7 @@
 package account
 
 import (
+	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
 	"github.com/better-go-auth/goauth/src/app/account/auth"
 	"github.com/better-go-auth/goauth/src/app/account/session"
 	"github.com/better-go-auth/goauth/src/app/account/verification"
@@ -9,12 +10,16 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func SetupAllAuthRoutes(api huma.API, conf *config.EnvConfig, provServ *providers.IProviderS) {
+func SetupAllAuthRoutes(api huma.API, conf config.SessionConfig, provServ *providers.IProviderS, vCfg config.EmailVerification) account_interfaces.IAuthServices {
 	//define the services
-	vSvc := verification.NewVerificationService(provServ.GormConn, provServ.VerificationCodeSender)
+	vSvc := verification.NewVerificationService(provServ.GormConn, vCfg)
 	sSvc := session.NewService(provServ)
-	authSvc := auth.NewAuthService(conf, provServ, vSvc, sSvc)
+	authSvc := auth.NewAuthService(&conf, provServ, vSvc, sSvc)
 
 	session.SetupSessionRoutes(api, provServ, sSvc)
 	auth.SetupAuthRoutes(api, provServ, authSvc)
+	return account_interfaces.AuthServiceImpl{
+		IVerificationService: vSvc,
+		ISessionService:      sSvc,
+	}
 }

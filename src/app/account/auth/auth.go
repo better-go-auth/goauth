@@ -13,14 +13,14 @@ type GinAuthHandler struct {
 	CmnServ       *providers.IProviderS
 }
 type Service struct {
-	Config   *config.EnvConfig
+	Config   *config.SessionConfig
 	Provider *providers.IProviderS
 	VSvc     account_interfaces.IVerificationService
 	SesSvc   account_interfaces.ISessionService
 	TxMgr    interfaces.ITransactionManager
 }
 
-func NewAuthService(conf *config.EnvConfig, provSvc *providers.IProviderS, vSvc account_interfaces.IVerificationService, sSvc account_interfaces.ISessionService) *Service {
+func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc account_interfaces.IVerificationService, sSvc account_interfaces.ISessionService) *Service {
 	return &Service{
 		Config:   conf,
 		Provider: provSvc,

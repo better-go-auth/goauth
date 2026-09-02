@@ -12,27 +12,27 @@ import (
 	"github.com/better-go-auth/goauth/src/providers"
 )
 
-type Service struct {
+type AdminService struct {
 	ProvServ *providers.IProviderS
 }
 
-func NewService(genServ *providers.IProviderS) *Service {
-	return &Service{
+func NewService(genServ *providers.IProviderS) *AdminService {
+	return &AdminService{
 		ProvServ: genServ,
 	}
 }
 
 type HumaHandler struct {
-	Service  *Service
+	Service  *AdminService
 	GHandler *generic.IGenericController[models.User, models.UserDto, models.AdminUserUpdateDto, models.UserFilter, models.UserQuery]
 }
 
-func NewHandler(serv *Service) *HumaHandler {
+func NewHandler(serv *AdminService) *HumaHandler {
 	return &HumaHandler{
 		Service:  serv,
 		GHandler: generic.NewGenericController[models.User, models.UserDto, models.AdminUserUpdateDto, models.UserFilter, models.UserQuery](serv.ProvServ.GormConn)}
 }
-func SetupManageAdminUsersRoutes(humaRouter huma.API, cmnServ *providers.IProviderS, serv *Service) {
+func SetupManageAdminUsersRoutes(humaRouter huma.API, cmnServ *providers.IProviderS, serv *AdminService) {
 	genericController := NewHandler(serv)
 
 	tags := []string{"2-admin"}

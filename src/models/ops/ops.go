@@ -16,11 +16,9 @@ var PlatformAdminOperationMap = map[consts.OperationId]models.OperationAccessDto
 	OffsetPaginatedAdmins: {AllowedRoles: []string{enums.Admin.S()}, Description: ""},
 	GetOneAdminById:       {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
 	UpdateAdmin:           {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
-	//companies related
-	OffsetPaginatedCompanies: {AllowedRoles: []string{enums.Admin.S()}, Description: ""},
-	GetOneCompanyById:        {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
-	UpdateCompany:            {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
-	ApproveCompany:           {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
+	// //companies related
+	// OffsetPaginatedCompanies: {AllowedRoles: []string{enums.Admin.S()}, Description: ""},
+	// GetOneCompanyById:        {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
 }
 
 const (
@@ -31,18 +29,3 @@ const (
 	// DisableCompany = consts.OperationId("Pr_1-DisableCompany")
 	// OwnerCreateCompany       = consts.OperationId("Pr_1-GetMyProfile")
 )
-
-const (
-	GetMySessions       = consts.OperationId("Se-1-GetMySessions")
-	DeleteMySessionById = consts.OperationId("Ad-2-DeleteMySessionById")
-	//
-	GetUsersSessions   = consts.OperationId("Se-1-GetUsersSessions")
-	DeleteUsersSession = consts.OperationId("Ad-3-DeleteUsersSession")
-)
-
-var SessionOperationMap = map[consts.OperationId]models.OperationAccessDto{
-	GetMySessions:       {AllowedRoles: []string{}, Description: ""},
-	DeleteMySessionById: {AllowedRoles: []string{}, Description: ".."},
-	GetUsersSessions:    {AllowedRoles: []string{enums.Admin.S()}, Description: ""},
-	DeleteUsersSession:  {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
-}

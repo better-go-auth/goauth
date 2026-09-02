@@ -15,6 +15,17 @@ type IVerificationService interface {
 	VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, value string) (dtos.GResp[models.Verification], error)
 }
 
-type ISessionService interface{
+type ISessionService interface {
 	CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error)
+}
+
+type IAuthServices interface {
+	IVerificationService
+	ISessionService
+}
+
+// Add a concrete combiner type to account_interfaces/account.interface.go
+type AuthServiceImpl struct {
+	IVerificationService
+	ISessionService
 }

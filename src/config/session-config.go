@@ -5,10 +5,14 @@ import (
 )
 
 type Session struct {
+	//=====================================================================================Unused currently ============================
+	//
+	//====================================================================
 	/**
 	 * Expiration time for the session token. The value
 	 * should be in seconds.
 	 * @default 7 days (60 * 60 * 24 * 7)
+	 - this equals refresh expirations
 	 */
 	ExpiresIn time.Duration
 
@@ -17,6 +21,8 @@ type Session struct {
 	 * should be in seconds.
 	 * If set 0 the session will be refreshed every time it is used.
 	 * @default 1 day (60 * 60 * 24)
+
+	 - this is like half life
 	 */
 	UpdateAge time.Duration
 	/**
@@ -48,7 +54,7 @@ type Session struct {
 	 *
 	 * @default false
 	 */
-	PreserveSessionInDatabase bool
+	// PreserveSessionInDatabase bool
 	
 	/**
 	 * The age of the session to consider it fresh.
