@@ -6,7 +6,6 @@ import (
 	constant "github.com/birukbelay/gocmn/src/consts"
 	"github.com/danielgtaylor/huma/v2"
 
-	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
 )
 
@@ -20,20 +19,8 @@ const (
 	ResetPwdUser     = constant.OperationId("Au-7-ResetPwd")
 )
 
-type GinAuthHandler[T models.IntUsr] struct {
-	AdminAuthServ *Service[T]
-	CmnServ       *providers.IProviderS
-}
-
-func NewGenericAuthHandler[T models.IntUsr](cmnServ *providers.IProviderS, serv *Service[T]) *GinAuthHandler[T] {
-	//you can migrate auth models here
-	return &GinAuthHandler[T]{
-		AdminAuthServ: serv,
-		CmnServ:       cmnServ,
-	}
-}
-func SetupUserAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *Service[models.User]) {
-	handler := NewGenericAuthHandler(providerS, serv)
+func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *Service) {
+	handler := NewAuthHandler(providerS, serv)
 	tags := []string{"01-auth_user"}
 	path := constant.ApiV1 + "/01-auth"
 
@@ -80,6 +67,5 @@ func SetupUserAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, s
 		Path:        path + "/reset_password",
 		Tags:        tags}, handler.ResetPwd,
 	)
-
 
 }

@@ -3,6 +3,8 @@ package models
 import (
 	"time"
 
+	"github.com/birukbelay/gocmn/src/consts"
+	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
 	"gorm.io/gorm"
 )
@@ -44,4 +46,12 @@ func (m *SDBase) BeforeCreate(tx *gorm.DB) (err error) {
 
 func (b SDBase) GetID() string {
 	return b.ID
+}
+
+type OperationAccessDto struct {
+	OperationId  consts.OperationId `gorm:"primaryKey" json:"operation_id"`
+	AllowedRoles pq.StringArray     `gorm:"type:text[]" json:"allowedRoles,omitempty"`
+	GroupName    string
+	Description  string
+	CompanyID    *string
 }

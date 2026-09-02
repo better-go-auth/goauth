@@ -24,37 +24,35 @@ type User struct {
 }
 
 type UserDto struct {
-	FirstName     string  `json:"firstName,omitempty" minLength:"1"`
-	LastName      string  `json:"lastName,omitempty" `
-	Email         *string `json:"email,omitempty" format:"email"  gorm:"uniqueIndex" `
-	EmailVerified bool    `json:"emailVerified"  gorm:"default:false"                  bun:"email_verified,default:false"`
+	FirstName     string     `json:"firstName,omitempty" minLength:"1"`
+	LastName      string     `json:"lastName,omitempty" `
+	Email         *string    `json:"email,omitempty" format:"email"  gorm:"uniqueIndex" `
+	EmailVerified bool       `json:"emailVerified"  gorm:"default:false"                  bun:"email_verified,default:false"`
+	Password      string     `json:"-" `
+	Role          enums.Role `gorm:"default:UNVERIFIED_PERSON" json:"role" ` //this is the company-level role,
 
-	Username string `json:"username,omitempty"`
-	Avatar   string `json:"avatar,omitempty" `
-	Active   *bool  `json:"active,omitempty"  gorm:"index:idx_users_lookup,priority:4"` //can the user login
-	//meta
-	LastLoginIP *string    `json:"lastLoginIP"    gorm:"size:45"             bun:"last_login_ip"`
-	LastLoginAt *time.Time `json:"last_login_at,omitempty" `
-	//
-	Password string     `json:"-" `
-	Role     enums.Role `gorm:"default:UNVERIFIED_PERSON" json:"role" ` //this is the company-level role,
-
+	Active        *bool               `json:"active,omitempty"  gorm:"index:idx_users_lookup,priority:4"` //can the user login
 	AccountStatus enums.AccountStatus `json:"-" `
-
 	//admin related fields
 	Banned     bool       `json:"banned"    gorm:"default:false"               bun:"banned,default:false"`
 	BanReason  *string    `json:"banReason" gorm:"type:text"                   bun:"ban_reason"`
 	BanExpires *time.Time `json:"banExpires"                               bun:"ban_expires"`
 
+	//meta
+	LastLoginIP *string    `json:"lastLoginIP,omitempty"    gorm:"size:45"             bun:"last_login_ip"`
+	LastLoginAt *time.Time `json:"lastLoginAt,omitempty" `
+	//Extra better auth fields
+	DisplayName *string    `json:"displayName,omitempty"                   bun:"display_name"`
+	Avatar      string     `json:"avatar,omitempty" `
+	Bio         *string    `json:"bio,omitempty"                          bun:"bio"`
+	DateOfBirth *time.Time `json:"dateOfBirth,omitempty"                                   bun:"date_of_birth"`
+	Gender      *string    `json:"gender,omitempty"           gorm:"size:20"               bun:"gender"`
+	Locale      string     `json:"locale,omitempty"           gorm:"default:en;size:10"    bun:"locale,default:en"`
+	Timezone    *string    `json:"timezone,omitempty"                       bun:"timezone"`
+	//====================  Plugin  fields ===========================|
+	Username string `json:"username,omitempty"`
 	//company related
 	ActiveCompanyId *string `json:"company_id" gorm:"index:idx_users_lookup,priority:1"`
-	//Extra better auth fields
-	DisplayName *string    `json:"displayName"      gorm:"size:150"              bun:"display_name"`
-	Bio         *string    `json:"bio"              gorm:"type:text"             bun:"bio"`
-	DateOfBirth *time.Time `json:"dateOfBirth"                                   bun:"date_of_birth"`
-	Gender      *string    `json:"gender"           gorm:"size:20"               bun:"gender"`
-	Locale      string     `json:"locale"           gorm:"default:en;size:10"    bun:"locale,default:en"`
-	Timezone    *string    `json:"timezone"         gorm:"size:50"               bun:"timezone"`
 }
 
 func (u *UserDto) SetOnCreate(key string) {
@@ -65,22 +63,19 @@ func (u *User) GetFullname() string {
 	return u.FirstName + " " + u.LastName
 }
 
-
 type UserFilter struct {
-	ID              string              `query:"id"`
-	FName           string              `query:"fName"`
-	LName           string              `query:"lName" `
-	Email           string              `query:"email"`
-	Role            enums.Role          `query:"role" enum:"OPERATOR,RESPONDER,CLIENT"`
-	Username        string              `query:"username"`
-	AccountStatus   enums.AccountStatus `query:"account_status"`
-	CompanyID       string              `query:"company_id"`
-	CompanyRoleName string              `query:"company_role_name" ` //driver, securtity
-	CompanyRoleID   string              `query:"company_role_id" `
+	ID            string              `query:"id"`
+	FirstName     string              `query:"firstName"`
+	LastName      string              `query:"lastName"`
+	Email         string              `query:"email"`
+	Role          enums.Role          `query:"role" enum:"OPERATOR,RESPONDER,CLIENT"`
+	Username      string              `query:"username"`
+	AccountStatus enums.AccountStatus `query:"account_status"`
+	CompanyID     string              `query:"company_id"`
+
 	// Availability    Availability        `query:"availability,omitempty"  enum:"Available,NotAvailable,OnMission"`
 	Country string `query:"country"`
 }
-
 
 type UserQuery struct {
 	Imdl.PaginationInput `mapstructure:",squash"`

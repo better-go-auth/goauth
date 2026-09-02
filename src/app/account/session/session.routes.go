@@ -10,16 +10,6 @@ import (
 	"github.com/better-go-auth/goauth/src/providers"
 )
 
-type Service struct {
-	ProvServ *providers.IProviderS
-}
-
-func NewService(genServ *providers.IProviderS) *Service {
-	return &Service{
-		ProvServ: genServ,
-	}
-}
-
 type HumaSessionHandler struct {
 	// CmnServ *gen.IGenericGormServ
 	Service *Service

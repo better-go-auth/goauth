@@ -1,8 +1,8 @@
 package providers
 
 import (
-	"github.com/better-go-auth/goauth/src/app/account/interfaces"
-	"github.com/better-go-auth/goauth/src/models/config"
+	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/birukbelay/gocmn/src/provider/db"
 	"github.com/birukbelay/gocmn/src/provider/upload"
 	"github.com/birukbelay/gocmn/src/server/middleware"
@@ -22,7 +22,7 @@ type IProviderS struct {
 	VerificationCodeSender email.VerificationSender
 
 	MiddleWare         middleware.AuthMiddleware
-	VerificatinService interfaces.VerificationService
+	VerificatinService account_interfaces.IVerificationService
 }
 
 func NewProvider(

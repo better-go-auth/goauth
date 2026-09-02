@@ -32,3 +32,8 @@ type VerifyEmailDto struct {
 	Code     string `json:"code" `
 	NewEmail string `json:"new_email"`
 }
+
+type AuthTokens struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}

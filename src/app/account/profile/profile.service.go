@@ -10,18 +10,20 @@ import (
 	"github.com/birukbelay/gocmn/src/provider/db/redis"
 	ICnst "github.com/birukbelay/gocmn/src/resp_const"
 
-	"github.com/better-go-auth/goauth/src/app/account/interfaces"
+	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
 )
 
 type Service[T models.IntUsr] struct {
 	ProvServ *providers.IProviderS
+	VSvc     account_interfaces.IVerificationService
 }
 
-func NewProfileServH[T models.IntUsr](genServ *providers.IProviderS) *Service[T] {
+func NewProfileServH[T models.IntUsr](genServ *providers.IProviderS, vSvc account_interfaces.IVerificationService) *Service[T] {
 	return &Service[T]{
 		ProvServ: genServ,
+		VSvc:     vSvc,
 	}
 }
 
@@ -44,30 +46,19 @@ func (aus *Service[T]) ChangePassword(ctx context.Context, userId, sessionId str
 		return dtos.InternalErrMS[T]("Update Error"), err
 	}
 
-	_, err = sql_db.DbDeleteByFilter[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserId: userId, SessionId: sessionId}, nil)
+	_, err = sql_db.DbDeleteByFilter[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserID: userId, SessionId: sessionId}, nil)
 	if err != nil {
 		return dtos.InternalErrMS[T]("Session Removing error"), err
 	}
 	_ = redis.BlacklistSession(aus.ProvServ.KeyValServ, ctx, sessionId)
 	//blacklist all the session
-	sessions, err := sql_db.DbFetchManyWithOffset[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserId: userId}, dtos.PaginationInput{Limit: 10000}, nil)
+	sessions, err := sql_db.DbFetchManyWithOffset[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserID: userId}, dtos.PaginationInput{Limit: 10000}, nil)
 	if err != nil {
 
 	}
 	for _, val := range sessions.Body {
 		err = redis.BlacklistSession(aus.ProvServ.KeyValServ, ctx, val.SessionId)
 	}
-	// tasks.EnqueueAuditActivityLog(ctx, aus.ProvServ.QueueClient, aus.ProvServ.GormConn, tasks.AuditActivityLogPayload{
-	// 	CompanyID:   "",
-	// 	UserID:      userId,
-	// 	Action:      "CHANGE_PASSWORD",
-	// 	EntityType:  "user",
-	// 	EntityID:    userId,
-	// 	Summary:     "Password changed successfully",
-	// 	Changes:     `{"password": {"old": "[redacted]", "new": "[redacted]"}}`,
-	// 	LogAudit:    true,
-	// 	LogActivity: true,
-	// })
 	return updateResp, err
 }
 
@@ -88,19 +79,8 @@ func (aus *Service[T]) SendChangeEmail(ctx context.Context, userId string, input
 	if err == nil {
 		return dtos.BadReqC[bool](ICnst.EmailExists), ICnst.EmailExistsErr
 	}
-	// tasks.EnqueueAuditActivityLog(ctx, aus.ProvServ.QueueClient, aus.ProvServ.GormConn, tasks.AuditActivityLogPayload{
-	// 	CompanyID:   "",
-	// 	UserID:      userId,
-	// 	Action:      "SEND_CHANGE_EMAIL",
-	// 	EntityType:  "user",
-	// 	EntityID:    userId,
-	// 	Summary:     fmt.Sprintf("Requested to change email address to %s", input.NewEmail),
-	// 	Changes:     fmt.Sprintf(`{"new_email": "%s"}`, input.NewEmail),
-	// 	LogAudit:    true,
-	// 	LogActivity: true,
-	// })
-	// return aus.UTIL_SendVerification(ctx, input.NewEmail, models.GetID(resp.Body), models.ChangeEmail)
-	return aus.ProvServ.VerificatinService.SendVerification(ctx, input.NewEmail, models.PurposeChangeEmail, &interfaces.VerOpt{UserId: resp.Body.GetID()})
+
+	return aus.VSvc.SendVerification(ctx, input.NewEmail, models.PurposeChangeEmail, &account_interfaces.VerOpt{UserId: resp.Body.GetID()})
 }
 
 // VerifyChangeEmail .change the users email
@@ -110,13 +90,9 @@ func (aus *Service[T]) VerifyChangeEmail(ctx context.Context, userId string, inp
 	if err != nil {
 		return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
 	}
+
 	//2. Validate the code
-	// codeValid, email := aus.VerifyCode(ctx, models.GetID(resp.Body), input.Code)
-	// if !codeValid {
-	// 	return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
-	// }
-	//2. Validate the code
-	codeValid, err := aus.ProvServ.VerificatinService.VerifyCode(ctx, input.NewEmail, models.PurposeChangeEmail, input.Code)
+	codeValid, err := aus.VSvc.VerifyCode(ctx, input.NewEmail, models.PurposeChangeEmail, input.Code)
 	if err != nil {
 		return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
 	}
@@ -131,21 +107,10 @@ func (aus *Service[T]) VerifyChangeEmail(ctx context.Context, userId string, inp
 		return dtos.BadReqC[bool](ICnst.InfoOrCode), ICnst.InfoOrCodeErr
 	}
 	//5. delete all the users session
-	_, err = sql_db.DbDeleteMany[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserId: userId}, nil)
+	_, err = sql_db.DbDeleteMany[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserID: userId}, nil)
 	if err != nil {
 		return dtos.InternalErrMS[bool](err.Error()), err
 	}
-	//TODO: black list all the sessions here
-	// tasks.EnqueueAuditActivityLog(ctx, aus.ProvServ.QueueClient, aus.ProvServ.GormConn, tasks.AuditActivityLogPayload{
-	// 	CompanyID:   "",
-	// 	UserID:      userId,
-	// 	Action:      "VERIFY_CHANGE_EMAIL",
-	// 	EntityType:  "user",
-	// 	EntityID:    userId,
-	// 	Summary:     fmt.Sprintf("Email address updated to %s", email),
-	// 	Changes:     fmt.Sprintf(`{"email": {"old": "[previous email]", "new": "%s"}}`, email),
-	// 	LogAudit:    true,
-	// 	LogActivity: true,
-	// })
+
 	return dtos.SuccessS(true, updateResp.RowsAffected), nil
 }

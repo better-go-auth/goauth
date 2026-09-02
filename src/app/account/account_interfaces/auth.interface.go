@@ -1,4 +1,4 @@
-package interfaces
+package account_interfaces
 
 import (
 	"context"
@@ -10,7 +10,11 @@ import (
 type VerOpt struct {
 	UserId string
 }
-type VerificationService interface {
+type IVerificationService interface {
 	SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *VerOpt) (dtos.GResp[bool], error)
 	VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, value string) (dtos.GResp[models.Verification], error)
+}
+
+type ISessionService interface{
+	
 }

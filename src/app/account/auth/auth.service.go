@@ -18,29 +18,15 @@ import (
 	"github.com/oklog/ulid/v2"
 	"gorm.io/gorm/clause"
 
-	"github.com/better-go-auth/goauth/src/app/account/interfaces"
+	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/better-go-auth/goauth/src/models/config"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	"github.com/better-go-auth/goauth/src/providers"
 )
 
-type Service[T models.IntUsr] struct {
-	Config   *config.EnvConfig
-	Provider *providers.IProviderS
-}
-
-func NewAdminAuthServH[T models.IntUsr](conf *config.EnvConfig, genServ *providers.IProviderS) *Service[T] {
-	return &Service[T]{
-		Config:   conf,
-		Provider: genServ,
-	}
-}
-
-// Register (acc-01) , [AccountStatus], set(pwd,)
-func (aus Service[T]) Register(ctx context.Context, input models.RegisterClientInput) (res dtos.GResp[bool], eror error) {
+// RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
+func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (res dtos.GResp[bool], eror error) {
 	//Check if the email already exists
-	usr, err := generic.DbGetOne[T](aus.Provider.GormConn, ctx, models.UserFilter{Email: input.Email}, nil)
+	usr, err := generic.DbGetOne[models.User](aus.Provider.GormConn, ctx, models.UserFilter{Email: input.Email}, nil)
 	//if the user already exists
 	// logger.LogTrace("usr", usr)
 	if err == nil {
@@ -65,7 +51,7 @@ func (aus Service[T]) Register(ctx context.Context, input models.RegisterClientI
 	userModel.Password = hash
 	userModel.Role = enums.User
 	userModel.AccountStatus = enums.AccountPendingVerification
-	userModel.Active = util.Ptr(false)
+	userModel.Active = new(false)
 
 	tx := aus.Provider.GormConn.Begin()
 	defer func() {
@@ -79,13 +65,13 @@ func (aus Service[T]) Register(ctx context.Context, input models.RegisterClientI
 	}
 
 	// []string{"Password", "VerificationCodeHash", "VerificationCodeExpire", "AccountStatus", "Role", "Active"}
-	user, err := generic.DbUpsertOneAllFields[T](tx, ctx, &userModel, []clause.Column{{Name: "email"}}, nil)
+	user, err := generic.DbUpsertOneAllFields[models.User](tx, ctx, &userModel, []clause.Column{{Name: "email"}}, nil)
 	if err != nil {
 		tx.Rollback()
 		logger.LogTrace("error crating", err)
 		return dtos.InternalErrMS[bool]("creating Error"), err
 	}
-	resp, err := aus.Provider.VerificatinService.SendVerification(ctx, input.Email, models.PurposeEmailVerification, &interfaces.VerOpt{UserId: user.Body.GetID()})
+	resp, err := aus.VSvc.SendVerification(ctx, input.Email, models.PurposeEmailVerification, &account_interfaces.VerOpt{UserId: user.Body.ID})
 	if err != nil {
 		tx.Rollback()
 		return dtos.InternalErrMS[bool]("Sending Email error"), err
@@ -100,7 +86,7 @@ func (aus Service[T]) Register(ctx context.Context, input models.RegisterClientI
 }
 
 // VerifyRegisteredUser (acc-01), [id]x
-func (aus Service[T]) VerifyRegisteredUser(ctx context.Context, input VerificationInput) (res dtos.GResp[bool], eror error) {
+func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationInput) (res dtos.GResp[bool], eror error) {
 	//Check if the email already exists
 
 	tx := aus.Provider.GormConn.Begin()
@@ -115,21 +101,21 @@ func (aus Service[T]) VerifyRegisteredUser(ctx context.Context, input Verificati
 		return dtos.InternalErrMS[bool](err.Error()), err
 	}
 
-	usr, err := generic.DbGetOne[T](tx, ctx, models.UserFilter{Email: input.Info, AccountStatus: enums.AccountPendingVerification}, nil)
+	usr, err := generic.DbGetOne[models.User](tx, ctx, models.UserFilter{Email: input.Info, AccountStatus: enums.AccountPendingVerification}, nil)
 	if err != nil {
 		tx.Rollback()
 		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
 	}
 	//Validate the code, but because this is sign up it is upderted via email
 	//todo add the tx into the ctx
-	_, err = aus.Provider.VerificatinService.VerifyCode(ctx, usr.Body.GetInfo(), models.PurposeEmailVerification, input.Code)
+	_, err = aus.VSvc.VerifyCode(ctx, usr.Body.GetInfo(), models.PurposeEmailVerification, input.Code)
 	if err != nil {
 		tx.Rollback()
 		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
 	}
 
 	//Update the users status
-	user, err := generic.DbUpdateByFilter[T](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{AccountStatus: enums.AccountActive, Active: new(true)}, nil)
+	user, err := generic.DbUpdateByFilter[models.User](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{AccountStatus: enums.AccountActive, Active: new(true), EmailVerified: true}, nil)
 	if err != nil {
 		tx.Rollback()
 		// cmn.LogTrace("error crating", err)
@@ -141,25 +127,13 @@ func (aus Service[T]) VerifyRegisteredUser(ctx context.Context, input Verificati
 		return dtos.InternalErrMS[bool](commit.Error.Error()), commit.Error
 	}
 
-	// tasks.EnqueueAuditActivityLog(ctx, aus.Provider.QueueClient, aus.Provider.GormConn, tasks.AuditActivityLogPayload{
-	// 	CompanyID:   "",
-	// 	UserID:      models.GetID(user.Body),
-	// 	Action:      "VERIFY_REGISTERED_USER",
-	// 	EntityType:  "user",
-	// 	EntityID:    models.GetID(user.Body),
-	// 	Summary:     "Email verified successfully",
-	// 	Changes:     tasks.ToJSON(user.Body),
-	// 	LogAudit:    true,
-	// 	LogActivity: true,
-	// })
-
 	return dtos.SuccessS(true, user.RowsAffected), nil
 }
 
 // Login (acc-03) [companyId, Role, Password]
-func (aus Service[T]) Login(ctx context.Context, input LoginData) (dtos.GResp[TokenResponse], error) {
+func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[TokenResponse], error) {
 	//1. check the user exists, to login the user must be active: with status: verified, companySetup...
-	usr, err := generic.DbGetOne[T](aus.Provider.GormConn, ctx, models.UserDto{Email: util.Ptr(input.LoginInfo), Active: util.Ptr(true)}, &generic.Opt{Debug: false})
+	usr, err := generic.DbGetOne[models.User](aus.Provider.GormConn, ctx, models.UserDto{Email: util.Ptr(input.LoginInfo), Active: util.Ptr(true)}, &generic.Opt{Debug: false})
 	if err != nil || usr.RowsAffected < 1 {
 		return dtos.BadReqC[TokenResponse](resp_const.EmailOrPassword), resp_const.EmailOrPasswordErr
 	}
@@ -173,6 +147,7 @@ func (aus Service[T]) Login(ctx context.Context, input LoginData) (dtos.GResp[To
 	var companyID string
 	userRole := string(usr.Body.GetRole())
 
+	//we use map to set nul to some fields like active org id
 	userUpdate := map[string]interface{}{
 		"last_login_at": util.Ptr(time.Now()),
 	}
@@ -204,14 +179,14 @@ func (aus Service[T]) Login(ctx context.Context, input LoginData) (dtos.GResp[To
 	//Update the users data:
 	// - current active company,
 	// - current active companies role id,
-	updatedUsr, err := generic.DbUpdateByFilter[T](aus.Provider.GormConn, ctx, models.UserFilter{ID: usr.Body.GetID()}, userUpdate, nil)
+	updatedUsr, err := generic.DbUpdateByFilter[models.User](aus.Provider.GormConn, ctx, models.UserFilter{ID: usr.Body.ID}, userUpdate, nil)
 	if err != nil {
 		logger.ErrorCtx(ctx, "couldnot update user last login at", err, nil)
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
 
 	sessionID := ulid.Make().String()
-	tokens, err := aus.UTIL_MakeSession(ctx, sessionID, userRole, usr.Body.GetID(), companyID, input.DeviceToken, &SessionOpt{ClearSession: true})
+	tokens, err := aus.CreateSession(ctx, sessionID, userRole, usr.Body.GetID(), companyID, input.DeviceToken, &SessionOpt{ClearSession: true})
 	if err != nil {
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
@@ -234,47 +209,20 @@ func (aus Service[T]) Login(ctx context.Context, input LoginData) (dtos.GResp[To
 
 }
 
-// func (aus Service[T]) getUserMembership(ctx context.Context, userID string) (models.CompanyMember, error) {
-// 	memberResp, activeMembershipErr := generic.DbGetOne[models.CompanyMember](aus.Provider.GormConn, ctx, models.CompanyMemberDto{
-// 		UserID:    userID,
-// 		IsCurrent: util.Ptr(true),
-// 		Status:    enums.MembershipActive},
-// 		nil)
-// 	if activeMembershipErr != nil {
-// 		//FIND ANY MEMBERSHIP
-// 		anyMembership, err := generic.DbGetOne[models.CompanyMember](aus.Provider.GormConn, ctx, models.CompanyMemberDto{
-// 			UserID: userID,
-// 			Status: enums.MembershipActive},
-// 			nil)
-// 		if err != nil {
-// 			return models.CompanyMember{}, err
-// 		}
-// 		//Update the IsCurrent to true
-// 		_, err = generic.DbUpdateOneById[models.CompanyMember](aus.Provider.GormConn, ctx, anyMembership.Body.ID, models.CompanyMemberDto{IsCurrent: util.Ptr(true)}, nil)
-// 		if err != nil {
-// 			// return models.CompanyMember{}, err
-// 		}
-
-// 		return anyMembership.Body, nil
-
-// 	}
-// 	return memberResp.Body, nil
-// }
-
 // ResetToken (acc-04): FIXME to be update with redis: [Role, id]
-func (aus Service[T]) ResetToken(ctx context.Context, refreshToken string) (dtos.GResp[TokenResponse], error) {
+func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GResp[TokenResponse], error) {
 	//1. validate the refresh token
 	claims, ok, err := crypto.Valid(refreshToken, aus.Config.RefreshSecret)
 	if !ok || (err != nil) {
 		return dtos.BadReqC[TokenResponse](resp_const.InvalidToken), resp_const.InvalidTokenError
 	}
 	// 2. get the user
-	usr, err := generic.DbGetOneByID[T](aus.Provider.GormConn, ctx, claims.UserId, nil)
+	usr, err := generic.DbGetOneByID[models.User](aus.Provider.GormConn, ctx, claims.UserId, nil)
 	if err != nil {
 		return dtos.BadReqC[TokenResponse](resp_const.DataNotFound), resp_const.UserNotFoundError
 	}
 	// 3. get the session that are not blacklisted
-	session, err := generic.DbGetOne[models.Session](aus.Provider.GormConn, ctx, models.Session{UserId: claims.UserId, SessionId: claims.SessionId, Blacklisted: util.Ptr(false)}, nil)
+	session, err := generic.DbGetOne[models.Session](aus.Provider.GormConn, ctx, models.Session{UserID: claims.UserId, SessionId: claims.SessionId, Blacklisted: util.Ptr(false)}, nil)
 	if err != nil {
 		return dtos.BadReqC[TokenResponse](resp_const.DataNotFound), resp_const.UserNotFoundError
 	}
@@ -285,24 +233,10 @@ func (aus Service[T]) ResetToken(ctx context.Context, refreshToken string) (dtos
 		return dtos.BadReqC[TokenResponse](resp_const.TokenDontMatch), resp_const.TokenDontMatchError
 	}
 
-	// // TODO: update the active membership
-	// var currentMember models.CompanyMember
-	// mErr := aus.Provider.GormConn.Where("user_id = ? AND company_id = ?", claims.UserId, claims.CompanyId).First(&currentMember).Error
-	// if claims.CompanyId != "" {
-	// 	if mErr != nil {
-	// 		return dtos.BadReqM[TokenResponse]("user is not a member of this company"), mErr
-	// 	}
-	// 	if currentMember.Status != enums.MembershipActive {
-	// 		return dtos.BadReqM[TokenResponse]("user is blocked from this company"), errors.New("user is blocked from this company")
-	// 	}
-	// }
 	userRole := string(usr.Body.GetRole())
-	// if mErr == nil && currentMember.RoleGroup != "" {
-	// 	userRole = string(currentMember.RoleGroup)
-	// }
 
 	//5. update the sessions, incase the users role is changed we need to user the users new role
-	tokens, err := aus.UTIL_MakeSession(ctx, claims.SessionId, userRole, models.GetID(usr.Body), claims.CompanyId, "", nil)
+	tokens, err := aus.CreateSession(ctx, claims.SessionId, userRole, models.GetID(usr.Body), claims.CompanyId, "", nil)
 	if err != nil {
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
@@ -315,7 +249,7 @@ func (aus Service[T]) ResetToken(ctx context.Context, refreshToken string) (dtos
 }
 
 // Logout [-]
-func (aus Service[T]) Logout(ctx context.Context, refreshToken string) (dtos.GResp[bool], error) {
+func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[bool], error) {
 
 	//1. the jwt token
 	claims, ok, err := crypto.Valid(refreshToken, aus.Config.RefreshSecret)
@@ -342,8 +276,8 @@ func (aus Service[T]) Logout(ctx context.Context, refreshToken string) (dtos.GRe
 }
 
 // ForgotPwd [ID]
-func (aus Service[T]) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GResp[bool], error) {
-	usr, err := generic.DbGetOne[T](aus.Provider.GormConn, ctx, models.UserFilter{Email: input.Email}, nil)
+func (aus Service) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GResp[bool], error) {
+	usr, err := generic.DbGetOne[models.User](aus.Provider.GormConn, ctx, models.UserFilter{Email: input.Email}, nil)
 
 	if err != nil {
 		return dtos.SuccessS(true, 0), nil
@@ -359,11 +293,11 @@ func (aus Service[T]) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos
 	// 	LogActivity: true,
 	// })
 
-	return aus.Provider.VerificatinService.SendVerification(ctx, input.Email, models.PurposePasswordReset, &interfaces.VerOpt{UserId: usr.Body.GetID()})
+	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &account_interfaces.VerOpt{UserId: usr.Body.GetID()})
 }
 
 // ResetPwd [ID]
-func (aus Service[T]) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GResp[bool], error) {
+func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GResp[bool], error) {
 	tx := aus.Provider.GormConn.Begin()
 	defer func() {
 		if r := recover(); r != nil {
@@ -375,13 +309,13 @@ func (aus Service[T]) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.G
 	}
 
 	//1. Get the user
-	usr, err := generic.DbGetOne[T](tx, ctx, models.UserFilter{Email: input.Info}, nil)
+	usr, err := generic.DbGetOne[models.User](tx, ctx, models.UserFilter{Email: input.Info}, nil)
 	if err != nil {
 		tx.Rollback()
 		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
 	}
 	//2. Validate the code
-	_, err = aus.Provider.VerificatinService.VerifyCode(ctx, input.Info, models.PurposePasswordReset, input.Code)
+	_, err = aus.VSvc.VerifyCode(ctx, input.Info, models.PurposePasswordReset, input.Code)
 	if err != nil {
 		tx.Rollback()
 		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
@@ -394,16 +328,16 @@ func (aus Service[T]) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.G
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
 	// Fetch sessions first so we don't lose their SessionId values upon deletion
-	sessions, fetchErr := generic.DbFetchManyWithOffset[models.Session](tx, ctx, models.Session{UserId: models.GetID(usr.Body)}, dtos.PaginationInput{Limit: 10000}, nil)
+	sessions, fetchErr := generic.DbFetchManyWithOffset[models.Session](tx, ctx, models.Session{UserID: models.GetID(usr.Body)}, dtos.PaginationInput{Limit: 10000}, nil)
 
 	//4. Update the users password
-	user, err := generic.DbUpdateByFilter[T](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{Password: hash}, nil)
+	user, err := generic.DbUpdateByFilter[models.User](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{Password: hash}, nil)
 	if err != nil {
 		tx.Rollback()
 		return dtos.InternalErrMS[bool]("creating Error"), err
 	}
 	//delete all the user's sessions
-	_, err = generic.DbDeleteByFilter[models.Session](tx, ctx, models.Session{UserId: models.GetID(usr.Body)}, nil)
+	_, err = generic.DbDeleteByFilter[models.Session](tx, ctx, models.Session{UserID: models.GetID(usr.Body)}, nil)
 	if err != nil {
 		logger.LogError("Deleting user sessions errors", err.Error())
 	}
@@ -419,18 +353,6 @@ func (aus Service[T]) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.G
 			_ = redis.BlacklistSession(aus.Provider.KeyValServ, ctx, val.SessionId)
 		}
 	}
-
-	// tasks.EnqueueAuditActivityLog(ctx, aus.Provider.QueueClient, aus.Provider.GormConn, tasks.AuditActivityLogPayload{
-	// 	CompanyID:   "",
-	// 	UserID:      models.GetID(usr.Body),
-	// 	Action:      "RESET_PASSWORD",
-	// 	EntityType:  "user",
-	// 	EntityID:    models.GetID(usr.Body),
-	// 	Summary:     "Password reset completed successfully",
-	// 	Changes:     tasks.Diff(usr.Body, user.Body),
-	// 	LogAudit:    true,
-	// 	LogActivity: false,
-	// })
 
 	return dtos.SuccessS(true, user.RowsAffected), nil
 }

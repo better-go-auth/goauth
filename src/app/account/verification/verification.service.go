@@ -3,9 +3,11 @@ package verification
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/app/account/interfaces"
+	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
@@ -23,7 +25,7 @@ type Service struct {
 	// Config Verification Config
 }
 
-func NewVerificationService(dg *gorm.DB, verificationServ email.VerificationSender) interfaces.VerificationService {
+func NewVerificationService(dg *gorm.DB, verificationServ email.VerificationSender) account_interfaces.IVerificationService {
 	return Service{
 		GormDB:                 dg,
 		VerificationCodeSender: verificationServ,
@@ -31,7 +33,7 @@ func NewVerificationService(dg *gorm.DB, verificationServ email.VerificationSend
 }
 
 // TODO get the transaction from the context
-func (aus Service) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *interfaces.VerOpt) (dtos.GResp[bool], error) {
+func (vSvc Service) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *account_interfaces.VerOpt) (dtos.GResp[bool], error) {
 	//TODO make the mock and generation with a config
 	// verificationCode := "000000"
 	verificationCode := util.GenerateRandomString(6)
@@ -40,12 +42,12 @@ func (aus Service) SendVerification(ctx context.Context, identifier string, purp
 	if err != nil {
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
-	emailerr := aus.VerificationCodeSender.SendVerificationCode(identifier, verificationCode)
+	emailerr := vSvc.VerificationCodeSender.SendVerificationCode(identifier, verificationCode)
 	if emailerr != nil {
 		return dtos.InternalErrMS[bool]("Queueing Email error"), emailerr
 	}
 
-	verificationResp, err := generic.DbUpsertOneListedFields[models.Verification](aus.GormDB, ctx, models.Verification{
+	verificationResp, err := generic.DbUpsertOneListedFields[models.Verification](gormutil.GetDB(ctx, vSvc.GormDB), ctx, models.Verification{
 		ExpiresAt:  time.Now().Add(time.Minute * 30), //todo make this in a config
 		Value:      codeHash,
 		Identifier: purpose.Make(identifier),
@@ -59,9 +61,9 @@ func (aus Service) SendVerification(ctx context.Context, identifier string, purp
 }
 
 // VerifyCode TODO: add reason of error, like code expires
-func (aus Service) VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, code string) (dtos.GResp[models.Verification], error) {
+func (vSvc Service) VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, code string) (dtos.GResp[models.Verification], error) {
 	filter := models.Verification{Identifier: purpose.Make(identifier)}
-	verificationModel, err := generic.DbGetOne[models.Verification](aus.GormDB, ctx, filter, nil)
+	verificationModel, err := generic.DbGetOne[models.Verification](vSvc.GormDB, ctx, filter, nil)
 	if err != nil {
 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), err
 	}
@@ -74,10 +76,17 @@ func (aus Service) VerifyCode(ctx context.Context, identifier string, purpose mo
 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), err
 	}
 	//5: invalidate the code by deleting it
-	delResp, err := generic.DbDeleteByFilter[models.Verification](aus.GormDB, ctx, filter, nil)
+	delResp, err := generic.DbDeleteByFilter[models.Verification](gormutil.GetDB(ctx, vSvc.GormDB), ctx, filter, nil)
 	if err != nil {
 		logger.LogError("Deleting user sessions errors", err.Error())
 		// return dtos.InternalErrMS[bool]("Deleting verification code errors"), err
 	}
 	return dtos.SuccessS(verificationModel.Body, delResp.RowsAffected), nil
+}
+
+func (vSvc *Service) DeleteExpired(ctx context.Context) error {
+	if err := gormutil.GetDB(ctx, vSvc.GormDB).Where("expires_at < NOW()").Delete(&models.Verification{}).Error; err != nil {
+		return fmt.Errorf("gorm/verification: delete expired: %w", err)
+	}
+	return nil
 }

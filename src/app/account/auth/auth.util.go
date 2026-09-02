@@ -11,7 +11,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 )
 
-func (aus Service[T]) GenerateTokens(user *ICrypt.CustomClaims) (*AuthTokens, error) {
+func (aus Service) GenerateTokens(user *ICrypt.CustomClaims) (*AuthTokens, error) {
 	claims := &ICrypt.CustomClaims{
 		Role:      user.Role,
 		UserId:    user.UserId,
@@ -38,7 +38,7 @@ type SessionOpt struct {
 	CompanyRoleID *string
 }
 
-func (aus Service[T]) UTIL_MakeSession(ctx context.Context, sessionId, role, userId, companyId, deviceToken string, opt *SessionOpt) (tkn *AuthTokens, eror error) {
+func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId, companyId, deviceToken string, opt *SessionOpt) (tkn *AuthTokens, eror error) {
 	//	3. Generate auth Token of password
 	tokens, err := aus.GenerateTokens(&ICrypt.CustomClaims{Role: role, UserId: userId, CompanyId: companyId, SessionId: sessionId})
 	if err != nil {
@@ -61,7 +61,7 @@ func (aus Service[T]) UTIL_MakeSession(ctx context.Context, sessionId, role, use
 		return nil, err
 	}
 	if opt != nil && opt.ClearSession {
-		_, err = generic.DbDeleteByFilter[models.Session](aus.Provider.GormConn, ctx, models.Session{UserId: userId}, &generic.Opt{Debug: false})
+		_, err = generic.DbDeleteByFilter[models.Session](aus.Provider.GormConn, ctx, models.Session{UserID: userId}, &generic.Opt{Debug: false})
 		if err != nil {
 			// return nil, err
 		}
@@ -71,11 +71,11 @@ func (aus Service[T]) UTIL_MakeSession(ctx context.Context, sessionId, role, use
 		companyRoleID = opt.CompanyRoleID
 	}
 	session := models.Session{
-		UserId:        userId,
+		UserID:        userId,
 		HashedRefresh: refreshHash,
 		SessionId:     sessionId,
-		CompanyID:     &companyId,
-		CompanyRoleID: companyRoleID,
+		ActiveOrgID:   &companyId,
+		OrgRoleID:     companyRoleID,
 	}
 	if deviceToken != "" {
 		session.DeviceToken = deviceToken
@@ -83,7 +83,9 @@ func (aus Service[T]) UTIL_MakeSession(ctx context.Context, sessionId, role, use
 	}
 
 	//4.Create a session or update previous's hashed_refresh
-	_, err = generic.DbUpsertOneListedFields[models.Session](tx, ctx, session, []clause.Column{{Name: "session_id"}}, []string{"hashed_refresh", "device_token", "company_id", "company_role_id"}, &generic.Opt{Debug: false})
+	_, err = generic.DbUpsertOneListedFields[models.Session](tx, ctx, session,
+		[]clause.Column{{Name: "session_id"}},
+		[]string{"hashed_refresh", "device_token", "active_org_id"}, &generic.Opt{Debug: false})
 	if err != nil {
 		tx.Rollback()
 		return nil, err
