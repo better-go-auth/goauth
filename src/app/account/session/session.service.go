@@ -21,13 +21,6 @@ func NewService(genServ *providers.IProviderS) *Service {
 	}
 }
 
-type SessionOpt struct {
-	ClearSession bool
-	ActiveOrgID  *string
-	OrgRoleID    *string
-	DeviceToken  string
-}
-
 func (aus Service) GenerateTokens(user *crypto.CustomClaims) (*models.AuthTokens, error) {
 	claims := &crypto.CustomClaims{
 		Role:      user.Role,
@@ -51,7 +44,7 @@ func (aus Service) GenerateTokens(user *crypto.CustomClaims) (*models.AuthTokens
 
 }
 
-func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId string, opt *SessionOpt) (tkn *models.AuthTokens, eror error) {
+func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error) {
 	//	3. Generate auth Token of password
 	claims := crypto.CustomClaims{Role: role, UserId: userId, SessionId: sessionId}
 	if opt != nil {

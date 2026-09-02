@@ -1,5 +1,7 @@
 package auth
 
+import "github.com/better-go-auth/goauth/src/models"
+
 // VerificationInput is for verifying registration email
 type VerificationInput struct {
 	Info       string  `json:"info" validate:"required"`
@@ -19,14 +21,9 @@ type RefreshTokenInput struct {
 	Token string `json:"token"`
 }
 
-type AuthTokens struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-}
-
 type TokenResponse struct {
-	AuthTokens AuthTokens `json:"auth_tokens"`
-	UserData   any        `json:"user_data"`
+	AuthTokens *models.AuthTokens `json:"auth_tokens"`
+	UserData   any               `json:"user_data"`
 }
 
 // =========================. password reset related

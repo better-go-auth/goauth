@@ -6,7 +6,6 @@ import (
 	"github.com/birukbelay/gocmn/src/dtos"
 )
 
-
 // Session will be put on redis,
 type Session struct {
 	Base      `mapstructure:",squash" `

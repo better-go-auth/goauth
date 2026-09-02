@@ -2,6 +2,8 @@ package auth
 
 import (
 	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
+	"github.com/better-go-auth/goauth/src/common/gormutil"
+	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/providers"
 )
@@ -14,13 +16,17 @@ type Service struct {
 	Config   *config.EnvConfig
 	Provider *providers.IProviderS
 	VSvc     account_interfaces.IVerificationService
+	SesSvc   account_interfaces.ISessionService
+	TxMgr    interfaces.ITransactionManager
 }
 
-func NewAuthService(conf *config.EnvConfig, genServ *providers.IProviderS, vSvc account_interfaces.IVerificationService) *Service {
+func NewAuthService(conf *config.EnvConfig, provSvc *providers.IProviderS, vSvc account_interfaces.IVerificationService, sSvc account_interfaces.ISessionService) *Service {
 	return &Service{
 		Config:   conf,
-		Provider: genServ,
+		Provider: provSvc,
 		VSvc:     vSvc,
+		SesSvc:   sSvc,
+		TxMgr:    gormutil.NewGormTxManager(provSvc.GormConn),
 	}
 }
 

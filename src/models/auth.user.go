@@ -12,15 +12,11 @@ import (
 type User struct {
 	Base    `mapstructure:",squash" `
 	UserDto `mapstructure:",squash" `
-	// Company     Company     `json:"-" gorm:"foreignKey:CompanyID"`
-	// CompanyRole CompanyRole `gorm:"foreignKey:CompanyRoleID;constraint:OnUpdate:CASCADE,OnDelete:SET NULL;"`
-
-	//misison related
 
 	LastSeen *time.Time `json:"last_seen,omitempty" doc:"last time user is seen"`
 
-	// Sessions       []Session       `json:"sessions,omitempty" gorm:"many2many:user_sessions;"`
-	Tokens []string `json:"tokens,omitempty" gorm:"-"`
+	Sessions []Session `json:"sessions,omitempty" gorm:"foreignKey:UserID"`
+	Tokens   []string  `json:"tokens,omitempty" gorm:"-"`
 }
 
 type UserDto struct {

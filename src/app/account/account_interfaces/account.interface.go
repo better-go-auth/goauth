@@ -16,5 +16,5 @@ type IVerificationService interface {
 }
 
 type ISessionService interface{
-	
+	CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error)
 }

@@ -2,8 +2,6 @@ package auth
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
 	"github.com/birukbelay/gocmn/src/crypto"
@@ -19,6 +17,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 )
@@ -53,32 +52,27 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 	userModel.AccountStatus = enums.AccountPendingVerification
 	userModel.Active = new(false)
 
-	tx := aus.Provider.GormConn.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			res, eror = dtos.InternalErrMS[bool]("Transaction error"), errors.New("transaction error")
-		}
-	}()
-	if err := tx.Error; err != nil {
-		return dtos.InternalErrMS[bool](err.Error()), err
-	}
+	var resp dtos.GResp[bool]
+	err = aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
 
-	// []string{"Password", "VerificationCodeHash", "VerificationCodeExpire", "AccountStatus", "Role", "Active"}
-	user, err := generic.DbUpsertOneAllFields[models.User](tx, ctx, &userModel, []clause.Column{{Name: "email"}}, nil)
+		user, err := generic.DbUpsertOneAllFields[models.User](gormutil.GetDB(txCtx, aus.Provider.GormConn), ctx, &userModel, []clause.Column{{Name: "email"}}, nil)
+		if err != nil {
+
+			logger.LogTrace("error crating", err)
+			return err
+		}
+		verfResp, err := aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &account_interfaces.VerOpt{UserId: user.Body.ID})
+		if err != nil {
+			//todo: maybe we skip this error
+			return err
+		}
+		resp = verfResp
+
+		return nil
+	})
+
 	if err != nil {
-		tx.Rollback()
-		logger.LogTrace("error crating", err)
-		return dtos.InternalErrMS[bool]("creating Error"), err
-	}
-	resp, err := aus.VSvc.SendVerification(ctx, input.Email, models.PurposeEmailVerification, &account_interfaces.VerOpt{UserId: user.Body.ID})
-	if err != nil {
-		tx.Rollback()
-		return dtos.InternalErrMS[bool]("Sending Email error"), err
-	}
-	commit := tx.Commit()
-	if commit.Error != nil {
-		return dtos.InternalErrMS[bool](commit.Error.Error()), commit.Error
+		return dtos.InternalErrMS[bool]("transaction Error"), err
 	}
 
 	return resp, err
@@ -87,47 +81,29 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 
 // VerifyRegisteredUser (acc-01), [id]x
 func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationInput) (res dtos.GResp[bool], eror error) {
-	//Check if the email already exists
 
-	tx := aus.Provider.GormConn.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			eror = fmt.Errorf("panic occurred: %v", r)
-			res = dtos.InternalErrMS[bool]("transaction error")
+	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
+		usr, err := generic.DbGetOne[models.User](gormutil.GetDB(txCtx, aus.Provider.GormConn), ctx, models.UserFilter{Email: input.Info, AccountStatus: enums.AccountPendingVerification}, nil)
+		if err != nil {
+			return resp_const.InfoOrCodeErr
 		}
-	}()
-	if err := tx.Error; err != nil {
-		return dtos.InternalErrMS[bool](err.Error()), err
+		//Validate the code, but because this is sign up it is upderted via email
+		_, err = aus.VSvc.VerifyCode(txCtx, usr.Body.GetInfo(), models.PurposeEmailVerification, input.Code)
+		if err != nil {
+			return resp_const.InfoOrCodeErr
+		}
+		//Update the users status
+		_, err = generic.DbUpdateByFilter[models.User](gormutil.GetDB(txCtx, aus.Provider.GormConn), ctx, models.UserFilter{Email: input.Info}, models.UserDto{AccountStatus: enums.AccountActive, Active: new(true), EmailVerified: true}, nil)
+		if err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		return dtos.InternalErrMS[bool]("transaction Error"), err
 	}
 
-	usr, err := generic.DbGetOne[models.User](tx, ctx, models.UserFilter{Email: input.Info, AccountStatus: enums.AccountPendingVerification}, nil)
-	if err != nil {
-		tx.Rollback()
-		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
-	}
-	//Validate the code, but because this is sign up it is upderted via email
-	//todo add the tx into the ctx
-	_, err = aus.VSvc.VerifyCode(ctx, usr.Body.GetInfo(), models.PurposeEmailVerification, input.Code)
-	if err != nil {
-		tx.Rollback()
-		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
-	}
-
-	//Update the users status
-	user, err := generic.DbUpdateByFilter[models.User](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{AccountStatus: enums.AccountActive, Active: new(true), EmailVerified: true}, nil)
-	if err != nil {
-		tx.Rollback()
-		// cmn.LogTrace("error crating", err)
-		return dtos.InternalErrMS[bool]("creating Error"), err
-	}
-	//TODO: invalidate the code
-	commit := tx.Commit()
-	if commit.Error != nil {
-		return dtos.InternalErrMS[bool](commit.Error.Error()), commit.Error
-	}
-
-	return dtos.SuccessS(true, user.RowsAffected), nil
+	return dtos.SuccessS(true, 1), nil
 }
 
 // Login (acc-03) [companyId, Role, Password]
@@ -144,7 +120,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 		return dtos.BadReqC[TokenResponse](resp_const.EmailOrPassword), resp_const.EmailOrPasswordErr
 	}
 
-	var companyID string
+	// var companyID string
 	userRole := string(usr.Body.GetRole())
 
 	//we use map to set nul to some fields like active org id
@@ -152,33 +128,6 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 		"last_login_at": util.Ptr(time.Now()),
 	}
 
-	//TODO: update the active membership, manually or on a post script
-	// member, err := aus.getUserMembership(ctx, usr.Body.GetID())
-	// if err != nil {
-	// 	userUpdate["company_id"] = nil
-	// 	//if user is not part of any membership: make him unverified
-	// 	userUpdate["role"] = enums.UnverifiedUser
-	// 	userUpdate["company_role_id"] = nil
-	// 	userUpdate["company_role_name"] = ""
-	// } else {
-	// 	userUpdate["role"] = enums.Role(member.RoleGroup) //a user could have a different role in different companies
-	// 	userUpdate["company_role_id"] = member.CompanyRoleID
-	// 	userUpdate["company_role_name"] = member.CompanyRoleName
-	// 	userUpdate["company_id"] = member.CompanyID
-	// 	if member.Status == enums.MembershipBlocked {
-	// 		companyID = ""
-	// 		userUpdate["company_id"] = nil
-	// 	} else {
-	// 		companyID = member.CompanyID
-	// 	}
-	// 	if member.RoleGroup != "" {
-	// 		userRole = string(member.RoleGroup)
-	// 	}
-	// }
-
-	//Update the users data:
-	// - current active company,
-	// - current active companies role id,
 	updatedUsr, err := generic.DbUpdateByFilter[models.User](aus.Provider.GormConn, ctx, models.UserFilter{ID: usr.Body.ID}, userUpdate, nil)
 	if err != nil {
 		logger.ErrorCtx(ctx, "couldnot update user last login at", err, nil)
@@ -186,7 +135,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 	}
 
 	sessionID := ulid.Make().String()
-	tokens, err := aus.CreateSession(ctx, sessionID, userRole, usr.Body.GetID(), companyID, input.DeviceToken, &SessionOpt{ClearSession: true})
+	tokens, err := aus.SesSvc.CreateSession(ctx, sessionID, userRole, usr.Body.ID, &models.SessionOpt{ClearSession: true, DeviceToken: input.DeviceToken})
 	if err != nil {
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
@@ -203,7 +152,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 	// })
 
 	return dtos.SuccessS(TokenResponse{
-		AuthTokens: *tokens,
+		AuthTokens: tokens,
 		UserData:   updatedUsr.Body,
 	}, updatedUsr.RowsAffected), nil
 
@@ -236,13 +185,13 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 	userRole := string(usr.Body.GetRole())
 
 	//5. update the sessions, incase the users role is changed we need to user the users new role
-	tokens, err := aus.CreateSession(ctx, claims.SessionId, userRole, models.GetID(usr.Body), claims.CompanyId, "", nil)
+	tokens, err := aus.SesSvc.CreateSession(ctx, claims.SessionId, userRole, usr.Body.ID, nil)
 	if err != nil {
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
 
 	return dtos.SuccessS(TokenResponse{
-		AuthTokens: *tokens,
+		AuthTokens: tokens,
 		UserData:   usr.Body,
 	}, 1), nil
 
@@ -298,61 +247,55 @@ func (aus Service) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GR
 
 // ResetPwd [ID]
 func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GResp[bool], error) {
-	tx := aus.Provider.GormConn.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-		}
-	}()
-	if err := tx.Error; err != nil {
-		return dtos.InternalErrMS[bool](err.Error()), err
-	}
-
-	//1. Get the user
-	usr, err := generic.DbGetOne[models.User](tx, ctx, models.UserFilter{Email: input.Info}, nil)
-	if err != nil {
-		tx.Rollback()
-		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
-	}
-	//2. Validate the code
-	_, err = aus.VSvc.VerifyCode(ctx, input.Info, models.PurposePasswordReset, input.Code)
-	if err != nil {
-		tx.Rollback()
-		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
-	}
+	// tx := aus.Provider.GormConn.Begin()
+	// defer func() {
+	// 	if r := recover(); r != nil {
+	// 		tx.Rollback()
+	// 	}
+	// }()
+	// if err := tx.Error; err != nil {
+	// 	return dtos.InternalErrMS[bool](err.Error()), err
+	// }
 
 	//3. hash the new Password
 	hash, err := crypto.BcryptCreateHash(input.NewPassword)
 	if err != nil {
-		tx.Rollback()
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
+
+	//1. Get the user,
+	usr, err := generic.DbGetOne[models.User](aus.Provider.GormConn, ctx, models.UserFilter{Email: input.Info}, &generic.Opt{Preloads: []string{"Sessions"}})
+	if err != nil {
+		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
+	}
 	// Fetch sessions first so we don't lose their SessionId values upon deletion
-	sessions, fetchErr := generic.DbFetchManyWithOffset[models.Session](tx, ctx, models.Session{UserID: models.GetID(usr.Body)}, dtos.PaginationInput{Limit: 10000}, nil)
+	// sessions, fetchErr := generic.DbFetchManyWithOffset[models.Session](aus.Provider.GormConn, ctx, models.Session{UserID: usr.Body.ID}, dtos.PaginationInput{Limit: 10000}, nil)
 
-	//4. Update the users password
-	user, err := generic.DbUpdateByFilter[models.User](tx, ctx, models.UserFilter{Email: input.Info}, models.UserDto{Password: hash}, nil)
-	if err != nil {
-		tx.Rollback()
-		return dtos.InternalErrMS[bool]("creating Error"), err
-	}
-	//delete all the user's sessions
-	_, err = generic.DbDeleteByFilter[models.Session](tx, ctx, models.Session{UserID: models.GetID(usr.Body)}, nil)
-	if err != nil {
-		logger.LogError("Deleting user sessions errors", err.Error())
-	}
-
-	commit := tx.Commit()
-	if commit.Error != nil {
-		return dtos.InternalErrMS[bool](commit.Error.Error()), commit.Error
-	}
-
-	// Blacklist the fetched sessions in Redis
-	if fetchErr == nil {
-		for _, val := range sessions.Body {
-			_ = redis.BlacklistSession(aus.Provider.KeyValServ, ctx, val.SessionId)
+	err = aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
+		//2. Validate the code
+		_, err = aus.VSvc.VerifyCode(txCtx, input.Info, models.PurposePasswordReset, input.Code)
+		if err != nil {
+			return resp_const.InfoOrCodeErr
 		}
+		//4. Update the users password
+		_, err := generic.DbUpdateByFilter[models.User](gormutil.GetDB(txCtx, aus.Provider.GormConn), ctx, models.UserFilter{Email: input.Info}, models.UserDto{Password: hash}, nil)
+		if err != nil {
+			return err
+		}
+		//delete all the user's sessions:
+		_, err = generic.DbDeleteByFilter[models.Session](gormutil.GetDB(txCtx, aus.Provider.GormConn), ctx, models.Session{UserID: usr.Body.ID}, nil)
+		if err != nil {
+			logger.LogError("Deleting user sessions errors", err.Error())
+		}
+		return nil
+	})
+	if err != nil {
+		return dtos.InternalErrMS[bool]("transaction Error"), err
 	}
 
-	return dtos.SuccessS(true, user.RowsAffected), nil
+	for _, val := range usr.Body.Sessions {
+		_ = redis.BlacklistSession(aus.Provider.KeyValServ, ctx, val.SessionId)
+	}
+
+	return dtos.SuccessS(true, usr.RowsAffected), nil
 }
