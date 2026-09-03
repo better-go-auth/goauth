@@ -10,10 +10,10 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func SetupAllAuthRoutes(api huma.API, conf config.SessionConfig, provServ *providers.IProviderS, vCfg config.EmailVerification) account_interfaces.IAuthServices {
+func SetupAllAuthRoutes(api huma.API, conf config.SessionConfig, vCfg config.EmailVerification, provServ *providers.IProviderS) account_interfaces.IAuthServices {
 	//define the services
 	vSvc := verification.NewVerificationService(provServ.GormConn, vCfg)
-	sSvc := session.NewService(provServ)
+	sSvc := session.NewService(conf, provServ)
 	authSvc := auth.NewAuthService(&conf, provServ, vSvc, sSvc)
 
 	session.SetupSessionRoutes(api, provServ, sSvc)

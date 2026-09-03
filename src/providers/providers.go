@@ -1,27 +1,26 @@
 package providers
 
 import (
-	"github.com/better-go-auth/goauth/src/config"
 	"github.com/birukbelay/gocmn/src/provider/db"
 	"github.com/birukbelay/gocmn/src/server/middleware"
 	"gorm.io/gorm"
 )
 
 type IProviderS struct {
-	EnvConf *config.SessionConfig
+
 	//Infrastructure
 	GormConn *gorm.DB
 
-	KeyValServ db.KeyValServ//used for blacklisting session
+	KeyValServ db.KeyValServ //used for blacklisting session
 
-	MiddleWare middleware.AuthMiddleware
+	MiddleWare *middleware.AuthMiddleware
 }
 
-func NewProvider(env *config.SessionConfig, conn *gorm.DB, keyValServ db.KeyValServ) *IProviderS {
+func NewProvider(conn *gorm.DB, keyValServ db.KeyValServ, mdlware *middleware.AuthMiddleware) *IProviderS {
 
 	return &IProviderS{
-		EnvConf: env,
 		GormConn:   conn,
 		KeyValServ: keyValServ,
+		MiddleWare: mdlware,
 	}
 }

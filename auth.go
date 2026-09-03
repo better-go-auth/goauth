@@ -40,11 +40,11 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	verifier := middleware.NewJWTTokenVerifier(opts.SessionConfig.AccessSecret)
 	mdlWare := middleware.NewAuthMiddleware(verifier, nil, nil)
 	//initialize the provider
-	providerService := providers.NewProvider(&opts.SessionConfig, opts.Conn, opts.KeyValServ)
+	providerService := providers.NewProvider(opts.Conn, opts.KeyValServ, mdlWare)
 
 	txManager := gormutil.NewGormTxManager(opts.Conn)
 	//setup the auth routes
-	authSvc := account.SetupAllAuthRoutes(api, opts.SessionConfig, providerService, opts.EmailVerification)
+	authSvc := account.SetupAllAuthRoutes(api, opts.SessionConfig, opts.EmailVerification, providerService)
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)

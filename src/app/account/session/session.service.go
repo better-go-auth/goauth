@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/birukbelay/gocmn/src/crypto"
@@ -12,12 +13,14 @@ import (
 )
 
 type Service struct {
-	ProvServ *providers.IProviderS
+	ProvServ    *providers.IProviderS
+	sConf config.SessionConfig
 }
 
-func NewService(genServ *providers.IProviderS) *Service {
+func NewService(conf config.SessionConfig, genServ *providers.IProviderS) *Service {
 	return &Service{
 		ProvServ: genServ,
+		sConf: conf,
 	}
 }
 
@@ -28,11 +31,11 @@ func (aus Service) GenerateTokens(user *crypto.CustomClaims) (*models.AuthTokens
 		CompanyId: user.CompanyId,
 		SessionId: user.SessionId,
 	}
-	accessToken, err := crypto.SignAccessToken(aus.ProvServ.EnvConf.JwtVar.AccessSecret, aus.ProvServ.EnvConf.JwtVar.AccessExpireMin, claims)
+	accessToken, err := crypto.SignAccessToken(aus.sConf.JwtVar.AccessSecret, aus.sConf.JwtVar.AccessExpireMin, claims)
 	if err != nil {
 		return nil, err
 	}
-	refreshToken, err := crypto.SignRefreshToken(aus.ProvServ.EnvConf.JwtVar.RefreshSecret, aus.ProvServ.EnvConf.JwtVar.RefreshExpireMin, claims)
+	refreshToken, err := crypto.SignRefreshToken(aus.sConf.JwtVar.RefreshSecret, aus.sConf.JwtVar.RefreshExpireMin, claims)
 	if err != nil {
 		return nil, err
 	}
