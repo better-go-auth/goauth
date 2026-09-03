@@ -3,24 +3,30 @@ package session
 import (
 	"context"
 	"fmt"
+	"time"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/birukbelay/gocmn/src/crypto"
+	"github.com/birukbelay/gocmn/src/dtos"
 	"github.com/birukbelay/gocmn/src/generic"
+	"github.com/birukbelay/gocmn/src/provider/db"
 	"gorm.io/gorm/clause"
 )
 
 type Service struct {
-	ProvServ    *providers.IProviderS
-	sConf config.SessionConfig
+	ProvServ   *providers.IProviderS
+	sConf      config.SessionConfig
+	sStore     db.KeyValServ
 }
 
 func NewService(conf config.SessionConfig, genServ *providers.IProviderS) *Service {
 	return &Service{
 		ProvServ: genServ,
-		sConf: conf,
+		sConf:    conf,
+		sStore:   genServ.SecondaryStorage,
 	}
 }
 
@@ -105,4 +111,35 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		return nil, commit.Error
 	}
 	return tokens, nil
+}
+
+func (aus Service) BlacklistSession(ctx context.Context, sessionId string) error {
+	if aus.sStore == nil {
+		return nil
+	}
+	key := fmt.Sprintf("blacklist:%s", sessionId)
+	ttl := time.Hour
+	if aus.sConf.JwtVar.RefreshExpireMin > 0 {
+		ttl = time.Duration(aus.sConf.JwtVar.RefreshExpireMin) * time.Minute
+	}
+	return aus.sStore.Set(ctx, key, "blacklisted", ttl)
+}
+
+func (aus Service) DeleteSession(ctx context.Context, sessionId string) error {
+	_, err := generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{SessionId: sessionId}, nil)
+	if err != nil {
+		return err
+	}
+	return aus.BlacklistSession(ctx, sessionId)
+}
+
+func (aus Service) DeleteAllUserSessions(ctx context.Context, userId string) error {
+	sessions, err := generic.DbFetchManyWithOffset[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, dtos.PaginationInput{Limit: 10000}, nil)
+	if err == nil {
+		for _, s := range sessions.Body {
+			_ = aus.BlacklistSession(ctx, s.SessionId)
+		}
+	}
+	_, err = generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, nil)
+	return err
 }

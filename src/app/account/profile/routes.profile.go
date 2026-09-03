@@ -36,8 +36,8 @@ var ProfilePermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	ChangeMyPwd:     {AllowedRoles: []string{}},
 }
 
-func SetUserProfileRoutes(humaRouter huma.API, provServ *providers.IProviderS, vSvs account_interfaces.IVerificationService) {
-	adminHandler := NewProfileHandler(provServ, NewProfileServH[models.User](provServ, vSvs))
+func SetUserProfileRoutes(humaRouter huma.API, provServ *providers.IProviderS, vSvs account_interfaces.IVerificationService, sesSvc account_interfaces.ISessionService) {
+	adminHandler := NewProfileHandler(provServ, NewProfileServH[models.User](provServ, vSvs, sesSvc))
 	tags := []string{"01-user_profile"}
 	path := consts.ApiV1 + "/01-profile"
 

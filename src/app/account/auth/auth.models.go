@@ -23,7 +23,7 @@ type RefreshTokenInput struct {
 
 type TokenResponse struct {
 	AuthTokens *models.AuthTokens `json:"auth_tokens"`
-	UserData   any               `json:"user_data"`
+	UserData   models.User        `json:"user_data"`
 }
 
 // =========================. password reset related

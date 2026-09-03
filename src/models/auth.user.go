@@ -39,7 +39,7 @@ type UserDto struct {
 	LastLoginAt *time.Time `json:"lastLoginAt,omitempty" `
 	//Extra better auth fields
 	DisplayName *string    `json:"displayName,omitempty"                   bun:"display_name"`
-	Avatar      string     `json:"avatar,omitempty" `
+	Image       string     `json:"image,omitempty" `
 	Bio         *string    `json:"bio,omitempty"                          bun:"bio"`
 	DateOfBirth *time.Time `json:"dateOfBirth,omitempty"                                   bun:"date_of_birth"`
 	Gender      *string    `json:"gender,omitempty"           gorm:"size:20"               bun:"gender"`

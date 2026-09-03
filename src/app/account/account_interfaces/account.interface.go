@@ -17,6 +17,9 @@ type IVerificationService interface {
 
 type ISessionService interface {
 	CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error)
+	DeleteSession(ctx context.Context, sessionId string) error
+	DeleteAllUserSessions(ctx context.Context, userId string) error
+	BlacklistSession(ctx context.Context, sessionId string) error
 }
 
 type IAuthServices interface {

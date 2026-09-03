@@ -3,14 +3,9 @@ package config
 import (
 	"context"
 	"net/http"
-
-	conf "github.com/birukbelay/gocmn/src/config"
+	"time"
 )
 
-type SessionConfig struct {
-	conf.JwtVar
-	conf.KeyValConfig
-}
 
 type contextKey string
 
@@ -50,12 +45,12 @@ type AuthConfigs struct {
 	// Secret is the master secret used for HMAC signing of opaque session tokens.
 	Secret string
 
-	SecondaryStorage  conf.KeyValConfig
+	SecondaryStorage  SecondaryStorage
 	EmailVerification *EmailVerification
 	EmailAndPassword  *EmailAndPassword
 	Session           *Session
 
-	conf.JwtVar
+	// conf.JwtVar
 
 	// AccessSecret signs JWT access tokens (only relevant in JWT mode).
 	// Deprecated: configure this via dedicated token/plugin options
@@ -72,12 +67,12 @@ type AuthConfigs struct {
 	TrustedOrigins []string
 }
 
-// type SecondaryStorage interface {
-// 	Get(key string) (any, error)
-// 	GetAndDelete(key string) (any, error)
-// 	Set(key string, value string, ttl time.Duration) error
-// 	Delete(key string) error
-// }
+type SecondaryStorage interface {
+	Get(key string) (any, error)
+	GetAndDelete(key string) (any, error)
+	Set(key string, value string, ttl time.Duration) error
+	Delete(key string) error
+}
 
 func (c AuthConfigs) WithDefaults() AuthConfigs {
 	return c

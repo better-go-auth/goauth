@@ -26,7 +26,7 @@ type GoAuthOptions struct {
 	Conn              *gorm.DB
 	EmailVerification config.EmailVerification
 	SessionConfig     config.SessionConfig
-	KeyValServ        db.KeyValServ
+	SecondaryStorage  db.KeyValServ
 	Plugins           []plugin.Plugin
 }
 
@@ -40,7 +40,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	verifier := middleware.NewJWTTokenVerifier(opts.SessionConfig.AccessSecret)
 	mdlWare := middleware.NewAuthMiddleware(verifier, nil, nil)
 	//initialize the provider
-	providerService := providers.NewProvider(opts.Conn, opts.KeyValServ, mdlWare)
+	providerService := providers.NewProvider(opts.Conn, opts.SecondaryStorage, mdlWare)
 
 	txManager := gormutil.NewGormTxManager(opts.Conn)
 	//setup the auth routes

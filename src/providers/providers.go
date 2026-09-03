@@ -11,7 +11,7 @@ type IProviderS struct {
 	//Infrastructure
 	GormConn *gorm.DB
 
-	KeyValServ db.KeyValServ //used for blacklisting session
+	SecondaryStorage db.KeyValServ //used for blacklisting session
 
 	MiddleWare *middleware.AuthMiddleware
 }
@@ -19,8 +19,8 @@ type IProviderS struct {
 func NewProvider(conn *gorm.DB, keyValServ db.KeyValServ, mdlware *middleware.AuthMiddleware) *IProviderS {
 
 	return &IProviderS{
-		GormConn:   conn,
-		KeyValServ: keyValServ,
-		MiddleWare: mdlware,
+		GormConn:         conn,
+		SecondaryStorage: keyValServ,
+		MiddleWare:       mdlware,
 	}
 }

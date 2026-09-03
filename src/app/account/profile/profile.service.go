@@ -7,7 +7,6 @@ import (
 	ICrypt "github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
 	sql_db "github.com/birukbelay/gocmn/src/generic"
-	"github.com/birukbelay/gocmn/src/provider/db/redis"
 	ICnst "github.com/birukbelay/gocmn/src/resp_const"
 
 	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
@@ -18,12 +17,14 @@ import (
 type Service[T models.IntUsr] struct {
 	ProvServ *providers.IProviderS
 	VSvc     account_interfaces.IVerificationService
+	SesSvc   account_interfaces.ISessionService
 }
 
-func NewProfileServH[T models.IntUsr](genServ *providers.IProviderS, vSvc account_interfaces.IVerificationService) *Service[T] {
+func NewProfileServH[T models.IntUsr](genServ *providers.IProviderS, vSvc account_interfaces.IVerificationService, sesSvc account_interfaces.ISessionService) *Service[T] {
 	return &Service[T]{
 		ProvServ: genServ,
 		VSvc:     vSvc,
+		SesSvc:   sesSvc,
 	}
 }
 
@@ -46,20 +47,11 @@ func (aus *Service[T]) ChangePassword(ctx context.Context, userId, sessionId str
 		return dtos.InternalErrMS[T]("Update Error"), err
 	}
 
-	_, err = sql_db.DbDeleteByFilter[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserID: userId, SessionId: sessionId}, nil)
+	err = aus.SesSvc.DeleteAllUserSessions(ctx, userId)
 	if err != nil {
 		return dtos.InternalErrMS[T]("Session Removing error"), err
 	}
-	_ = redis.BlacklistSession(aus.ProvServ.KeyValServ, ctx, sessionId)
-	//blacklist all the session
-	sessions, err := sql_db.DbFetchManyWithOffset[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserID: userId}, dtos.PaginationInput{Limit: 10000}, nil)
-	if err != nil {
-
-	}
-	for _, val := range sessions.Body {
-		err = redis.BlacklistSession(aus.ProvServ.KeyValServ, ctx, val.SessionId)
-	}
-	return updateResp, err
+	return updateResp, nil
 }
 
 // SendChangeEmail .params{userId: from token}
