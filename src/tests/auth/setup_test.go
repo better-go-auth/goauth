@@ -39,7 +39,7 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 	})
 
 	t.Run("Fails when AccessSecret is empty", func(t *testing.T) {
-		env := helpers.SetupTestEnv(t)
+		env := helpers.SetupTestEnv(t, true)
 		opts := config.GoAuthOptions{
 			Conn: env.DB,
 		}
@@ -73,8 +73,22 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 }
 
 func TestRevocationStore_IsRevoked(t *testing.T) {
-	env := helpers.SetupTestEnv(t)
+	env := helpers.SetupTestEnv(t, true)
 	ctx := context.Background()
+
+	testEmail := "test_rev_user@example.com"
+	testUser := models.User{
+		UserDto: models.UserDto{
+			FirstName:     "Rev",
+			LastName:      "User",
+			Email:         &testEmail,
+			EmailVerified: true,
+			Role:          enums.User,
+		},
+	}
+	if err := env.DB.Create(&testUser).Error; err != nil {
+		t.Fatalf("Failed to create test user for revocation tests: %v", err)
+	}
 
 	revStore := providers.NewRevocationStore(env.DB, env.SecondaryStorage)
 
@@ -87,7 +101,7 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 
 	t.Run("Active session is not revoked", func(t *testing.T) {
 		sessionID := ulid.Make().String()
-		_, err := env.Auth.AuthServices.CreateSession(ctx, sessionID, string(enums.User), "user_123", nil)
+		_, err := env.Auth.IAuthServices.CreateSession(ctx, sessionID, string(enums.User), testUser.ID, nil)
 		if err != nil {
 			t.Fatalf("CreateSession failed: %v", err)
 		}
@@ -116,7 +130,7 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 		isBlacklisted := true
 		sess := models.Session{
 			SessionId:   sessionID,
-			UserID:      "user_456",
+			UserID:      testUser.ID,
 			Role:        string(enums.User),
 			Blacklisted: &isBlacklisted,
 			ExpiresAt:   time.Now().Add(time.Hour),
@@ -138,7 +152,7 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 		sessionID := ulid.Make().String()
 		sess := models.Session{
 			SessionId: sessionID,
-			UserID:    "user_789",
+			UserID:    testUser.ID,
 			Role:      string(enums.User),
 			ExpiresAt: time.Now().Add(-1 * time.Hour), // expired in past
 		}

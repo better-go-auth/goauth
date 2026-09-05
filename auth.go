@@ -9,6 +9,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core"
 	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
+	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
@@ -19,9 +20,12 @@ import (
 )
 
 type GoAuth struct {
-	AuthServices    core_interfaces.IAuthServices
-	MiddleWare      middleware.AuthMiddleware
-	RevocationStore middleware.RevocationStore
+	IAuthServices core_interfaces.IAuthServices
+	// AuthServices
+	MiddleWare        middleware.AuthMiddleware
+	RevocationStore   middleware.RevocationStore
+	TransctionManager interfaces.ITransactionManager
+	Provider          *providers.IProviderS
 }
 
 func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
@@ -51,12 +55,13 @@ func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
 	initCtx := &plugin.InitContext{
-		Ctx:       context.Background(),
-		Api:       api,
-		TxManager: txManager,
-		Extras: map[string]any{
-			"jwt_secret":      opts.SessionConfig.AccessSecret,
-			"session_service": authSvc,
+		Ctx:           context.Background(),
+		Api:           api,
+		TxManager:     txManager,
+		IAuthServices: authSvc,
+		Extras:        map[string]any{
+			// "jwt_secret":      opts.SessionConfig.AccessSecret,
+			// "session_service": authSvc,
 		},
 	}
 
@@ -77,8 +82,10 @@ func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 	}
 
 	return &GoAuth{
-		AuthServices:    authSvc,
-		MiddleWare:      *mdlWare,
-		RevocationStore: revocationStore,
+		IAuthServices:     authSvc,
+		MiddleWare:        *mdlWare,
+		RevocationStore:   revocationStore,
+		TransctionManager: txManager,
+		Provider:          providerService,
 	}, nil
 }

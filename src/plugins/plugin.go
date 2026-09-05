@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/danielgtaylor/huma/v2"
@@ -17,7 +18,9 @@ type InitContext struct {
 	// UserRepo    repoimpl2.IUserRepo
 	// SessionRepo repoimpl2.ISessionRepo
 	// EmailSender emailiface.IVerificationSender
-	TxManager interfaces.ITransactionManager
+	TxManager     interfaces.ITransactionManager
+	IAuthServices core_interfaces.IAuthServices
+
 	// Extras allows plugins that need ORM-specific objects (e.g. *gorm.DB) to
 	// receive them without coupling the interface to any particular ORM.
 	// The host application populates this map before calling plugin.Init.

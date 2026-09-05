@@ -7,6 +7,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	plugins "github.com/better-go-auth/goauth/src/plugins"
+	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	"github.com/better-go-auth/goauth/src/plugins/admin/models"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	gormadmin "github.com/better-go-auth/goauth/src/plugins/admin/repository/gorm"
@@ -18,13 +19,13 @@ const PluginID = "admin"
 
 // Plugin implements the plugins.Plugin interface for the Better Auth Admin plugin.
 type Plugin struct {
-	adminRepos repository.AdminRepositories
-	config     models.AdminConfig
-	migrator   migration.IMigrator
-	service    adminsvc.IAdminService
+	adminRepos  repository.AdminRepositories
+	config      models.AdminConfig
+	migrator    migration.IMigrator
+	service     adminsvc.IAdminService
 	sessionConf config.SessionConfig
-	// jwtSecret  string
-	basePath   string
+	basePath    string
+	handler     *humaadmin.AdminHandler
 }
 
 // Option configures the admin Plugin.
@@ -101,11 +102,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		p.config,
 	)
 
-	// if ictx != nil && ictx.Extras != nil {
-	// 	if sec, ok := ictx.Extras["jwt_secret"].(string); ok && sec != "" && p.jwtSecret == "" {
-	// 		p.jwtSecret = sec
-	// 	}
-	// }
 
 	if ictx != nil && ictx.Api != nil {
 		p.SetupHumaRoutes(ictx.Api)
@@ -131,6 +127,11 @@ func (p *Plugin) Routes() []plugins.RouteDescriptor {
 // Service returns the initialized IAdminService.
 func (p *Plugin) Service() adminsvc.IAdminService {
 	return p.service
+}
+
+// Handler returns the initialized AdminHandler.
+func (p *Plugin) Handler() *humaadmin.AdminHandler {
+	return p.handler
 }
 
 // Config returns the plugin's configuration.

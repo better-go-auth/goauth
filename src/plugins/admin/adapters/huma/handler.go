@@ -25,7 +25,7 @@ type AdminHandler struct {
 	Cfg         config.GoAuthOptions
 	sessionServ core_interfaces.ISessionService
 	AdminRepo   repository.IAdminRepo
-	JwtSecret   string
+	// JwtSecret   string
 }
 
 // NewAdminHandler creates a new AdminHandler.
@@ -91,10 +91,10 @@ func (h *AdminHandler) Authenticate(ctx context.Context, auth humatypes.AuthHead
 		return nil, autherr.ErrUnauthorized
 	}
 
-	secret := h.JwtSecret
-	if secret == "" {
-		secret = h.Cfg.SessionConfig.AccessSecret
-	}
+	secret := h.Cfg.SessionConfig.AccessSecret
+	// if secret == "" {
+
+	// }
 	if secret != "" {
 		claims, ok, err := crypto.Valid(token, secret)
 		if err == nil && ok && claims.UserId != "" {

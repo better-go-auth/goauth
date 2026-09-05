@@ -11,12 +11,11 @@ func (p *Plugin) SetupHumaRoutes(api huma.API) {
 		return
 	}
 	handler := humaadmin.NewAdminHandler(p.service, p.config)
-	// if p.jwtSecret != "" {
-	// 	handler.JwtSecret = p.jwtSecret
-	// }
+	handler.Cfg.SessionConfig = p.sessionConf
 	if p.basePath != "" {
 		handler.Cfg.BasePath = p.basePath
 	}
 	handler.AdminRepo = p.adminRepos.AdminRepo
+	p.handler = handler
 	humaadmin.SetupAdminRoutes(api, handler)
 }

@@ -10,15 +10,25 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 	"time"
 
 	bettergoauth "github.com/better-go-auth/goauth"
+	gormauthrepo "github.com/better-go-auth/goauth/src/app/core/account/repo"
+	coreauth "github.com/better-go-auth/goauth/src/app/core/auth"
+	"github.com/better-go-auth/goauth/src/app/core/profile"
+	"github.com/better-go-auth/goauth/src/app/core/session"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
+	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/providers/memory"
 	"github.com/birukbelay/gocmn/src/config"
+	cmnConf "github.com/birukbelay/gocmn/src/config"
+	"github.com/birukbelay/gocmn/src/consts"
+	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/provider/db"
 	gocmn_redis "github.com/birukbelay/gocmn/src/provider/db/redis"
 	"github.com/danielgtaylor/huma/v2"
@@ -49,17 +59,30 @@ type TestEnv struct {
 	Server           *httptest.Server
 	BaseURL          string
 	Teardown         func()
+
+	// Direct handlers for in-process debugging
+	AuthHandler    *coreauth.GinAuthHandler
+	ProfileHandler *profile.HProfileHandler[models.User]
+	SessionHandler *session.HumaSessionHandler
+	AdminHandler   *humaadmin.AdminHandler
+
+	// Direct services for testing/debugging
+	AuthService    *coreauth.Service
+	ProfileService *profile.Service[models.User]
+	SessionService *session.Service
+	AdminService   adminsvc.IAdminService
 }
 
 var containersToCleanup []testcontainers.Container
 
-func SetupTestEnv(t *testing.T) *TestEnv {
+func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	ctx := context.Background()
 	var gormDB *gorm.DB
-	var redisClient *gocmn_redis.RedisService
+	var secStorage db.KeyValServ
+	// var redisClient *gocmn_redis.RedisService
 	var teardown = func() {}
 
-	if os.Getenv("USE_TESTCONTAINERS") == "true" {
+	if useContainers {
 		slog.Info("========== Using testcontainers")
 		pgContainer, err := postgres.Run(ctx,
 			"postgres:15-alpine",
@@ -79,7 +102,17 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 		if err != nil {
 			log.Fatalf("failed to get connection string: %v", err)
 		}
+		gormDB, err = gorm.Open(gormpostgres.Open(connStr), &gorm.Config{
+			Logger: logger.Discard,
+		})
+		if err != nil {
+			log.Fatalf("failed to connect to postgres db: %v", err)
+		}
 		containersToCleanup = append(containersToCleanup, pgContainer)
+
+		//=============================   SECONDARY STORAGE SETUP ==========================|
+		//
+		//==================================================================================|
 
 		redisContainer, err := test_redis.Run(ctx,
 			"redis:7-alpine",
@@ -101,15 +134,18 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 			log.Fatalf("failed to get redis mapped port: %v", err)
 		}
 
-		_ = redisHost
-		_ = redisPort
-
-		gormDB, err = gorm.Open(gormpostgres.Open(connStr), &gorm.Config{
-			Logger: logger.Discard,
+		// Establish Redis Connection to Redis Container
+		redisClient, err := gocmn_redis.NewRedis(&cmnConf.KeyValConfig{
+			KVHost:     redisHost,
+			KVPort:     redisPort.Port(),
+			KVPassword: "",
+			KVUsername: "",
+			KVDbName:   0,
 		})
 		if err != nil {
-			log.Fatalf("failed to connect to postgres db: %v", err)
+			panic("testcommon.Setup: failed to connect to redis test container: " + err.Error())
 		}
+		secStorage = redisClient
 
 		teardown = func() {
 			_ = pgContainer.Terminate(context.Background())
@@ -125,17 +161,12 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 		if err != nil {
 			log.Fatalf("failed to connect to sqlite db: %v", err)
 		}
+		//===========   Setup secondary Storage =========================
+		secStorage, err = memory.NewSecondaryStorage()
+		if err != nil {
+			log.Fatalf("failed to create in-memory secondary storage: %v", err)
+		}
 	}
-
-	// Migrate core models
-	// if err := gormDB.AutoMigrate(
-	// 	&models.User{},
-	// 	&models.Account{},
-	// 	&models.Session{},
-	// 	&models.Verification{},
-	// ); err != nil {
-	// 	log.Fatalf("failed to auto migrate models: %v", err)
-	// }
 	jwt := config.JwtVar{
 		AccessSecret:     TestAccessSecret,
 		RefreshSecret:    TestRefreshSecret,
@@ -151,7 +182,8 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 	adminPlugin := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
 
 	auth, err := bettergoauth.SetupGoAuth(api, loc_conf.GoAuthOptions{
-		Conn: gormDB,
+		Conn:             gormDB,
+		SecondaryStorage: secStorage,
 		EmailVerification: loc_conf.EmailVerification{
 			ExpiresIn:              15 * time.Minute,
 			VerificationCodeSender: mockEmail,
@@ -198,10 +230,17 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 		prevTeardown()
 	}
 
-	var secStorage db.KeyValServ
-	if redisClient != nil {
-		secStorage = redisClient
-	}
+	sConf := loc_conf.SessionConfig{JwtVar: jwt}
+	accountRepo := gormauthrepo.NewAccountRepo(gormDB)
+	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.IAuthServices, auth.IAuthServices, accountRepo)
+	profileServ := profile.NewProfileServH[models.User](auth.Provider, auth.IAuthServices, auth.IAuthServices, accountRepo)
+	//Handlers
+	sSvc := session.NewService(sConf, auth.Provider)
+	authHandler := coreauth.NewAuthHandler(auth.Provider, authSvc)
+	profileHandler := profile.NewProfileHandler(auth.Provider, profileServ)
+	sessionHandler := session.NewSessionHandler(sSvc)
+	adminHandler := adminPlugin.Handler()
+	adminService := adminPlugin.Service()
 
 	env := &TestEnv{
 		DB:               gormDB,
@@ -213,6 +252,16 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 		Server:           server,
 		BaseURL:          server.URL,
 		Teardown:         fullTeardown,
+
+		AuthHandler:    authHandler,
+		ProfileHandler: profileHandler,
+		SessionHandler: sessionHandler,
+		AdminHandler:   adminHandler,
+
+		AuthService:    authSvc,
+		ProfileService: profileServ,
+		SessionService: sSvc,
+		AdminService:   adminService,
 	}
 
 	if t != nil {
@@ -273,4 +322,18 @@ func (e *TestEnv) doJSON(method, path string, body any, headers ...map[string]st
 	}
 
 	return resp, string(respBytes)
+}
+
+// ContextWithClaims wraps a context with authenticated crypto.CustomClaims for direct handler testing.
+func ContextWithClaims(ctx context.Context, claims crypto.CustomClaims) context.Context {
+	return context.WithValue(ctx, consts.CtxClaims.Str(), claims)
+}
+
+// AuthContext creates a context with user claims for direct handler testing.
+func AuthContext(userID, sessionID, role string) context.Context {
+	return ContextWithClaims(context.Background(), crypto.CustomClaims{
+		UserId:    userID,
+		SessionId: sessionID,
+		Role:      role,
+	})
 }
