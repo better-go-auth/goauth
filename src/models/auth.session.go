@@ -9,7 +9,7 @@ import (
 // Session will be put on redis,
 type Session struct {
 	Base      `mapstructure:",squash" `
-	SessionId string    `gorm:"uniqueIndex;not null" `
+	SessionId string    `gorm:"uniqueIndex;not null" ` //session id is the token
 	UserID    string    `gorm:"not null"`
 	ExpiresAt time.Time `json:"expiresAt"                                         bun:"expires_at,notnull"`
 	//
@@ -44,6 +44,7 @@ type Session struct {
 	ImpersonatedBy *string `json:"impersonatedBy,omitempty" gorm:"size:26" bun:"impersonated_by"`
 }
 type SessionFilter struct {
+	ID            string `query:"id"`
 	CompanyID     string `query:"-"`
 	CompanyRoleID string `query:"-"`
 	SessionId     string `query:"session_id"`

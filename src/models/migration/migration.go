@@ -8,3 +8,5 @@ type IMigrator interface {
 	// Migrate runs all pending migrations to create/update auth tables.
 	Migrate(ctx context.Context) error
 }
+
+

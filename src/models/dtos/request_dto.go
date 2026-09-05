@@ -143,3 +143,13 @@ type ListUsersInput struct {
 	FilterValue    string `query:"filterValue"              json:"filterValue,omitempty"`
 	FilterOperator string `query:"filterOperator,omitempty" json:"filterOperator,omitempty"`
 }
+
+
+// RequestMeta carries HTTP request metadata (IP, user agent) for session creation.
+type RequestMeta struct {
+	IPAddress  string
+	UserAgent  string
+	DeviceID   *string
+	DeviceName *string
+	DeviceType *string
+}

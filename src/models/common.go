@@ -21,7 +21,7 @@ type Base struct {
 
 func (m *Base) BeforeCreate(tx *gorm.DB) (err error) {
 	if m.ID == "" {
-		m.ID = ulid.Make().String()
+		m.ID = NewID()
 	}
 	return nil
 }
@@ -39,7 +39,7 @@ type SDBase struct {
 
 func (m *SDBase) BeforeCreate(tx *gorm.DB) (err error) {
 	if m.ID == "" {
-		m.ID = ulid.Make().String()
+		m.ID = NewID()
 	}
 	return nil
 }
@@ -54,4 +54,9 @@ type OperationAccessDto struct {
 	GroupName    string
 	Description  string
 	CompanyID    *string
+}
+
+// NewID generates a new ULID string.
+func NewID() string {
+	return ulid.Make().String()
 }

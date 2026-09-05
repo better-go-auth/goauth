@@ -5,46 +5,37 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/better-go-auth/goauth/src/app/account"
-	"github.com/better-go-auth/goauth/src/app/account/account_interfaces"
+	"github.com/better-go-auth/goauth/src/app/core"
+	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/plugin"
+	"github.com/better-go-auth/goauth/src/plugins"
+
 	"github.com/better-go-auth/goauth/src/providers"
-	"github.com/birukbelay/gocmn/src/provider/db"
 	"github.com/birukbelay/gocmn/src/server/middleware"
 	"github.com/danielgtaylor/huma/v2"
-	"gorm.io/gorm"
 )
 
 type GoAuth struct {
-	AuthServices account_interfaces.IAuthServices
+	AuthServices core_interfaces.IAuthServices
 	MiddleWare   middleware.AuthMiddleware
 }
 
-type GoAuthOptions struct {
-	Conn              *gorm.DB
-	EmailVerification config.EmailVerification
-	SessionConfig     config.SessionConfig
-	SecondaryStorage  db.KeyValServ
-	Plugins           []plugin.Plugin
-}
-
-func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
+func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 
 	/*
 		- validate the config and throw error if important fields
 		- initialize the provider here
 	*/
 
+	txManager := gormutil.NewGormTxManager(opts.Conn)
 	verifier := middleware.NewJWTTokenVerifier(opts.SessionConfig.AccessSecret)
 	mdlWare := middleware.NewAuthMiddleware(verifier, nil, nil)
 	//initialize the provider
-	providerService := providers.NewProvider(opts.Conn, opts.SecondaryStorage, mdlWare)
+	providerService := providers.NewProvider(opts.Conn, opts.SecondaryStorage, mdlWare, txManager)
 
-	txManager := gormutil.NewGormTxManager(opts.Conn)
 	//setup the auth routes
-	authSvc := account.SetupAllAuthRoutes(api, opts.SessionConfig, opts.EmailVerification, providerService)
+	authSvc := core.SetupAllAuthRoutes(api, opts.SessionConfig, opts.EmailVerification, providerService)
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
@@ -54,6 +45,9 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		// Config:      cfg,
 
 		TxManager: txManager,
+		Extras: map[string]any{
+			"jwt_secret": opts.SessionConfig.AccessSecret,
+		},
 	}
 
 	for _, p := range opts.Plugins {

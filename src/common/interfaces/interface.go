@@ -1,6 +1,8 @@
 package interfaces
 
-import "context"
+import (
+	"context"
+)
 
 // ITransactionManager manages atomic operations across multiple repository calls.
 type ITransactionManager interface {
