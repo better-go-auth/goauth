@@ -9,11 +9,11 @@ import (
 // Session will be put on redis,
 type Session struct {
 	Base      `mapstructure:",squash" `
-	SessionId string    `gorm:"uniqueIndex;not null" ` //session id is the token
+	SessionId string    `gorm:"uniqueIndex;not null" ` //session id is the token that is generated randomly
 	UserID    string    `gorm:"not null"`
 	ExpiresAt time.Time `json:"expiresAt"                                         bun:"expires_at,notnull"`
 	//
-	HashedRefresh string `gorm:"not null" json:"-"`
+	HashedToken string `gorm:"not null" json:"-"`
 
 	//we use when the admin block the user, we dont delete the session, we just blacklist it
 	Blacklisted   *bool `gorm:"default:false" json:"-"`
@@ -49,7 +49,7 @@ type SessionFilter struct {
 	CompanyRoleID string `query:"-"`
 	SessionId     string `query:"session_id"`
 	UserId        string `query:"user_id"`
-	HashedRefresh string `query:"hashed_refresh"`
+	HashedToken string `query:"hashed_token"`
 	Blacklisted   bool   `query:"blacklisted"`
 }
 type SessionQuery struct {

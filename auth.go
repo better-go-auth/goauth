@@ -2,6 +2,7 @@ package goauth
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -9,7 +10,8 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/plugins"
+	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
+	plugin "github.com/better-go-auth/goauth/src/plugins"
 
 	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/birukbelay/gocmn/src/server/middleware"
@@ -17,20 +19,29 @@ import (
 )
 
 type GoAuth struct {
-	AuthServices core_interfaces.IAuthServices
-	MiddleWare   middleware.AuthMiddleware
+	AuthServices    core_interfaces.IAuthServices
+	MiddleWare      middleware.AuthMiddleware
+	RevocationStore middleware.RevocationStore
 }
 
 func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
+	if api == nil {
+		return nil, errors.New("goauth: huma API instance is required")
+	}
 
-	/*
-		- validate the config and throw error if important fields
-		- initialize the provider here
-	*/
+	opts.SetDefaults()
+	if err := opts.Validate(); err != nil {
+		return nil, fmt.Errorf("goauth: invalid options: %w", err)
+	}
+	migrator := core_migration.NewGORMAdminMigrator(opts.Conn)
+	if err := migrator.Migrate(context.Background()); err != nil {
+		return nil, err
+	}
 
 	txManager := gormutil.NewGormTxManager(opts.Conn)
 	verifier := middleware.NewJWTTokenVerifier(opts.SessionConfig.AccessSecret)
-	mdlWare := middleware.NewAuthMiddleware(verifier, nil, nil)
+	revocationStore := providers.NewRevocationStore(opts.Conn, opts.SecondaryStorage)
+	mdlWare := middleware.NewAuthMiddleware(verifier, revocationStore, nil)
 	//initialize the provider
 	providerService := providers.NewProvider(opts.Conn, opts.SecondaryStorage, mdlWare, txManager)
 
@@ -40,13 +51,12 @@ func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
 	initCtx := &plugin.InitContext{
-		Ctx: context.Background(),
-		Api: api,
-		// Config:      cfg,
-
+		Ctx:       context.Background(),
+		Api:       api,
 		TxManager: txManager,
 		Extras: map[string]any{
-			"jwt_secret": opts.SessionConfig.AccessSecret,
+			"jwt_secret":      opts.SessionConfig.AccessSecret,
+			"session_service": authSvc,
 		},
 	}
 
@@ -67,7 +77,8 @@ func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 	}
 
 	return &GoAuth{
-		AuthServices: authSvc,
-		MiddleWare:   *mdlWare,
+		AuthServices:    authSvc,
+		MiddleWare:      *mdlWare,
+		RevocationStore: revocationStore,
 	}, nil
 }

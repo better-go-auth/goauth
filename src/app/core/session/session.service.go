@@ -17,9 +17,9 @@ import (
 )
 
 type Service struct {
-	ProvServ   *providers.IProviderS
-	sConf      config.SessionConfig
-	sStore     db.KeyValServ
+	ProvServ *providers.IProviderS
+	sConf    config.SessionConfig
+	sStore   db.KeyValServ
 }
 
 func NewService(conf config.SessionConfig, genServ *providers.IProviderS) *Service {
@@ -92,11 +92,11 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	}
 
 	session := models.Session{
-		UserID:        userId,
-		HashedRefresh: refreshHash,
-		SessionId:     sessionId,
-		Role:          role,
-		ExpiresAt:     time.Now().UTC().Add(expiresIn),
+		UserID:      userId,
+		HashedToken: refreshHash,
+		SessionId:   sessionId,
+		Role:        role,
+		ExpiresAt:   time.Now().UTC().Add(expiresIn),
 	}
 	if opt != nil {
 		session.ActiveOrgID = opt.ActiveOrgID
@@ -104,10 +104,10 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		session.DeviceToken = opt.DeviceToken
 	}
 
-	//4.Create a session or update previous's hashed_refresh
+	//4.Create a session or update previous's hashed_token
 	_, err = generic.DbUpsertOneListedFields[models.Session](tx, ctx, session,
 		[]clause.Column{{Name: "session_id"}},
-		[]string{"hashed_refresh", "device_token", "active_org_id", "expires_at"}, &generic.Opt{Debug: false})
+		[]string{"hashed_token", "device_token", "active_org_id", "expires_at"}, &generic.Opt{Debug: false})
 	if err != nil {
 		tx.Rollback()
 		return nil, err

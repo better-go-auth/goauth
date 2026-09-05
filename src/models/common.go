@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/birukbelay/gocmn/src/consts"
+	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"
 	"gorm.io/gorm"
@@ -59,4 +60,8 @@ type OperationAccessDto struct {
 // NewID generates a new ULID string.
 func NewID() string {
 	return ulid.Make().String()
+}
+
+func NewSecureId() string {
+	return uuid.New().String()
 }

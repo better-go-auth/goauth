@@ -388,9 +388,15 @@ func (s *AdminService) RevokeUserSessions(ctx context.Context, input admindtos.A
 		return autherr.New(autherr.BadRequest, "userId is required", http.StatusBadRequest)
 	}
 
-	// deleteSecondaryStorageSessions(s.secondaryStorage, input.UserID)
-	if err := s.sessionServ.DeleteAllUserSessions(ctx, input.UserID); err != nil {
-		return fmt.Errorf("adminsvc: revoke user sessions: %w", err)
+	deleteSecondaryStorageSessions(s.secondaryStorage, input.UserID)
+	if s.sessionServ != nil {
+		if err := s.sessionServ.DeleteAllUserSessions(ctx, input.UserID); err != nil {
+			return fmt.Errorf("adminsvc: revoke user sessions: %w", err)
+		}
+	} else {
+		if err := s.adminRepo.RevokeUserSessions(ctx, input.UserID); err != nil {
+			return fmt.Errorf("adminsvc: revoke user sessions: %w", err)
+		}
 	}
 	return nil
 }

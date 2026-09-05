@@ -23,7 +23,7 @@ type Plugin struct {
 	migrator   migration.IMigrator
 	service    adminsvc.IAdminService
 	sessionConf config.SessionConfig
-	jwtSecret  string
+	// jwtSecret  string
 	basePath   string
 }
 
@@ -49,9 +49,14 @@ func WithDefaultRole(role enums.Role) Option {
 }
 
 // WithJwtSecret configures the JWT secret used to authenticate admin tokens.
-func WithJwtSecret(secret string) Option {
+// func WithJwtSecret(secret string) Option {
+// 	return func(p *Plugin) {
+// 		p.jwtSecret = secret
+// 	}
+// }
+func WithSessionConfig(sessionConfig config.SessionConfig) Option {
 	return func(p *Plugin) {
-		p.jwtSecret = secret
+		p.sessionConf = sessionConfig
 	}
 }
 
@@ -96,11 +101,11 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		p.config,
 	)
 
-	if ictx != nil && ictx.Extras != nil {
-		if sec, ok := ictx.Extras["jwt_secret"].(string); ok && sec != "" && p.jwtSecret == "" {
-			p.jwtSecret = sec
-		}
-	}
+	// if ictx != nil && ictx.Extras != nil {
+	// 	if sec, ok := ictx.Extras["jwt_secret"].(string); ok && sec != "" && p.jwtSecret == "" {
+	// 		p.jwtSecret = sec
+	// 	}
+	// }
 
 	if ictx != nil && ictx.Api != nil {
 		p.SetupHumaRoutes(ictx.Api)

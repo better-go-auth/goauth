@@ -68,9 +68,15 @@ func main() {
 	mux := http.NewServeMux()
 	apiConfig := huma.DefaultConfig("Better Go Auth Example Server", "1.0.0")
 	api := humago.New(mux, apiConfig)
+	jwt:=config.JwtVar{
+				AccessSecret:     accessSecret,
+				RefreshSecret:    refreshSecret,
+				AccessExpireMin:  60,
+				RefreshExpireMin: 1440,
+			}
 
 	emailSender := &ConsoleEmailSender{}
-	adminPlugin := admin.NewWithGorm(db, admin.WithJwtSecret(accessSecret))
+	adminPlugin := admin.NewWithGorm(db, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
 
 	auth, err := bettergoauth.SetupGoAuth(api, loc_conf.GoAuthOptions{
 		Conn: db,
@@ -79,12 +85,7 @@ func main() {
 			VerificationCodeSender: emailSender,
 		},
 		SessionConfig: loc_conf.SessionConfig{
-			JwtVar: config.JwtVar{
-				AccessSecret:     accessSecret,
-				RefreshSecret:    refreshSecret,
-				AccessExpireMin:  60,
-				RefreshExpireMin: 1440,
-			},
+			JwtVar: jwt,
 		},
 		Plugins: []plugin.Plugin{
 			adminPlugin,

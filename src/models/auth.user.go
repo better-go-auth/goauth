@@ -48,11 +48,11 @@ type UserDto struct {
 	//====================  Plugin  fields ===========================|
 	Username string `json:"username,omitempty"`
 	//company related
-	ActiveCompanyId *string `json:"company_id" gorm:"index:idx_users_lookup,priority:1"`
+	ActiveOrgId *string `json:"company_id" gorm:"index:idx_users_lookup,priority:1"`
 }
 
 func (u *UserDto) SetOnCreate(key string) {
-	u.ActiveCompanyId = &key
+	u.ActiveOrgId = &key
 }
 
 func (u *User) GetFullname() string {
@@ -118,8 +118,8 @@ func (u UserDto) GetStatus() enums.AccountStatus {
 }
 
 func (u UserDto) GetCompanyId() string {
-	if u.ActiveCompanyId != nil {
-		return *u.ActiveCompanyId
+	if u.ActiveOrgId != nil {
+		return *u.ActiveOrgId
 	}
 	return ""
 }

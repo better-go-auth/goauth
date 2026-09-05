@@ -11,9 +11,9 @@ func (p *Plugin) SetupHumaRoutes(api huma.API) {
 		return
 	}
 	handler := humaadmin.NewAdminHandler(p.service, p.config)
-	if p.jwtSecret != "" {
-		handler.JwtSecret = p.jwtSecret
-	}
+	// if p.jwtSecret != "" {
+	// 	handler.JwtSecret = p.jwtSecret
+	// }
 	if p.basePath != "" {
 		handler.Cfg.BasePath = p.basePath
 	}

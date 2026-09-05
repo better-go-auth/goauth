@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -15,7 +16,6 @@ import (
 
 	bettergoauth "github.com/better-go-auth/goauth"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	"github.com/birukbelay/gocmn/src/config"
@@ -60,6 +60,7 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 	var teardown = func() {}
 
 	if os.Getenv("USE_TESTCONTAINERS") == "true" {
+		slog.Info("========== Using testcontainers")
 		pgContainer, err := postgres.Run(ctx,
 			"postgres:15-alpine",
 			postgres.WithDatabase("testdb"),
@@ -115,6 +116,7 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 			_ = redisContainer.Terminate(context.Background())
 		}
 	} else {
+		slog.Info("========== Not using testcontainers")
 		dbName := fmt.Sprintf("file:memdb_%s?mode=memory&cache=shared", uuid.New().String())
 		var err error
 		gormDB, err = gorm.Open(sqlite.Open(dbName), &gorm.Config{
@@ -126,13 +128,19 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 	}
 
 	// Migrate core models
-	if err := gormDB.AutoMigrate(
-		&models.User{},
-		&models.Account{},
-		&models.Session{},
-		&models.Verification{},
-	); err != nil {
-		log.Fatalf("failed to auto migrate models: %v", err)
+	// if err := gormDB.AutoMigrate(
+	// 	&models.User{},
+	// 	&models.Account{},
+	// 	&models.Session{},
+	// 	&models.Verification{},
+	// ); err != nil {
+	// 	log.Fatalf("failed to auto migrate models: %v", err)
+	// }
+	jwt := config.JwtVar{
+		AccessSecret:     TestAccessSecret,
+		RefreshSecret:    TestRefreshSecret,
+		AccessExpireMin:  60,
+		RefreshExpireMin: 1440,
 	}
 
 	mockEmail := NewMockEmailSender()
@@ -140,7 +148,7 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Better Go Auth Test API", "1.0.0"))
 
-	adminPlugin := admin.NewWithGorm(gormDB, admin.WithJwtSecret(TestAccessSecret))
+	adminPlugin := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
 
 	auth, err := bettergoauth.SetupGoAuth(api, loc_conf.GoAuthOptions{
 		Conn: gormDB,
@@ -149,12 +157,7 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 			VerificationCodeSender: mockEmail,
 		},
 		SessionConfig: loc_conf.SessionConfig{
-			JwtVar: config.JwtVar{
-				AccessSecret:     TestAccessSecret,
-				RefreshSecret:    TestRefreshSecret,
-				AccessExpireMin:  60,
-				RefreshExpireMin: 1440,
-			},
+			JwtVar: jwt,
 		},
 		Plugins: []plugin.Plugin{
 			adminPlugin,
@@ -195,9 +198,14 @@ func SetupTestEnv(t *testing.T) *TestEnv {
 		prevTeardown()
 	}
 
+	var secStorage db.KeyValServ
+	if redisClient != nil {
+		secStorage = redisClient
+	}
+
 	env := &TestEnv{
 		DB:               gormDB,
-		SecondaryStorage: redisClient,
+		SecondaryStorage: secStorage,
 		Auth:             auth,
 		HumaAPI:          api,
 		Mux:              mux,

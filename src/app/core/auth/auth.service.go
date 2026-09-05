@@ -13,7 +13,6 @@ import (
 	"github.com/birukbelay/gocmn/src/resp_const"
 	"github.com/birukbelay/gocmn/src/util"
 	"github.com/mitchellh/mapstructure"
-	"github.com/oklog/ulid/v2"
 	"gorm.io/gorm/clause"
 
 	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
@@ -156,7 +155,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
 
-	sessionID := ulid.Make().String()
+	sessionID := models.NewSecureId()
 	tokens, err := aus.SesSvc.CreateSession(ctx, sessionID, userRole, usr.Body.ID, &models.SessionOpt{ClearSession: true, DeviceToken: input.DeviceToken})
 	if err != nil {
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
@@ -198,7 +197,7 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 	}
 
 	// 4. validate the refresh token is the same
-	valid := crypto.ArgonPasswordsMatch(refreshToken, session.Body.HashedRefresh)
+	valid := crypto.ArgonPasswordsMatch(refreshToken, session.Body.HashedToken)
 	if !valid {
 		return dtos.BadReqC[TokenResponse](resp_const.TokenDontMatch), resp_const.TokenDontMatchError
 	}
@@ -231,7 +230,7 @@ func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[
 		return dtos.BadReqC[bool](resp_const.DataNotFound), resp_const.UserNotFoundError
 	}
 	//3. verify the refresh token is the same
-	valid := crypto.ArgonPasswordsMatch(refreshToken, session.Body.HashedRefresh)
+	valid := crypto.ArgonPasswordsMatch(refreshToken, session.Body.HashedToken)
 	if !valid {
 		return dtos.BadReqC[bool](resp_const.TokenDontMatch), resp_const.TokenDontMatchError
 	}
