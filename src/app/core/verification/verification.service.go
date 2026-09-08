@@ -38,7 +38,12 @@ func NewVerificationService(dg *gorm.DB, config config.EmailVerification) core_i
 func (vSvc Service) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *core_interfaces.VerOpt) (dtos.GResp[bool], error) {
 	//TODO make the mock and generation with a config
 	// verificationCode := "000000"
-	verificationCode := util.GenerateRandomString(6)
+	verificationCode := ""
+	if vSvc.Config.CodeGenerator != nil {
+		verificationCode = vSvc.Config.CodeGenerator()
+	} else {
+		verificationCode = util.GenerateRandomString(6)
+	}
 
 	codeHash, err := crypto.BcryptCreateHash(verificationCode)
 	if err != nil {

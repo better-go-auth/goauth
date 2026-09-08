@@ -18,6 +18,7 @@ type EmailVerification struct {
 	ExpiresIn time.Duration
 
 	VerificationCodeSender email.VerificationSender
+	CodeGenerator GenerateCode
 
 	//===================================    TO USE NOW ===================================
 
@@ -56,6 +57,7 @@ type EmailVerification struct {
 }
 
 type SendVerificationEmail func(data EmailVerificationData, request *http.Request) error
+type GenerateCode func() string
 
 type EmailVerificationData struct {
 	User  models.User
