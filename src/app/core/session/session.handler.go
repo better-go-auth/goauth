@@ -30,7 +30,7 @@ func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *dtos.Huma
 	if err != nil {
 		return nil, huma.NewError(http.StatusInternalServerError, err.Error())
 	}
-	return dtos.HumaReturnG(dtos.SuccessS(authDtos.StatusResponse{Status: true}, 1), nil)
+	return dtos.HumaReturnG(dtos.SuccessCreated(authDtos.StatusResponse{Status: true}, 1), nil)
 }
 
 func (uh *HumaSessionHandler) GetMySession(ctx context.Context, q *models.SessionQuery) (*dtos.HumaResponse[dtos.PResp[[]authDtos.SessionData]], error) {

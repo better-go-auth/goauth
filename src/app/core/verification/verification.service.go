@@ -59,7 +59,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 		logger.LogTrace("error crating verification", err)
 		return dtos.InternalErrMS[bool]("creating Error"), err
 	}
-	return dtos.SuccessS(true, verificationResp.RowsAffected), nil
+	return dtos.SuccessCreated(true, verificationResp.RowsAffected), nil
 }
 
 // VerifyCode TODO: add reason of error, like code expires
@@ -83,7 +83,7 @@ func (vSvc Service) VerifyCode(ctx context.Context, identifier string, purpose m
 	// 	logger.LogError("Deleting user sessions errors", err.Error())
 	// 	// return dtos.InternalErrMS[bool]("Deleting verification code errors"), err
 	// }
-	return dtos.SuccessS(verificationModel.Body, verificationModel.RowsAffected), nil
+	return dtos.SuccessCreated(verificationModel.Body, verificationModel.RowsAffected), nil
 }
 
 func (vSvc Service) DeleteExpired(ctx context.Context) error {

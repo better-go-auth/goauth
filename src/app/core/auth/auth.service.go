@@ -80,7 +80,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		return dtos.InternalErrMS[models.User]("transaction Error"), err
 	}
 
-	return dtos.SuccessS(createdUser, 1), nil
+	return dtos.SuccessCreated(createdUser, 1), nil
 }
 
 // VerifyRegisteredUser (acc-01), [id]x
@@ -108,7 +108,7 @@ func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationI
 		return dtos.InternalErrMS[models.User]("transaction Error"), err
 	}
 
-	return dtos.SuccessS(verifiedUser, 1), nil
+	return dtos.SuccessCreated(verifiedUser, 1), nil
 }
 
 // Login (acc-03) [companyId, Role, Password]
@@ -172,7 +172,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 	// 	LogActivity: true,
 	// })
 
-	return dtos.SuccessS(TokenResponse{
+	return dtos.SuccessCreated(TokenResponse{
 		AuthTokens: tokens,
 		UserData:   updatedUsr.Body,
 	}, updatedUsr.RowsAffected), nil
@@ -210,7 +210,7 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
 
-	return dtos.SuccessS(TokenResponse{
+	return dtos.SuccessCreated(TokenResponse{
 		AuthTokens: tokens,
 		UserData:   usr.Body,
 	}, 1), nil
@@ -238,7 +238,7 @@ func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[
 	if err := aus.SesSvc.DeleteSession(ctx, session.Body.SessionId); err != nil {
 		return dtos.InternalErrMS[bool](err.Error()), err
 	}
-	return dtos.SuccessS(true, 1), nil
+	return dtos.SuccessCreated(true, 1), nil
 }
 
 // ForgotPwd [ID]
@@ -246,7 +246,7 @@ func (aus Service) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GR
 	usr, err := generic.DbGetOne[models.User](aus.Provider.GormConn, ctx, models.UserFilter{Email: input.Email}, nil)
 
 	if err != nil {
-		return dtos.SuccessS(true, 0), nil
+		return dtos.SuccessCreated(true, 0), nil
 	}
 
 	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &core_interfaces.VerOpt{UserId: usr.Body.GetID()})
@@ -301,5 +301,5 @@ func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GRes
 		return dtos.InternalErrMS[bool]("transaction Error"), err
 	}
 
-	return dtos.SuccessS(true, usr.RowsAffected), nil
+	return dtos.SuccessCreated(true, usr.RowsAffected), nil
 }

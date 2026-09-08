@@ -36,7 +36,7 @@ func (ah *GinAuthHandler) Register(ctx context.Context, inputs *dtos.HumaReqBody
 		User:  authDtos.UserToResponse(&usr.Body),
 		Token: nil,
 	}
-	return dtos.HumaReturnG(dtos.SuccessS(resp, usr.RowsAffected), nil)
+	return dtos.HumaReturnG(dtos.SuccessCreated(resp, usr.RowsAffected), nil)
 }
 
 func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *dtos.HumaReqBody[VerificationInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
@@ -48,7 +48,7 @@ func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *d
 		User:   authDtos.UserToResponse(&usr.Body),
 		Status: true,
 	}
-	return dtos.HumaReturnG(dtos.SuccessS(resp, usr.RowsAffected), nil)
+	return dtos.HumaReturnG(dtos.SuccessCreated(resp, usr.RowsAffected), nil)
 }
 
 func (ah *GinAuthHandler) Login(ctx context.Context, inputs *dtos.HumaReqBody[LoginData]) (*dtos.HumaResponse[dtos.GResp[authDtos.SignInResponse]], error) {
@@ -72,7 +72,7 @@ func (ah *GinAuthHandler) Login(ctx context.Context, inputs *dtos.HumaReqBody[Lo
 		Redirect:   false,
 		AuthTokens: tkn.Body.AuthTokens,
 	}
-	return dtos.HumaReturnGWithCookie(dtos.SuccessS(resp, tkn.RowsAffected), nil, cookies)
+	return dtos.HumaReturnGWithCookie(dtos.SuccessCreated(resp, tkn.RowsAffected), nil, cookies)
 }
 
 func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *dtos.HumaReqBody[RefreshTokenInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.SignInResponse]], error) {
@@ -96,7 +96,7 @@ func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *dtos.HumaReq
 		Redirect:   false,
 		AuthTokens: tkn.Body.AuthTokens,
 	}
-	return dtos.HumaReturnGWithCookie(dtos.SuccessS(resp, tkn.RowsAffected), nil, cookies)
+	return dtos.HumaReturnGWithCookie(dtos.SuccessCreated(resp, tkn.RowsAffected), nil, cookies)
 }
 
 func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *dtos.HumaReqBody[RefreshTokenInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.SuccessResponse]], error) {
@@ -107,7 +107,7 @@ func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *dtos.HumaReqBody[R
 	resp := authDtos.SuccessResponse{
 		Success: tkn.Body,
 	}
-	return dtos.HumaReturnG(dtos.SuccessS(resp, tkn.RowsAffected), nil)
+	return dtos.HumaReturnG(dtos.SuccessCreated(resp, tkn.RowsAffected), nil)
 }
 
 func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *dtos.HumaReqBody[VerifyReqInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.StatusResponse]], error) {
@@ -119,7 +119,7 @@ func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *dtos.HumaReqBod
 		Status:  tkn.Body,
 		Message: "Password reset verification code sent",
 	}
-	return dtos.HumaReturnG(dtos.SuccessS(resp, tkn.RowsAffected), nil)
+	return dtos.HumaReturnG(dtos.SuccessCreated(resp, tkn.RowsAffected), nil)
 }
 
 func (ah *GinAuthHandler) ResetPwd(ctx context.Context, inputs *dtos.HumaReqBody[PwdResetInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.StatusResponse]], error) {
@@ -131,7 +131,7 @@ func (ah *GinAuthHandler) ResetPwd(ctx context.Context, inputs *dtos.HumaReqBody
 		Status:  tkn.Body,
 		Message: "Password reset successfully",
 	}
-	return dtos.HumaReturnG(dtos.SuccessS(resp, tkn.RowsAffected), nil)
+	return dtos.HumaReturnG(dtos.SuccessCreated(resp, tkn.RowsAffected), nil)
 }
 
 // func (ah *GinAuthHandler[T]) ChangeActiveCompany(ctx context.Context, inputs *dtos.HumaReqBody[ChangeActiveCompanyInput]) (*dtos.HumaResponse[dtos.GResp[TokenResponse]], error) {

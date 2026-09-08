@@ -165,5 +165,5 @@ func (aus *Service[T]) VerifyChangeEmail(ctx context.Context, userId string, inp
 		return dtos.InternalErrMS[bool](err.Error()), err
 	}
 
-	return dtos.SuccessS(true, rowsAffected), nil
+	return dtos.SuccessCreated(true, rowsAffected), nil
 }

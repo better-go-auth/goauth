@@ -12,7 +12,6 @@ import (
 
 	bettergoauth "github.com/better-go-auth/goauth"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	"github.com/birukbelay/gocmn/src/config"
@@ -46,16 +45,6 @@ func main() {
 		log.Fatalf("failed to connect to database: %v", err)
 	}
 
-	// Auto-migrate tables
-	if err := db.AutoMigrate(
-		&models.User{},
-		&models.Account{},
-		&models.Session{},
-		&models.Verification{},
-	); err != nil {
-		log.Fatalf("failed to auto-migrate database: %v", err)
-	}
-
 	accessSecret := os.Getenv("JWT_ACCESS_SECRET")
 	if accessSecret == "" {
 		accessSecret = "example-jwt-access-secret-32-chars-long!"
@@ -68,12 +57,12 @@ func main() {
 	mux := http.NewServeMux()
 	apiConfig := huma.DefaultConfig("Better Go Auth Example Server", "1.0.0")
 	api := humago.New(mux, apiConfig)
-	jwt:=config.JwtVar{
-				AccessSecret:     accessSecret,
-				RefreshSecret:    refreshSecret,
-				AccessExpireMin:  60,
-				RefreshExpireMin: 1440,
-			}
+	jwt := config.JwtVar{
+		AccessSecret:     accessSecret,
+		RefreshSecret:    refreshSecret,
+		AccessExpireMin:  60,
+		RefreshExpireMin: 1440,
+	}
 
 	emailSender := &ConsoleEmailSender{}
 	adminPlugin := admin.NewWithGorm(db, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
