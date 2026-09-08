@@ -38,3 +38,4 @@ type Verification struct {
 func (v *Verification) IsExpired() bool {
 	return time.Now().After(v.ExpiresAt)
 }
+func (Verification) TableName() string { return "auth_verifications" }

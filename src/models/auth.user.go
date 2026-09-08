@@ -92,6 +92,8 @@ func (q UserQuery) GetFilter() (f UserFilter, pagi Imdl.PaginationInput, opt *ge
 	return q.UserFilter, q.PaginationInput, &generic.Opt{Preloads: []string{"CompanyRole"}}
 }
 
+func (User) TableName() string { return "auth_users" }
+
 type IntUsr interface {
 	GetID() string
 	GetRole() string

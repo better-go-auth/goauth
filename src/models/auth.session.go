@@ -49,10 +49,12 @@ type SessionFilter struct {
 	CompanyRoleID string `query:"-"`
 	SessionId     string `query:"session_id"`
 	UserId        string `query:"user_id"`
-	HashedToken string `query:"hashed_token"`
+	HashedToken   string `query:"hashed_token"`
 	Blacklisted   bool   `query:"blacklisted"`
 }
 type SessionQuery struct {
 	dtos.PaginationInput
 	Blacklisted bool `query:"blacklisted"`
 }
+
+func (Session) TableName() string { return "auth_sessions" }

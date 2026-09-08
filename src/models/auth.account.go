@@ -11,7 +11,7 @@ type Account struct {
 	User   *User  `json:"user,omitempty" gorm:"foreignKey:UserID"    bun:"rel:belongs-to,join:user_id=id"`
 
 	// Provider info
-	AccountID             string     `json:"accountId"          gorm:"not null;size:255"     bun:"account_id,notnull"`//this is the email or phone or etc
+	AccountID             string     `json:"accountId"          gorm:"not null;size:255"     bun:"account_id,notnull"` //this is the email or phone or etc
 	ProviderId            Providers  `json:"providerId"         gorm:"not null;size:50"      bun:"provider_id,notnull"`
 	AccessToken           *string    `json:"accessToken"        gorm:"type:text"             bun:"access_token"`
 	RefreshToken          *string    `json:"refreshToken"       gorm:"type:text"             bun:"refresh_token"`
@@ -36,3 +36,4 @@ const (
 func (p Providers) S() string {
 	return string(p)
 }
+func (Account) TableName() string { return "auth_accounts" }
