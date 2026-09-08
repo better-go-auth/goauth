@@ -6,6 +6,7 @@ import (
 	constant "github.com/birukbelay/gocmn/src/consts"
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/providers"
 )
 
@@ -19,10 +20,15 @@ const (
 	ResetPwdUser     = constant.OperationId("Au-7-ResetPwd")
 )
 
-func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *Service) {
+func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *Service, conf config.GoAuthOptions) {
 	handler := NewAuthHandler(providerS, serv)
-	tags := []string{"01-auth_user"}
-	path := constant.ApiV1 + "/01-auth"
+	tags := []string{"01-auth"}
+	basePath := conf.BasePath
+	if basePath == "" {
+		basePath = "/api/auth"
+	}
+	path := basePath
+	// path := constant.ApiV1 + "/01-auth"
 
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: RegisterUser.Str(),

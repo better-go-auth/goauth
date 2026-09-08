@@ -6,6 +6,7 @@ import (
 	"github.com/birukbelay/gocmn/src/consts"
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
 )
@@ -35,10 +36,14 @@ var ProfilePermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	ChangeMyPwd:     {AllowedRoles: []string{}},
 }
 
-func SetUserProfileRoutes(humaRouter huma.API, provServ *providers.IProviderS, profileServ *Service[models.User]) {
+func SetUserProfileRoutes(humaRouter huma.API, provServ *providers.IProviderS, profileServ *Service[models.User], conf config.GoAuthOptions) {
 	adminHandler := NewProfileHandler(provServ, profileServ)
-	tags := []string{"01-user_profile"}
-	path := consts.ApiV1 + "/01-profile"
+	tags := []string{"profile"}
+	basePath := conf.BasePath
+	if basePath == "" {
+		basePath = "/api/auth"
+	}
+	path := basePath + "/profile"
 
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: GetMyProfile.Str(),

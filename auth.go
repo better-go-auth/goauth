@@ -50,7 +50,7 @@ func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 	providerService := providers.NewProvider(opts.Conn, opts.SecondaryStorage, mdlWare, txManager)
 
 	//setup the auth routes
-	authSvc := core.SetupAllAuthRoutes(api, opts.SessionConfig, opts.EmailVerification, providerService)
+	authSvc := core.SetupAllAuthRoutes(api, opts, opts.EmailVerification, providerService)
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)

@@ -6,6 +6,7 @@ import (
 	"github.com/birukbelay/gocmn/src/consts"
 	"github.com/danielgtaylor/huma/v2"
 
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
 )
@@ -39,11 +40,15 @@ var SessionOperationMap = map[consts.OperationId]models.OperationAccessDto{
 	// DeleteUsersSession:  {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
 }
 
-func SetupSessionRoutes(humaRouter huma.API, provServ *providers.IProviderS, serv *Service) {
+func SetupSessionRoutes(humaRouter huma.API, provServ *providers.IProviderS, serv *Service, conf config.GoAuthOptions) {
 	genericController := NewSessionHandler(serv)
 
-	tags := []string{"01-session"}
-	path := consts.ApiV1 + "/01-session"
+	tags := []string{"session"}
+	basePath := conf.BasePath
+	if basePath == "" {
+		basePath = "/api/auth"
+	}
+	path := basePath + "/session"
 	pathId := path + "/{id}"
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: GetMySessions.Str(),

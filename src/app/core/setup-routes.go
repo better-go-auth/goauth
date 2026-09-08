@@ -13,18 +13,18 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func SetupAllAuthRoutes(api huma.API, conf config.SessionConfig, vCfg config.EmailVerification, provServ *providers.IProviderS) core_interfaces.IAuthServices {
+func SetupAllAuthRoutes(api huma.API, conf config.GoAuthOptions, vCfg config.EmailVerification, provServ *providers.IProviderS) core_interfaces.IAuthServices {
 	//define the services
 	vSvc := verification.NewVerificationService(provServ.GormConn, vCfg)
-	sSvc := session.NewService(conf, provServ)
+	sSvc := session.NewService(conf.SessionConfig, provServ)
 	accountRepo := gormauthrepo.NewAccountRepo(provServ.GormConn)
-	authSvc := auth.NewAuthService(&conf, provServ, vSvc, sSvc, accountRepo)
+	authSvc := auth.NewAuthService(&conf.SessionConfig, provServ, vSvc, sSvc, accountRepo)
 	profileServ := profile.NewProfileServH[models.User](provServ, vSvc, sSvc, accountRepo)
 
 	//Set up the routes
-	session.SetupSessionRoutes(api, provServ, sSvc)
-	auth.SetupAuthRoutes(api, provServ, authSvc)
-	profile.SetUserProfileRoutes(api, provServ, profileServ)
+	session.SetupSessionRoutes(api, provServ, sSvc, conf)
+	auth.SetupAuthRoutes(api, provServ, authSvc, conf)
+	profile.SetUserProfileRoutes(api, provServ, profileServ,conf)
 	return core_interfaces.AuthServiceImpl{
 		IVerificationService: vSvc,
 		ISessionService:      sSvc,
