@@ -40,7 +40,7 @@ var SessionOperationMap = map[consts.OperationId]models.OperationAccessDto{
 	// DeleteUsersSession:  {AllowedRoles: []string{enums.Admin.S()}, Description: ".."},
 }
 
-func SetupSessionRoutes(humaRouter huma.API, provServ *providers.IProviderS, serv *Service, conf config.GoAuthOptions) {
+func SetupSessionRoutes(humaRouter huma.API, provServ *providers.IProviderS, serv *Service, conf config.AuthConfig) {
 	genericController := NewSessionHandler(serv)
 
 	tags := []string{"session"}
@@ -75,5 +75,4 @@ func SetupSessionRoutes(humaRouter huma.API, provServ *providers.IProviderS, ser
 	// 	Middlewares: huma.Middlewares{cmnServ.Authorization(ops.GetOneSession, ops.SessionOperationMap[ops.GetOneSession].AllowedRoles, nil)},
 	// }, genericController.GHandler.AuthGetOneById,
 	// )
-
 }

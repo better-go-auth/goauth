@@ -5,24 +5,19 @@ import (
 	"errors"
 	"net/http"
 	"time"
-
-	"github.com/better-go-auth/goauth/src/plugins"
-	"github.com/birukbelay/gocmn/src/provider/db"
-	"gorm.io/gorm"
 )
 
-type GoAuthOptions struct {
+
+type AuthConfig struct {
 	// BasePath is the base mount path for Better Auth routes (default: "/api/auth").
-	BasePath          string
-	Conn              *gorm.DB
+	BasePath          string // usualy /api/auth
+	BaseURL           string //// this is the domain of the frontend app
 	EmailVerification EmailVerification
 	SessionConfig     SessionConfig
-	SecondaryStorage  db.KeyValServ
-	Plugins           []plugin.Plugin
 }
 
 // SetDefaults sets sensible default values for unspecified options.
-func (opts *GoAuthOptions) SetDefaults() {
+func (opts *AuthConfig) SetDefaults() {
 	if opts.BasePath == "" {
 		opts.BasePath = "/api/auth"
 	}
@@ -41,15 +36,15 @@ func (opts *GoAuthOptions) SetDefaults() {
 }
 
 // Validate verifies that required options are present and valid.
-func (opts *GoAuthOptions) Validate() error {
-	if opts.Conn == nil {
-		return errors.New("goauth: database connection (Conn) is required")
-	}
+func (opts *AuthConfig) Validate() error {
 	if opts.SessionConfig.AccessSecret == "" {
 		return errors.New("goauth: SessionConfig.AccessSecret is required")
 	}
 	return nil
 }
+
+//======================  other defaults ==============
+
 type contextKey string
 
 const httpRequestKey contextKey = "http_request"
@@ -67,12 +62,12 @@ func GetHTTPRequest(ctx context.Context) *http.Request {
 	return nil
 }
 
-type SecondaryStorage interface {
-	Get(key string) (any, error)
-	GetAndDelete(key string) (any, error)
-	Set(key string, value string, ttl time.Duration) error
-	Delete(key string) error
-}
+// type SecondaryStorage interface {
+// 	Get(key string) (any, error)
+// 	GetAndDelete(key string) (any, error)
+// 	Set(key string, value string, ttl time.Duration) error
+// 	Delete(key string) error
+// }
 
 // func (c AuthConfigs) WithDefaults() AuthConfigs {
 // 	return c

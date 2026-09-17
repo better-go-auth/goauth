@@ -1,5 +1,5 @@
 // Package gormauthrepo provides GORM implementations for auth-domain repositories.
-package gormauthrepo
+package gormauth
 
 import (
 	"context"
@@ -8,22 +8,22 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/better-go-auth/goauth/src/models"
-	"github.com/better-go-auth/goauth/src/app/repoimpl"
+	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
+	"github.com/better-go-auth/goauth/src/models"
 )
 
-// AccountRepo implements repoimpl.IOAuthAccountRepo using GORM.
+// AccountRepo implements corerepo.IOAuthAccountRepo using GORM.
 type AccountRepo struct {
 	db *gorm.DB
 }
 
 // NewAccountRepo creates a new GORM-backed AccountRepo.
-func NewAccountRepo(db *gorm.DB) repoimpl.IOAuthAccountRepo {
+func NewAccountRepo(db *gorm.DB) repo_interfaces.IOAuthAccountRepo {
 	return &AccountRepo{db: db}
 }
 
-func (r *AccountRepo) Create(ctx context.Context, account *models.Account) (*models.Account, error) {
+func (r *AccountRepo) CreateAccount(ctx context.Context, account *models.Account) (*models.Account, error) {
 	if account.ID == "" {
 		account.ID = models.NewID()
 	}
@@ -33,7 +33,7 @@ func (r *AccountRepo) Create(ctx context.Context, account *models.Account) (*mod
 	return account, nil
 }
 
-func (r *AccountRepo) GetByProviderAndAccountID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
+func (r *AccountRepo) GetAccountByProviderAndAccountID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
 		Where(models.Account{ProviderId: providerID, AccountID: accountID}).
@@ -47,7 +47,7 @@ func (r *AccountRepo) GetByProviderAndAccountID(ctx context.Context, providerID 
 	return &account, nil
 }
 
-func (r *AccountRepo) GetByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error) {
+func (r *AccountRepo) GetAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error) {
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
 		Where(models.Account{UserID: userID, ProviderId: providerID}).
@@ -61,7 +61,7 @@ func (r *AccountRepo) GetByUserAndProvider(ctx context.Context, userID string, p
 	return &account, nil
 }
 
-func (r *AccountRepo) Update(ctx context.Context, id string, data map[string]interface{}) (*models.Account, error) {
+func (r *AccountRepo) UpdateAccount(ctx context.Context, id string, data map[string]interface{}) (*models.Account, error) {
 	result := gormutil.GetDB(ctx, r.db).
 		Model(&models.Account{}).
 		Where("id = ?", id).
@@ -76,14 +76,14 @@ func (r *AccountRepo) Update(ctx context.Context, id string, data map[string]int
 	return &account, nil
 }
 
-func (r *AccountRepo) DeleteByUserID(ctx context.Context, userID string) error {
+func (r *AccountRepo) DeleteAccountsByUserID(ctx context.Context, userID string) error {
 	if err := gormutil.GetDB(ctx, r.db).Where("user_id = ?", userID).Delete(&models.Account{}).Error; err != nil {
 		return fmt.Errorf("gorm/account: delete by user id: %w", err)
 	}
 	return nil
 }
 
-func (r *AccountRepo) DeleteByUserAndProvider(ctx context.Context, userID, providerID string) error {
+func (r *AccountRepo) DeleteAccountByUserAndProvider(ctx context.Context, userID, providerID string) error {
 	if err := gormutil.GetDB(ctx, r.db).
 		Where("user_id = ? AND provider_id = ?", userID, providerID).
 		Delete(&models.Account{}).Error; err != nil {
@@ -92,7 +92,7 @@ func (r *AccountRepo) DeleteByUserAndProvider(ctx context.Context, userID, provi
 	return nil
 }
 
-func (r *AccountRepo) ListByUserID(ctx context.Context, userID string) ([]models.Account, error) {
+func (r *AccountRepo) ListAccountsByUserID(ctx context.Context, userID string) ([]models.Account, error) {
 	var accounts []models.Account
 	if err := gormutil.GetDB(ctx, r.db).Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
 		return nil, fmt.Errorf("gorm/account: list by user id: %w", err)

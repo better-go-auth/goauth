@@ -20,7 +20,7 @@ const (
 	ResetPwdUser     = constant.OperationId("Au-7-ResetPwd")
 )
 
-func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *Service, conf config.GoAuthOptions) {
+func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *Service, conf config.AuthConfig) {
 	handler := NewAuthHandler(providerS, serv)
 	tags := []string{"01-auth"}
 	basePath := conf.BasePath
@@ -34,44 +34,50 @@ func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv 
 		OperationID: RegisterUser.Str(),
 		Method:      http.MethodPost,
 		Path:        path + "/signup",
-		Tags:        tags}, handler.Register,
+		Tags:        tags,
+	}, handler.Register,
 	)
 
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: VerifyUser.Str(),
 		Method:      http.MethodPost,
 		Path:        path + "/verify",
-		Tags:        tags}, handler.VerifyRegisteredAccount,
+		Tags:        tags,
+	}, handler.VerifyRegisteredAccount,
 	)
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: LoginUser.Str(),
 		Method:      http.MethodPost,
 		Path:        path + "/login",
-		Tags:        tags}, handler.Login,
+		Tags:        tags,
+	}, handler.Login,
 	)
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: RefreshTokenUser.Str(),
 		Method:      http.MethodPost,
 		Path:        path + "/refresh",
-		Tags:        tags}, handler.RefreshToken,
+		Tags:        tags,
+	}, handler.RefreshToken,
 	)
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: LogoutUser.Str(),
 		Method:      http.MethodPost,
 		Path:        path + "/logout",
-		Tags:        tags}, handler.Logout,
+		Tags:        tags,
+	}, handler.Logout,
 	)
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: ForgotPwdUser.Str(),
 		Method:      http.MethodPost,
 		Path:        path + "/forgot_password",
-		Tags:        tags}, handler.ForgotPwd,
+		Tags:        tags,
+	}, handler.ForgotPwd,
 	)
 	huma.Register(humaRouter, huma.Operation{
 		OperationID: ResetPwdUser.Str(),
 		Method:      http.MethodPost,
 		Path:        path + "/reset_password",
-		Tags:        tags}, handler.ResetPwd,
+		Tags:        tags,
+	}, handler.ResetPwd,
 	)
-
 }

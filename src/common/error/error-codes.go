@@ -70,9 +70,7 @@ const (
 	SlugTaken          = RespCode("SLUG_TAKEN")
 	InvalidEmail       = RespCode("INVALID_EMAIL")
 	SessionExpired     = RespCode("SESSION_EXPIRED")
-	//Company
-	InvitationExpired  = RespCode("INVITATION_EXPIRED")
-	AlreadyMember      = RespCode("ALREADY_A_MEMBER")
+	
 	//not found
 	SessionNotFound    = RespCode("SESSION_NOT_FOUND")
 	ProviderNotFound   = RespCode("PROVIDER_NOT_FOUND")
@@ -90,10 +88,12 @@ const (
 	AccountNotFound                      = RespCode("ACCOUNT_NOT_FOUND")
 	FailedToUnlinkLastAccount            = RespCode("FAILED_TO_UNLINK_LAST_ACCOUNT")
 	SessionNotFresh                      = RespCode("SESSION_NOT_FRESH")
-	//
+	//org related
 	OrgNotFound        = RespCode("ORGANIZATION_NOT_FOUND")
 	MemberNotFound     = RespCode("MEMBER_NOT_FOUND")
 	InvitationNotFound = RespCode("INVITATION_NOT_FOUND")
+	InvitationExpired  = RespCode("INVITATION_EXPIRED")
+	AlreadyMember      = RespCode("ALREADY_A_MEMBER")
 )
 
 // Account Status Codes

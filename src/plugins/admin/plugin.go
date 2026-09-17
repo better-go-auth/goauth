@@ -8,7 +8,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/migration"
 	plugins "github.com/better-go-auth/goauth/src/plugins"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
-	"github.com/better-go-auth/goauth/src/plugins/admin/models"
+	config1 "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	gormadmin "github.com/better-go-auth/goauth/src/plugins/admin/repository/gorm"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
@@ -20,7 +20,7 @@ const PluginID = "admin"
 // Plugin implements the plugins.Plugin interface for the Better Auth Admin plugin.
 type Plugin struct {
 	adminRepos  repository.AdminRepositories
-	config      models.AdminConfig
+	config      config1.AdminConfig
 	migrator    migration.IMigrator
 	service     adminsvc.IAdminService
 	sessionConf config.SessionConfig
@@ -50,11 +50,12 @@ func WithDefaultRole(role enums.Role) Option {
 }
 
 // WithJwtSecret configures the JWT secret used to authenticate admin tokens.
-// func WithJwtSecret(secret string) Option {
-// 	return func(p *Plugin) {
-// 		p.jwtSecret = secret
-// 	}
-// }
+//
+//	func WithJwtSecret(secret string) Option {
+//		return func(p *Plugin) {
+//			p.jwtSecret = secret
+//		}
+//	}
 func WithSessionConfig(sessionConfig config.SessionConfig) Option {
 	return func(p *Plugin) {
 		p.sessionConf = sessionConfig
@@ -72,7 +73,7 @@ func WithBasePath(basePath string) Option {
 func New(repos repository.AdminRepositories, opts ...Option) *Plugin {
 	p := &Plugin{
 		adminRepos: repos,
-		config:     models.DefaultAdminConfig(),
+		config:     config1.DefaultAdminConfig(),
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -102,7 +103,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		p.config,
 	)
 
-
 	if ictx != nil && ictx.Api != nil {
 		p.SetupHumaRoutes(ictx.Api)
 	}
@@ -114,7 +114,7 @@ func (p *Plugin) Migrator() migration.IMigrator {
 	return p.migrator
 }
 
-func (p *Plugin) Services() map[string]interface{} {
+func (p *Plugin) Services() map[string]any {
 	return map[string]interface{}{
 		"admin": p.service,
 	}
@@ -135,6 +135,6 @@ func (p *Plugin) Handler() *humaadmin.AdminHandler {
 }
 
 // Config returns the plugin's configuration.
-func (p *Plugin) Config() models.AdminConfig {
+func (p *Plugin) Config() config1.AdminConfig {
 	return p.config
 }

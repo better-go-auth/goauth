@@ -59,6 +59,13 @@ func (u *User) GetFullname() string {
 	return u.FirstName + " " + u.LastName
 }
 
+func (u *User) GetEmail() string {
+	if u.Email != nil {
+		return *u.Email
+	}
+	return ""
+}
+
 type UserFilter struct {
 	ID            string              `query:"id"`
 	FirstName     string              `query:"firstName"`
@@ -94,34 +101,11 @@ func (q UserQuery) GetFilter() (f UserFilter, pagi Imdl.PaginationInput, opt *ge
 
 func (User) TableName() string { return "auth_users" }
 
-type IntUsr interface {
-	GetID() string
-	GetRole() string
-	GetPwd() string
-	GetStatus() enums.AccountStatus
-	GetCompanyId() string
-	GetInfo() string
-}
-
-func GetID[T IntUsr](t T) string {
-	return t.GetID()
-}
-func (u UserDto) GetInfo() string {
-	return *u.Email
-}
-func (u UserDto) GetRole() string {
-	return string(u.Role)
-}
-func (u UserDto) GetPwd() string {
-	return u.Password
-}
-func (u UserDto) GetStatus() enums.AccountStatus {
-	return u.AccountStatus
-}
-
-func (u UserDto) GetCompanyId() string {
-	if u.ActiveOrgId != nil {
-		return *u.ActiveOrgId
-	}
-	return ""
-}
+// type IntUsr interface {
+// 	GetID() string
+// 	GetRole() string
+// 	GetPwd() string
+// 	GetStatus() enums.AccountStatus
+// 	GetCompanyId() string
+// 	GetInfo() string
+// }

@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// GormTxManager implements repoimpl.ITransactionManager for GORM.
+// GormTxManager implements corerepo.ITransactionManager for GORM.
 type GormTxManager struct {
 	db *gorm.DB
 }

@@ -4,13 +4,13 @@ import (
 	"context"
 	"strings"
 
-	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/error"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/models"
+	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
 	"github.com/birukbelay/gocmn/src/consts"
@@ -22,8 +22,8 @@ type AdminHandler struct {
 	// *humaauth.AuthHandler
 	Admin       adminsvc.IAdminService
 	Config      adminmodels.AdminConfig
-	Cfg         config.GoAuthOptions
-	sessionServ core_interfaces.ISessionService
+	Cfg         config.AuthConfig
+	sessionServ serv_interfaces.ISessionService
 	AdminRepo   repository.IAdminRepo
 	// JwtSecret   string
 }

@@ -37,3 +37,7 @@ func (p Providers) S() string {
 	return string(p)
 }
 func (Account) TableName() string { return "auth_accounts" }
+
+func TimeNow() time.Time {
+	return time.Now().UTC()
+}

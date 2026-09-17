@@ -41,7 +41,7 @@
 // 	}
 
 // 	// Fetch user details for response
-// 	usr, err := generic.DbGetOneByID[T](tx, ctx, userId, nil)
+// 	usr, err := generic.DbGetOneByID[models.User](tx, ctx, userId, nil)
 // 	if err != nil {
 // 		tx.Rollback()
 // 		return dtos.NotFoundErrS[TokenResponse]("User not found"), err

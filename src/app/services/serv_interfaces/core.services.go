@@ -1,4 +1,4 @@
-package core_interfaces
+package serv_interfaces
 
 import (
 	"context"

@@ -14,16 +14,15 @@ import (
 	"time"
 
 	bettergoauth "github.com/better-go-auth/goauth"
-	gormauthrepo "github.com/better-go-auth/goauth/src/app/core/account/repo"
 	coreauth "github.com/better-go-auth/goauth/src/app/core/auth"
 	"github.com/better-go-auth/goauth/src/app/core/profile"
 	"github.com/better-go-auth/goauth/src/app/core/session"
+	gormauthrepo "github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/models"
-	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/memory"
 	"github.com/birukbelay/gocmn/src/config"
 	cmnConf "github.com/birukbelay/gocmn/src/config"
@@ -62,13 +61,13 @@ type TestEnv struct {
 
 	// Direct handlers for in-process debugging
 	AuthHandler    *coreauth.GinAuthHandler
-	ProfileHandler *profile.HProfileHandler[models.User]
+	ProfileHandler *profile.HProfileHandler
 	SessionHandler *session.HumaSessionHandler
 	AdminHandler   *humaadmin.AdminHandler
 
 	// Direct services for testing/debugging
 	AuthService    *coreauth.Service
-	ProfileService *profile.Service[models.User]
+	ProfileService *profile.Service
 	SessionService *session.Service
 	AdminService   adminsvc.IAdminService
 }
@@ -80,7 +79,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	var gormDB *gorm.DB
 	var secStorage db.KeyValServ
 	// var redisClient *gocmn_redis.RedisService
-	var teardown = func() {}
+	teardown := func() {}
 
 	if useContainers {
 		slog.Info("========== Using testcontainers")
@@ -181,15 +180,17 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 
 	adminPlugin := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
 
-	auth, err := bettergoauth.SetupGoAuth(api, loc_conf.GoAuthOptions{
+	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn:             gormDB,
 		SecondaryStorage: secStorage,
-		EmailVerification: loc_conf.EmailVerification{
-			ExpiresIn:              15 * time.Minute,
-			VerificationCodeSender: mockEmail,
-		},
-		SessionConfig: loc_conf.SessionConfig{
-			JwtVar: jwt,
+		AuthConfig: loc_conf.AuthConfig{
+			EmailVerification: loc_conf.EmailVerification{
+				ExpiresIn:              15 * time.Minute,
+				VerificationCodeSender: mockEmail,
+			},
+			SessionConfig: loc_conf.SessionConfig{
+				JwtVar: jwt,
+			},
 		},
 		Plugins: []plugin.Plugin{
 			adminPlugin,
@@ -233,8 +234,8 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	sConf := loc_conf.SessionConfig{JwtVar: jwt}
 	accountRepo := gormauthrepo.NewAccountRepo(gormDB)
 	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.IAuthServices, auth.IAuthServices, accountRepo)
-	profileServ := profile.NewProfileServH[models.User](auth.Provider, auth.IAuthServices, auth.IAuthServices, accountRepo)
-	//Handlers
+	profileServ := profile.NewProfileServH(auth.Provider, auth.IAuthServices, auth.IAuthServices, accountRepo)
+	// Handlers
 	sSvc := session.NewService(sConf, auth.Provider)
 	authHandler := coreauth.NewAuthHandler(auth.Provider, authSvc)
 	profileHandler := profile.NewProfileHandler(auth.Provider, profileServ)

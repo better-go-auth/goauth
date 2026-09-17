@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -30,6 +31,8 @@ func NewService(conf config.SessionConfig, genServ *providers.IProviderS) *Servi
 	}
 }
 
+var _ serv_interfaces.ISessionService = (*Service)(nil)
+
 func (aus Service) GenerateTokens(user *crypto.CustomClaims) (*models.AuthTokens, error) {
 	claims := &crypto.CustomClaims{
 		Role:      user.Role,
@@ -50,7 +53,6 @@ func (aus Service) GenerateTokens(user *crypto.CustomClaims) (*models.AuthTokens
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 	}, nil
-
 }
 
 func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error) {
@@ -63,7 +65,7 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	if err != nil {
 		return nil, err
 	}
-	//4. hash the refresh token
+	// 4. hash the refresh token
 	refreshHash, err := crypto.ArgonCreateHash(tokens.RefreshToken)
 	if err != nil {
 		return nil, err
@@ -104,7 +106,7 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		session.DeviceToken = opt.DeviceToken
 	}
 
-	//4.Create a session or update previous's hashed_token
+	// 4.Create a session or update previous's hashed_token
 	_, err = generic.DbUpsertOneListedFields[models.Session](tx, ctx, session,
 		[]clause.Column{{Name: "session_id"}},
 		[]string{"hashed_token", "device_token", "active_org_id", "expires_at"}, &generic.Opt{Debug: false})

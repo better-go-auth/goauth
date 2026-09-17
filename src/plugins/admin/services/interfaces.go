@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/better-go-auth/goauth/src/models/dtos"
-	// svcinterfaces "github.com/better-go-auth/better-go-auth/core/services/interfaces"
+	// svcinterfaces "github.com/better-go-auth/goauth/core/services/interfaces"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 )
 

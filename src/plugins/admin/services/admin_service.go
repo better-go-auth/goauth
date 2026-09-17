@@ -8,19 +8,19 @@ import (
 	"strings"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/error"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/birukbelay/gocmn/src/provider/db"
 
-	// repoimpl "github.com/better-go-auth/better-go-auth/core/repository/interfaces"
-	// authsvc "github.com/better-go-auth/better-go-auth/core/services/auth"
-	// svcinterfaces "github.com/better-go-auth/better-go-auth/core/services/interfaces"
+	// corerepo "github.com/better-go-auth/goauth/core/repository/interfaces"
+	// authsvc "github.com/better-go-auth/goauth/core/services/auth"
+	// svcinterfaces "github.com/better-go-auth/goauth/core/services/interfaces"
 
+	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
-	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/models"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -30,12 +30,12 @@ var emailRegex = regexp.MustCompile(`^[A-Za-z0-9_'+\-.]+@[A-Za-z0-9](?:[A-Za-z0-
 // AdminService implements IAdminService.
 type AdminService struct {
 	adminRepo repository.IAdminRepo
-	// userRepo    repoimpl.IUserRepo
+	// userRepo    corerepo.IUserRepo
 	// sessionRepo core_interfaces.S
-	authConfig       config.GoAuthOptions
+	authConfig       config.AuthConfig
 	adminConfig      adminmodels.AdminConfig
 	secondaryStorage db.KeyValServ
-	sessionServ      core_interfaces.ISessionService
+	sessionServ      serv_interfaces.ISessionService
 }
 
 var _ IAdminService = (*AdminService)(nil)
@@ -43,8 +43,8 @@ var _ IAdminService = (*AdminService)(nil)
 // NewAdminService creates a new AdminService.
 func NewAdminService(
 	adminRepo repository.IAdminRepo,
-	// userRepo repoimpl.IUserRepo,
-	// sessionRepo repoimpl.ISessionRepo,
+	// userRepo corerepo.IUserRepo,
+	// sessionRepo corerepo.ISessionRepo,
 	// authConfig config.AuthConfig,
 	adminConfig adminmodels.AdminConfig,
 ) *AdminService {
@@ -106,7 +106,6 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 
 	now := time.Now().UTC()
 	user := &models.User{
-
 		UserDto: models.UserDto{
 			FirstName:     input.Name,
 			Email:         &email,

@@ -3,10 +3,10 @@ package humaadmin
 import (
 	"context"
 
-	"github.com/better-go-auth/goauth/src/models/dtos"
 	humaauth "github.com/better-go-auth/goauth/src/common/types"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 
-	// svcinterfaces "github.com/better-go-auth/better-go-auth/core/services/interfaces"
+	// svcinterfaces "github.com/better-go-auth/goauth/core/services/interfaces"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 )

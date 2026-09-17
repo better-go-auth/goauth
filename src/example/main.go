@@ -12,8 +12,8 @@ import (
 
 	bettergoauth "github.com/better-go-auth/goauth"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
-	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/birukbelay/gocmn/src/config"
 	"github.com/birukbelay/gocmn/src/consts"
 	"github.com/birukbelay/gocmn/src/crypto"
@@ -67,14 +67,16 @@ func main() {
 	emailSender := &ConsoleEmailSender{}
 	adminPlugin := admin.NewWithGorm(db, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
 
-	auth, err := bettergoauth.SetupGoAuth(api, loc_conf.GoAuthOptions{
+	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn: db,
-		EmailVerification: loc_conf.EmailVerification{
-			ExpiresIn:              15 * time.Minute,
-			VerificationCodeSender: emailSender,
-		},
-		SessionConfig: loc_conf.SessionConfig{
-			JwtVar: jwt,
+		AuthConfig: loc_conf.AuthConfig{
+			EmailVerification: loc_conf.EmailVerification{
+				ExpiresIn:              15 * time.Minute,
+				VerificationCodeSender: emailSender,
+			},
+			SessionConfig: loc_conf.SessionConfig{
+				JwtVar: jwt,
+			},
 		},
 		Plugins: []plugin.Plugin{
 			adminPlugin,

@@ -7,28 +7,38 @@ import (
 	"log/slog"
 
 	"github.com/better-go-auth/goauth/src/app/core"
-	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
+	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
+	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
+	"gorm.io/gorm"
 
 	"github.com/better-go-auth/goauth/src/providers"
+	"github.com/birukbelay/gocmn/src/provider/db"
 	"github.com/birukbelay/gocmn/src/server/middleware"
 	"github.com/danielgtaylor/huma/v2"
 )
 
 type GoAuth struct {
-	IAuthServices core_interfaces.IAuthServices
+	IAuthServices serv_interfaces.IAuthServices
 	// AuthServices
 	MiddleWare        middleware.AuthMiddleware
 	RevocationStore   middleware.RevocationStore
 	TransctionManager interfaces.ITransactionManager
 	Provider          *providers.IProviderS
 }
+type GoAuthOptions struct {
+	config.AuthConfig
+	Conn             *gorm.DB
+	SecondaryStorage db.KeyValServ
+	Plugins          []plugin.Plugin
+}
 
-func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
+func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	if api == nil {
 		return nil, errors.New("goauth: huma API instance is required")
 	}
@@ -37,6 +47,16 @@ func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("goauth: invalid options: %w", err)
 	}
+
+
+	userRepo:=gormauth.NewUserRepo(opts.Conn)
+	accountRepo:=gormauth.NewAccountRepo(opts.Conn)
+
+	authRepos:=repo_interfaces.AuthRepos{
+			IUserRepo: userRepo,
+			IOAuthAccountRepo:accountRepo,
+		}
+	//
 	migrator := core_migration.NewGORMAdminMigrator(opts.Conn)
 	if err := migrator.Migrate(context.Background()); err != nil {
 		return nil, err
@@ -46,11 +66,11 @@ func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 	verifier := middleware.NewJWTTokenVerifier(opts.SessionConfig.AccessSecret)
 	revocationStore := providers.NewRevocationStore(opts.Conn, opts.SecondaryStorage)
 	mdlWare := middleware.NewAuthMiddleware(verifier, revocationStore, nil)
-	//initialize the provider
+	// initialize the provider
 	providerService := providers.NewProvider(opts.Conn, opts.SecondaryStorage, mdlWare, txManager)
 
-	//setup the auth routes
-	authSvc := core.SetupAllAuthRoutes(api, opts, opts.EmailVerification, providerService)
+	// setup the auth routes
+	authSvc := core.SetupAllAuthRoutes(api, opts.AuthConfig, opts.EmailVerification, providerService)
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
@@ -59,10 +79,8 @@ func SetupGoAuth(api huma.API, opts config.GoAuthOptions) (*GoAuth, error) {
 		Api:           api,
 		TxManager:     txManager,
 		IAuthServices: authSvc,
-		Extras:        map[string]any{
-			// "jwt_secret":      opts.SessionConfig.AccessSecret,
-			// "session_service": authSvc,
-		},
+		IAuthRepos: authRepos,
+		Extras:        map[string]any{},
 	}
 
 	for _, p := range opts.Plugins {

@@ -1,8 +1,8 @@
 package auth
 
 import (
-	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
-	"github.com/better-go-auth/goauth/src/app/repoimpl"
+	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/providers"
@@ -15,13 +15,13 @@ type GinAuthHandler struct {
 type Service struct {
 	Config      *config.SessionConfig
 	Provider    *providers.IProviderS
-	VSvc        core_interfaces.IVerificationService
-	SesSvc      core_interfaces.ISessionService
+	VSvc        serv_interfaces.IVerificationService
+	SesSvc      serv_interfaces.ISessionService
 	TxMgr       interfaces.ITransactionManager
-	accountRepo repoimpl.IOAuthAccountRepo
+	accountRepo repo_interfaces.IOAuthAccountRepo
 }
 
-func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc core_interfaces.IVerificationService, sSvc core_interfaces.ISessionService, accountRepo repoimpl.IOAuthAccountRepo) *Service {
+func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, accountRepo repo_interfaces.IOAuthAccountRepo) *Service {
 	return &Service{
 		Config:      conf,
 		Provider:    provSvc,
@@ -33,7 +33,7 @@ func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, v
 }
 
 func NewAuthHandler(cmnServ *providers.IProviderS, serv *Service) *GinAuthHandler {
-	//you can migrate auth models here
+	// you can migrate auth models here
 	return &GinAuthHandler{
 		AdminAuthServ: serv,
 		CmnServ:       cmnServ,

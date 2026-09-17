@@ -21,6 +21,7 @@ func SetupAdminRoutes(api huma.API, h *AdminHandler) {
 		Path:        basePath + "/list-users",
 		Summary:     "List Users (Admin)",
 		Description: "Search, filter, and paginate users with sorting and advanced field operators.",
+		Middlewares: huma.Middlewares{},
 		Tags:        []string{"Admin"},
 	}, h.ListUsers)
 

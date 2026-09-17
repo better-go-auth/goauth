@@ -1,25 +1,30 @@
-package plugin
+package plugins
 
 import (
 	"context"
 	"net/http"
 
-	"github.com/better-go-auth/goauth/src/app/core/core_interfaces"
+	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
+	"github.com/better-go-auth/goauth/src/config"
+
+	// "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/danielgtaylor/huma/v2"
 )
 
 // InitContext carries runtime dependencies and configuration passed to plugins during initialization.
 type InitContext struct {
-	Ctx context.Context
-	Api huma.API
-	// Config      config.AuthConfig
+	Ctx    context.Context
+	Api    huma.API
+	Config config.AuthConfig
 	// UserRepo    repoimpl2.IUserRepo
 	// SessionRepo repoimpl2.ISessionRepo
 	// EmailSender emailiface.IVerificationSender
 	TxManager     interfaces.ITransactionManager
-	IAuthServices core_interfaces.IAuthServices
+	IAuthServices serv_interfaces.IAuthServices
+	IAuthRepos repo_interfaces.IAuthRepos
 
 	// Extras allows plugins that need ORM-specific objects (e.g. *gorm.DB) to
 	// receive them without coupling the interface to any particular ORM.
@@ -39,7 +44,7 @@ type Plugin interface {
 	Migrator() migration.IMigrator
 
 	// Services returns a map of services provided by this plugin.
-	Services() map[string]interface{}
+	Services() map[string]any
 
 	// Routes returns a slice of framework-agnostic route descriptors.
 	// Adapters iterate over this slice to mount plugin routes.

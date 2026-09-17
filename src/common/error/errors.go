@@ -80,11 +80,13 @@ var (
 	ErrUnauthorized       = New(Unauthorized, Unauthorized.Msg(), http.StatusUnauthorized)
 	ErrForbidden          = New(Forbidden, Forbidden.Msg(), http.StatusForbidden)
 	ErrWeakPassword       = New(WeakPassword, WeakPassword.Msg(), http.StatusBadRequest)
+	//Org Errors
 	ErrOrgNotFound        = New(OrgNotFound, OrgNotFound.Msg(), http.StatusNotFound)
 	ErrMemberNotFound     = New(MemberNotFound, MemberNotFound.Msg(), http.StatusNotFound)
 	ErrAlreadyMember      = New(AlreadyMember, AlreadyMember.Msg(), http.StatusBadRequest)
 	ErrInvitationNotFound = New(InvitationNotFound, InvitationNotFound.Msg(), http.StatusNotFound)
 	ErrInvitationExpired  = New(InvitationExpired, InvitationExpired.Msg(), http.StatusBadRequest)
+	//
 	ErrSlugTaken          = New(SlugTaken, SlugTaken.Msg(), http.StatusUnprocessableEntity)
 	ErrInvalidEmail       = New(InvalidEmail, InvalidEmail.Msg(), http.StatusBadRequest)
 	ErrPasswordTooShort   = New(PasswordTooShort, PasswordTooShort.Msg(), http.StatusBadRequest)
