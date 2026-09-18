@@ -11,6 +11,7 @@ import (
 
 	// "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
+	"github.com/birukbelay/gocmn/src/server/middleware"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -24,7 +25,9 @@ type InitContext struct {
 	// EmailSender emailiface.IVerificationSender
 	TxManager     interfaces.ITransactionManager
 	IAuthServices serv_interfaces.IAuthServices
-	IAuthRepos repo_interfaces.IAuthRepos
+	IAuthRepos    repo_interfaces.IAuthRepos
+	MiddleWare    *middleware.AuthMiddleware
+	Authenticate  AuthenticateFunc
 
 	// Extras allows plugins that need ORM-specific objects (e.g. *gorm.DB) to
 	// receive them without coupling the interface to any particular ORM.
@@ -36,6 +39,7 @@ type InitContext struct {
 type Plugin interface {
 	// ID returns the unique string identifier for the plugin (e.g., "org").
 	ID() string
+	
 
 	// Init initializes the plugin's repositories, migrators, and services using the provided InitContext.
 	Init(ictx *InitContext) error

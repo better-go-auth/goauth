@@ -45,10 +45,11 @@ type SessionData struct {
 	ExpiresAt            string  `json:"expiresAt"`
 	IPAddress            *string `json:"ipAddress"`
 	UserAgent            *string `json:"userAgent"`
-	ActiveOrganizationID *string `json:"activeOrganizationId"`
 	ImpersonatedBy       *string `json:"impersonatedBy,omitempty"`
 	CreatedAt            string  `json:"createdAt"`
 	UpdatedAt            string  `json:"updatedAt"`
+	ActiveOrganizationID *string `json:"activeOrganizationId,omitempty"`
+	ActiveOrgRole        *string `json:"activeOrgRole,omitempty"`
 }
 
 // SignUpResponse is returned after a successful sign-up.
@@ -161,6 +162,7 @@ func FormatTime(t time.Time) string {
 func formatTime(t time.Time) string {
 	return FormatTime(t)
 }
+
 func GetVal(val *string) string {
 	if val == nil {
 		return ""

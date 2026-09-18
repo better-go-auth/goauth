@@ -19,13 +19,14 @@ const PluginID = "admin"
 
 // Plugin implements the plugins.Plugin interface for the Better Auth Admin plugin.
 type Plugin struct {
-	adminRepos  repository.AdminRepositories
-	config      config1.AdminConfig
-	migrator    migration.IMigrator
-	service     adminsvc.IAdminService
-	sessionConf config.SessionConfig
-	basePath    string
-	handler     *humaadmin.AdminHandler
+	adminRepos   repository.AdminRepositories
+	config       config1.AdminConfig
+	migrator     migration.IMigrator
+	service      adminsvc.IAdminService
+	sessionConf  config.SessionConfig
+	basePath     string
+	handler      *humaadmin.AdminHandler
+	authenticate plugins.AuthenticateFunc
 }
 
 // Option configures the admin Plugin.
@@ -103,8 +104,12 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		p.config,
 	)
 
+	if ictx != nil {
+		p.authenticate = ictx.Authenticate
+	}
+
 	if ictx != nil && ictx.Api != nil {
-		p.SetupHumaRoutes(ictx.Api)
+		p.SetupHumaRoutes(ictx.Api, ictx.MiddleWare)
 	}
 
 	return nil

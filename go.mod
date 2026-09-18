@@ -3,7 +3,7 @@ module github.com/better-go-auth/goauth
 go 1.26.4
 
 require (
-	github.com/birukbelay/gocmn v1.1.44
+	github.com/birukbelay/gocmn v1.1.45
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3

@@ -42,5 +42,6 @@ type SessionOpt struct {
 	ClearSession bool
 	ActiveOrgID  *string
 	OrgRoleID    *string
+	OrgRole      *string
 	DeviceToken  string
 }

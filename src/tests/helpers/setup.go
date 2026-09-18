@@ -22,6 +22,10 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/plugins/org"
+	humaorg "github.com/better-go-auth/goauth/src/plugins/org/adapters/huma"
+	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
+	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/memory"
 	"github.com/birukbelay/gocmn/src/config"
@@ -64,12 +68,14 @@ type TestEnv struct {
 	ProfileHandler *profile.HProfileHandler
 	SessionHandler *session.HumaSessionHandler
 	AdminHandler   *humaadmin.AdminHandler
+	OrgHandler     *humaorg.OrgHandler
 
 	// Direct services for testing/debugging
 	AuthService    *coreauth.Service
 	ProfileService *profile.Service
 	SessionService *session.Service
 	AdminService   adminsvc.IAdminService
+	OrgService     orgsvc.IOrgService
 }
 
 var containersToCleanup []testcontainers.Container
@@ -179,6 +185,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	api := humago.New(mux, huma.DefaultConfig("Better Go Auth Test API", "1.0.0"))
 
 	adminPlugin := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
+	orgPlugin := org.NewWithGorm(gormDB, orgconfig.OrgConfig{})
 
 	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn:             gormDB,
@@ -194,6 +201,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		},
 		Plugins: []plugin.Plugin{
 			adminPlugin,
+			orgPlugin,
 		},
 	})
 	if err != nil {
@@ -242,6 +250,8 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	sessionHandler := session.NewSessionHandler(sSvc)
 	adminHandler := adminPlugin.Handler()
 	adminService := adminPlugin.Service()
+	orgHandler := orgPlugin.Handler()
+	orgService := orgPlugin.Service()
 
 	env := &TestEnv{
 		DB:               gormDB,
@@ -258,11 +268,13 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		ProfileHandler: profileHandler,
 		SessionHandler: sessionHandler,
 		AdminHandler:   adminHandler,
+		OrgHandler:     orgHandler,
 
 		AuthService:    authSvc,
 		ProfileService: profileServ,
 		SessionService: sSvc,
 		AdminService:   adminService,
+		OrgService:     orgService,
 	}
 
 	if t != nil {
@@ -284,6 +296,10 @@ func (e *TestEnv) GetJSON(path string, headers ...map[string]string) (*http.Resp
 
 func (e *TestEnv) PatchJSON(path string, body any, headers ...map[string]string) (*http.Response, string) {
 	return e.doJSON(http.MethodPatch, path, body, headers...)
+}
+
+func (e *TestEnv) DeleteJSON(path string, body any, headers ...map[string]string) (*http.Response, string) {
+	return e.doJSON(http.MethodDelete, path, body, headers...)
 }
 
 func (e *TestEnv) doJSON(method, path string, body any, headers ...map[string]string) (*http.Response, string) {

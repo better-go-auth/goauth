@@ -48,14 +48,13 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		return nil, fmt.Errorf("goauth: invalid options: %w", err)
 	}
 
+	userRepo := gormauth.NewUserRepo(opts.Conn)
+	accountRepo := gormauth.NewAccountRepo(opts.Conn)
 
-	userRepo:=gormauth.NewUserRepo(opts.Conn)
-	accountRepo:=gormauth.NewAccountRepo(opts.Conn)
-
-	authRepos:=repo_interfaces.AuthRepos{
-			IUserRepo: userRepo,
-			IOAuthAccountRepo:accountRepo,
-		}
+	authRepos := repo_interfaces.AuthRepos{
+		IUserRepo:         userRepo,
+		IOAuthAccountRepo: accountRepo,
+	}
 	//
 	migrator := core_migration.NewGORMAdminMigrator(opts.Conn)
 	if err := migrator.Migrate(context.Background()); err != nil {
@@ -74,12 +73,15 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
+	authenticate := plugin.NewDefaultAuthenticator(opts.SessionConfig.AccessSecret, opts.Conn)
 	initCtx := &plugin.InitContext{
 		Ctx:           context.Background(),
 		Api:           api,
 		TxManager:     txManager,
 		IAuthServices: authSvc,
-		IAuthRepos: authRepos,
+		IAuthRepos:    authRepos,
+		MiddleWare:    mdlWare,
+		Authenticate:  authenticate,
 		Extras:        map[string]any{},
 	}
 

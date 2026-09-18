@@ -28,7 +28,7 @@ func (s OrgMemberRole) String() string { return string(s) }
 
 const (
 	OrgRoleOwner  OrgMemberRole = "owner"
-	OrgRoleAdmin  OrgMemberRole = "admin"
+	OrgRoleAdmin  OrgMemberRole = "org_admin"
 	OrgRoleMember OrgMemberRole = "member"
 )
 

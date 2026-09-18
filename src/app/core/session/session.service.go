@@ -61,6 +61,9 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	if opt != nil && opt.ActiveOrgID != nil {
 		claims.CompanyId = *opt.ActiveOrgID
 	}
+	if opt != nil && opt.OrgRole != nil {
+		claims.OrgRole = *opt.OrgRole
+	}
 	tokens, err := aus.GenerateTokens(&claims)
 	if err != nil {
 		return nil, err

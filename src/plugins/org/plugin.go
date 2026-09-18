@@ -6,8 +6,10 @@ import (
 
 	"gorm.io/gorm"
 
+	authconf "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
+	humaorg "github.com/better-go-auth/goauth/src/plugins/org/adapters/huma"
 	"github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
@@ -19,22 +21,34 @@ const PluginID = "org"
 
 // Plugin implements the plugins.Plugin interface for multi-tenancy / organizations.
 type Plugin struct {
-	Config   config.OrgConfig
-	orgReops orgrepo.OrgRepositories
-	migrator migration.IMigrator
-	service  orgsvc.IOrgService
+	Config       config.OrgConfig
+	authConfig   authconf.AuthConfig
+	orgReops     orgrepo.OrgRepositories
+	migrator     migration.IMigrator
+	service      orgsvc.IOrgService
+	handler      *humaorg.OrgHandler
+	authenticate plugin.AuthenticateFunc
 }
 type Option func(*Plugin)
 
 // NewWithGorm creates a new Admin plugin directly backed by GORM.
-func NewWithGorm(db *gorm.DB, opts ...Option) *Plugin {
+func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) *Plugin {
 	repos := gormorg.NewOrgRepos(db)
-	return New(repos, opts...)
+	orgOptions := OrgOptions{
+		repo:   repos,
+		config: cfg,
+	}
+	return New(orgOptions, opts...)
+}
+
+type OrgOptions struct {
+	repo   orgrepo.OrgRepositories
+	config config.OrgConfig
 }
 
 // New creates a new Org plugin instance with optional configuration.
-func New(repos orgrepo.OrgRepositories, opts ...Option) *Plugin {
-	p := &Plugin{orgReops: repos}
+func New(options OrgOptions, opts ...Option) *Plugin {
+	p := &Plugin{orgReops: options.repo, Config: options.config}
 	for _, opt := range opts {
 		opt(p)
 	}
@@ -68,11 +82,14 @@ func (p *Plugin) Init(ictx *plugin.InitContext) error {
 		ictx.IAuthRepos,
 	)
 
+	if ictx != nil {
+		p.authConfig = ictx.Config
+		p.authenticate = ictx.Authenticate
+	}
 
 	if ictx != nil && ictx.Api != nil {
-		p.SetupHumaRoutes(ictx.Api)
+		p.SetupHumaRoutes(ictx.Api, ictx.MiddleWare)
 	}
-	
 
 	return nil
 }
@@ -82,7 +99,7 @@ func (p *Plugin) Migrator() migration.IMigrator {
 }
 
 func (p *Plugin) Services() map[string]any {
-	return map[string]interface{}{
+	return map[string]any{
 		"org": p.service,
 	}
 }
@@ -97,6 +114,11 @@ func (p *Plugin) Routes() []plugin.RouteDescriptor {
 // Service returns the initialized IOrgService interface.
 func (p *Plugin) Service() orgsvc.IOrgService {
 	return p.service
+}
+
+// Handler returns the initialized OrgHandler.
+func (p *Plugin) Handler() *humaorg.OrgHandler {
+	return p.handler
 }
 
 // ─── Org Migrator ─────────────────────────────────────────────────────────────

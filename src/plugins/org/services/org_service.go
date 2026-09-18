@@ -172,9 +172,10 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 			return nil, autherr.ErrForbidden
 		}
 	}
-
+	// TODO make sure cached tokens and etc are updated and same sessin with old ord id is not used
+	// use some sort of version mechanism and etc
 	resp, err := s.sessionServ.CreateSession(ctx, sessionID, role, userId, &coremodels.SessionOpt{
-		OrgRoleID:   new(member.Role.String()),
+		OrgRole:     new(member.Role.String()),
 		ActiveOrgID: orgID,
 	})
 	return resp, err
