@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/better-go-auth/goauth/src/plugins"
+	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/birukbelay/gocmn/src/server/middleware"
 	"github.com/danielgtaylor/huma/v2"
 
@@ -22,12 +22,12 @@ type OrgHandler struct {
 	Org        orgsvc.IOrgService
 	Cfg        config.AuthConfig
 	MiddleWare *middleware.AuthMiddleware
-	authFn     plugins.AuthenticateFunc
+	authFn     authenticator.AuthenticateFunc
 }
 
 // NewOrgHandler creates a new OrgHandler.
-func NewOrgHandler(org orgsvc.IOrgService, mdlware *middleware.AuthMiddleware, authFn ...plugins.AuthenticateFunc) *OrgHandler {
-	var af plugins.AuthenticateFunc
+func NewOrgHandler(org orgsvc.IOrgService, mdlware *middleware.AuthMiddleware, authFn ...authenticator.AuthenticateFunc) *OrgHandler {
+	var af authenticator.AuthenticateFunc
 	if len(authFn) > 0 {
 		af = authFn[0]
 	}
@@ -63,7 +63,11 @@ func defaultPagi() models.Pagination {
 }
 
 // Authenticate delegates authentication to the core authenticate function.
+// It first checks if the request was already authenticated into context by middleware.
 func (h *OrgHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
+	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
+		return sess, nil
+	}
 	if h.authFn != nil {
 		return h.authFn(ctx, auth)
 	}

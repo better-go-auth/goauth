@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/better-go-auth/goauth/src/models/dtos"
-	// svcinterfaces "github.com/better-go-auth/goauth/core/services/interfaces"
+	"github.com/better-go-auth/goauth/src/plugins"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 )
 
@@ -45,4 +45,7 @@ type IAdminService interface {
 
 	// RevokeUserSessions invalidates all active sessions for a target user.
 	RevokeUserSessions(ctx context.Context, input admindtos.AdminRevokeUserSessionsInput, adminUserID string) error
+
+	// SetHooks sets the lifecycle hook registry.
+	SetHooks(hooks plugins.HookRegistry)
 }

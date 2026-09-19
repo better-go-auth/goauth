@@ -9,20 +9,20 @@ import (
 // Session will be put on redis,
 type Session struct {
 	Base      `mapstructure:",squash" `
-	SessionId string    `gorm:"uniqueIndex;not null" ` //session id is the token that is generated randomly
+	SessionId string    `gorm:"uniqueIndex;not null" ` // session id is the token that is generated randomly
 	UserID    string    `gorm:"not null"`
 	ExpiresAt time.Time `json:"expiresAt"                                         bun:"expires_at,notnull"`
 	//
 	HashedToken string `gorm:"not null" json:"-"`
 
-	//we use when the admin block the user, we dont delete the session, we just blacklist it
+	// we use when the admin block the user, we dont delete the session, we just blacklist it
 	Blacklisted   *bool `gorm:"default:false" json:"-"`
 	BlacklistedOn *time.Time
 	// Revocation
 	RevokedAt  *time.Time `json:"revokedAt"   bun:"revoked_at"`
 	LastUsedAt *time.Time `json:"lastUsedAt"  bun:"last_used_at"`
 	Role       string     `gorm:"not null" json:"-"`
-	//relationships
+	// relationships
 	User *User `json:"user,omitempty" gorm:"foreignKey:UserID"  bun:"rel:belongs-to,join:user_id=id"`
 
 	DeviceToken string `json:"deviceToken"   bun:"device_token"` // used for push notification
@@ -44,13 +44,14 @@ type Session struct {
 	ImpersonatedBy *string `json:"impersonatedBy,omitempty" gorm:"size:26" bun:"impersonated_by"`
 }
 type SessionFilter struct {
-	ID            string `query:"id"`
-	CompanyID     string `query:"-"`
-	CompanyRoleID string `query:"-"`
-	SessionId     string `query:"session_id"`
-	UserId        string `query:"user_id"`
-	HashedToken   string `query:"hashed_token"`
-	Blacklisted   bool   `query:"blacklisted"`
+	ID          string `query:"id"`
+	ActiveOrgID string `query:"-"`
+	OrgRoleID   string `query:"-"`
+
+	SessionId   string `query:"session_id"`
+	UserId      string `query:"user_id"`
+	HashedToken string `query:"hashed_token"`
+	Blacklisted bool   `query:"blacklisted"`
 }
 type SessionQuery struct {
 	dtos.PaginationInput

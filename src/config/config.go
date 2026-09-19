@@ -7,7 +7,6 @@ import (
 	"time"
 )
 
-
 type AuthConfig struct {
 	// BasePath is the base mount path for Better Auth routes (default: "/api/auth").
 	BasePath          string // usualy /api/auth
@@ -21,6 +20,12 @@ func (opts *AuthConfig) SetDefaults() {
 	if opts.BasePath == "" {
 		opts.BasePath = "/api/auth"
 	}
+	if opts.SessionConfig.RevocationPrefix == "" {
+		opts.SessionConfig.RevocationPrefix = "revoked:session"
+	}
+	if opts.SessionConfig.BlacklistPrefix == "" {
+		opts.SessionConfig.BlacklistPrefix = "blacklisted"
+	}
 	if opts.SessionConfig.AccessExpireMin <= 0 {
 		opts.SessionConfig.AccessExpireMin = 60 // 1 hour
 	}
@@ -30,6 +35,7 @@ func (opts *AuthConfig) SetDefaults() {
 	if opts.SessionConfig.RefreshSecret == "" && opts.SessionConfig.AccessSecret != "" {
 		opts.SessionConfig.RefreshSecret = opts.SessionConfig.AccessSecret
 	}
+	// verification sender
 	if opts.EmailVerification.ExpiresIn <= 0 {
 		opts.EmailVerification.ExpiresIn = 15 * time.Minute
 	}

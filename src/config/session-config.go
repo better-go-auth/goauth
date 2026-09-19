@@ -8,8 +8,15 @@ import (
 
 type SessionConfig struct {
 	conf.JwtVar
+	CheckRevocationInDb bool
+	BlacklistPrefix     string
+	RevocationPrefix    string
 }
 type Session struct {
+	CheckRevocationInDb bool
+	BlacklistPrefix     string
+	RevocationPrefix    string
+
 	//=====================================================================================Unused currently ============================
 	//
 	//====================================================================

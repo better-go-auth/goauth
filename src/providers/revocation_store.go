@@ -2,11 +2,10 @@ package providers
 
 import (
 	"context"
-	"errors"
 	"reflect"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/common/gormutil"
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/birukbelay/gocmn/src/provider/db"
 	"github.com/birukbelay/gocmn/src/server/middleware"
@@ -28,14 +27,21 @@ func isNil(i any) bool {
 	}
 }
 
+// SessionRevocationChecker defines methods needed by RevocationStore to verify session validity.
+type SessionRevocationChecker interface {
+	GetSessionBySessionID(ctx context.Context, sessionID string) (*models.Session, error)
+}
+
 // RevocationStore checks if a session or token has been revoked or invalidated.
 type RevocationStore struct {
-	db    *gorm.DB
-	store db.KeyValServ
+	db          *gorm.DB
+	sessionRepo SessionRevocationChecker
+	store       db.KeyValServ
+	sConfig     config.SessionConfig
 }
 
 // NewRevocationStore creates a RevocationStore backed by database and optional key-value storage.
-func NewRevocationStore(db *gorm.DB, store db.KeyValServ) *RevocationStore {
+func NewRevocationStore(db *gorm.DB, store db.KeyValServ, sconfig config.SessionConfig) *RevocationStore {
 	if isNil(store) {
 		store = nil
 	}
@@ -43,8 +49,24 @@ func NewRevocationStore(db *gorm.DB, store db.KeyValServ) *RevocationStore {
 		db = nil
 	}
 	return &RevocationStore{
-		db:    db,
-		store: store,
+		db:      db,
+		store:   store,
+		sConfig: sconfig,
+	}
+}
+
+// NewRevocationStoreWithRepo creates a RevocationStore backed by a SessionRevocationChecker repository.
+func NewRevocationStoreWithRepo(repo SessionRevocationChecker, store db.KeyValServ, sconfig config.SessionConfig) *RevocationStore {
+	if isNil(store) {
+		store = nil
+	}
+	if isNil(repo) {
+		repo = nil
+	}
+	return &RevocationStore{
+		sessionRepo: repo,
+		store:       store,
+		sConfig:     sconfig,
 	}
 }
 
@@ -64,29 +86,53 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 		}
 	}
 
-	// 2. Check the database
-	if r.db != nil {
-		var sess models.Session
-		err := gormutil.GetDB(ctx, r.db).
-			Select("id", "session_id", "blacklisted", "revoked_at", "expires_at").
-			Where("session_id = ?", sessionID).
-			Take(&sess).Error
-		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
-				// Session not found in DB => revoked/deleted
+	if r.sConfig.CheckRevocationInDb {
+		// 2. Check via session repository interface if configured
+		if r.sessionRepo != nil {
+			sess, err := r.sessionRepo.GetSessionBySessionID(ctx, sessionID)
+			if err != nil {
+				// Not found in DB => revoked/deleted
 				return true, nil
 			}
-			return false, err
+			if sess == nil {
+				return true, nil
+			}
+			if sess.Blacklisted != nil && *sess.Blacklisted {
+				return true, nil
+			}
+			if sess.RevokedAt != nil {
+				return true, nil
+			}
+			if !sess.ExpiresAt.IsZero() && time.Now().After(sess.ExpiresAt) {
+				return true, nil
+			}
+			return false, nil
 		}
-		if sess.Blacklisted != nil && *sess.Blacklisted {
-			return true, nil
-		}
-		if sess.RevokedAt != nil {
-			return true, nil
-		}
-		if !sess.ExpiresAt.IsZero() && time.Now().After(sess.ExpiresAt) {
-			return true, nil
-		}
+
+		// 3. Fallback to direct GORM DB if configured
+		// if r.db != nil {
+		// 	var sess models.Session
+		// 	err := gormutil.GetDB(ctx, r.db).
+		// 		Select("id", "session_id", "blacklisted", "revoked_at", "expires_at").
+		// 		Where("session_id = ?", sessionID).
+		// 		Take(&sess).Error
+		// 	if err != nil {
+		// 		if errors.Is(err, gorm.ErrRecordNotFound) {
+		// 			// Session not found in DB => revoked/deleted
+		// 			return true, nil
+		// 		}
+		// 		return false, err
+		// 	}
+		// 	if sess.Blacklisted != nil && *sess.Blacklisted {
+		// 		return true, nil
+		// 	}
+		// 	if sess.RevokedAt != nil {
+		// 		return true, nil
+		// 	}
+		// 	if !sess.ExpiresAt.IsZero() && time.Now().After(sess.ExpiresAt) {
+		// 		return true, nil
+		// 	}
+		// }
 	}
 
 	return false, nil

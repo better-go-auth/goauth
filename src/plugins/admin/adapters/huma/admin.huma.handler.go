@@ -9,10 +9,10 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	"github.com/better-go-auth/goauth/src/plugins"
 	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/birukbelay/gocmn/src/server/middleware"
 )
 
@@ -23,15 +23,15 @@ type AdminHandler struct {
 	Cfg        config.AuthConfig
 	AdminRepo  repository.IAdminRepo
 	MiddleWare *middleware.AuthMiddleware
-	authFn     plugins.AuthenticateFunc
+	authFn     authenticator.AuthenticateFunc
 }
 
 // NewAdminHandler creates a new AdminHandler.
-func NewAdminHandler(admin adminsvc.IAdminService, cfg adminmodels.AdminConfig, mdlware *middleware.AuthMiddleware, authFn ...plugins.AuthenticateFunc) *AdminHandler {
+func NewAdminHandler(admin adminsvc.IAdminService, cfg adminmodels.AdminConfig, mdlware *middleware.AuthMiddleware, authFn ...authenticator.AuthenticateFunc) *AdminHandler {
 	if len(cfg.AdminRoles) == 0 {
 		cfg.AdminRoles = []enums.Role{enums.Admin}
 	}
-	var af plugins.AuthenticateFunc
+	var af authenticator.AuthenticateFunc
 	if len(authFn) > 0 {
 		af = authFn[0]
 	}
@@ -65,10 +65,14 @@ func (h *AdminHandler) RequireAdmin(ctx context.Context, auth humatypes.AuthHead
 }
 
 // Authenticate delegates authentication to the core authenticate function.
+// It first checks if the request was already authenticated into context by middleware.
 func (h *AdminHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
+	//TODO: use the plain session authenticator or the authFn based on the config
+	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
+		return sess, nil
+	}
 	if h.authFn != nil {
 		return h.authFn(ctx, auth)
 	}
 	return nil, autherr.ErrUnauthorized
 }
-

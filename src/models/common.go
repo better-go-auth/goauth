@@ -54,7 +54,8 @@ type OperationAccessDto struct {
 	AllowedRoles pq.StringArray     `gorm:"type:text[]" json:"allowedRoles,omitempty"`
 	GroupName    string
 	Description  string
-	CompanyID    *string
+	OrgID        *string
+	// CompanyID    *string // Deprecated: use OrgID instead
 }
 
 // NewID generates a new ULID string.

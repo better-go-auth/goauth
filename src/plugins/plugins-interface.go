@@ -8,6 +8,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/providers/authenticator"
 
 	// "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
@@ -27,7 +28,8 @@ type InitContext struct {
 	IAuthServices serv_interfaces.IAuthServices
 	IAuthRepos    repo_interfaces.IAuthRepos
 	MiddleWare    *middleware.AuthMiddleware
-	Authenticate  AuthenticateFunc
+	Authenticate  authenticator.AuthenticateFunc
+	Hooks         HookRegistry
 
 	// Extras allows plugins that need ORM-specific objects (e.g. *gorm.DB) to
 	// receive them without coupling the interface to any particular ORM.
@@ -39,7 +41,6 @@ type InitContext struct {
 type Plugin interface {
 	// ID returns the unique string identifier for the plugin (e.g., "org").
 	ID() string
-	
 
 	// Init initializes the plugin's repositories, migrators, and services using the provided InitContext.
 	Init(ictx *InitContext) error
@@ -55,6 +56,11 @@ type Plugin interface {
 	// Return nil if the plugin does not expose any routes (or uses a
 	// framework-specific setup method instead).
 	Routes() []RouteDescriptor
+}
+
+// HookProvider is an optional interface plugins can implement to provide a HookService.
+type HookProvider interface {
+	Hooks() HookService
 }
 
 // RouteDescriptor describes a single HTTP route exposed by a plugin in a

@@ -15,6 +15,7 @@ import (
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
 	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
+	"github.com/better-go-auth/goauth/src/providers/authenticator"
 )
 
 const PluginID = "org"
@@ -23,15 +24,16 @@ const PluginID = "org"
 type Plugin struct {
 	Config       config.OrgConfig
 	authConfig   authconf.AuthConfig
-	orgReops     orgrepo.OrgRepositories
+	orgRepos     orgrepo.OrgRepositories
 	migrator     migration.IMigrator
 	service      orgsvc.IOrgService
+	hookService  *orgsvc.OrgHookService
 	handler      *humaorg.OrgHandler
-	authenticate plugin.AuthenticateFunc
+	authenticate authenticator.AuthenticateFunc
 }
 type Option func(*Plugin)
 
-// NewWithGorm creates a new Admin plugin directly backed by GORM.
+// NewWithGorm creates a new Org plugin directly backed by GORM.
 func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) *Plugin {
 	repos := gormorg.NewOrgRepos(db)
 	orgOptions := OrgOptions{
@@ -48,7 +50,7 @@ type OrgOptions struct {
 
 // New creates a new Org plugin instance with optional configuration.
 func New(options OrgOptions, opts ...Option) *Plugin {
-	p := &Plugin{orgReops: options.repo, Config: options.config}
+	p := &Plugin{orgRepos: options.repo, Config: options.config}
 	for _, opt := range opts {
 		opt(p)
 	}
@@ -66,25 +68,30 @@ func (p *Plugin) ID() string {
 }
 
 func (p *Plugin) Init(ictx *plugin.InitContext) error {
-	if p.orgReops.IOrgRepo == nil || p.orgReops.IMemberRepo == nil || p.orgReops.IInvitationRepo == nil || p.orgReops.IMigrator == nil {
+	if p.orgRepos.IOrgRepo == nil || p.orgRepos.IMemberRepo == nil || p.orgRepos.IInvitationRepo == nil || p.orgRepos.IMigrator == nil {
 		return fmt.Errorf("org plugin: OrgRepo, MemberRepo, InviteRepo and Migrator are required")
 	}
 
 	// 2. Resolve Migrator
-	p.migrator = p.orgReops.IMigrator
+	p.migrator = p.orgRepos.IMigrator
 
 	// 3. Create Org Service
 	p.service = orgsvc.New(
-		p.orgReops.IOrgRepo,
-		p.orgReops.IMemberRepo,
-		p.orgReops.IInvitationRepo,
+		p.orgRepos.IOrgRepo,
+		p.orgRepos.IMemberRepo,
+		p.orgRepos.IInvitationRepo,
 		ictx.TxManager,
 		ictx.IAuthRepos,
 	)
 
+	p.hookService = orgsvc.NewOrgHookService(p.orgRepos.IOrgRepo, p.orgRepos.IMemberRepo)
+
 	if ictx != nil {
 		p.authConfig = ictx.Config
 		p.authenticate = ictx.Authenticate
+		if ictx.Hooks != nil {
+			ictx.Hooks.Register(p.hookService)
+		}
 	}
 
 	if ictx != nil && ictx.Api != nil {
@@ -102,6 +109,11 @@ func (p *Plugin) Services() map[string]any {
 	return map[string]any{
 		"org": p.service,
 	}
+}
+
+// Hooks returns the HookService implemented by the org plugin.
+func (p *Plugin) Hooks() plugin.HookService {
+	return p.hookService
 }
 
 // Routes returns nil for the org plugin. Routes are currently registered via

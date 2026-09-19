@@ -12,6 +12,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	gormadmin "github.com/better-go-auth/goauth/src/plugins/admin/repository/gorm"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"gorm.io/gorm"
 )
 
@@ -23,10 +24,11 @@ type Plugin struct {
 	config       config1.AdminConfig
 	migrator     migration.IMigrator
 	service      adminsvc.IAdminService
+	hookService  *adminsvc.AdminHookService
 	sessionConf  config.SessionConfig
 	basePath     string
 	handler      *humaadmin.AdminHandler
-	authenticate plugins.AuthenticateFunc
+	authenticate authenticator.AuthenticateFunc
 }
 
 // Option configures the admin Plugin.
@@ -84,7 +86,7 @@ func New(repos repository.AdminRepositories, opts ...Option) *Plugin {
 
 // NewWithGorm creates a new Admin plugin directly backed by GORM.
 func NewWithGorm(db *gorm.DB, opts ...Option) *Plugin {
-	repos := gormadmin.NewAdminRepos(db)
+	repos := gormadmin.NewAdminGormRepos(db)
 	return New(repos, opts...)
 }
 
@@ -104,8 +106,14 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		p.config,
 	)
 
+	p.hookService = adminsvc.NewAdminHookService(p.adminRepos.AdminRepo)
+
 	if ictx != nil {
 		p.authenticate = ictx.Authenticate
+		if ictx.Hooks != nil {
+			ictx.Hooks.Register(p.hookService)
+			p.service.SetHooks(ictx.Hooks)
+		}
 	}
 
 	if ictx != nil && ictx.Api != nil {
@@ -123,6 +131,11 @@ func (p *Plugin) Services() map[string]any {
 	return map[string]interface{}{
 		"admin": p.service,
 	}
+}
+
+// Hooks returns the HookService implemented by the admin plugin.
+func (p *Plugin) Hooks() plugins.HookService {
+	return p.hookService
 }
 
 func (p *Plugin) Routes() []plugins.RouteDescriptor {

@@ -4,9 +4,9 @@ package orgsvc
 import (
 	"context"
 
+	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
-	coremodels "github.com/better-go-auth/goauth/src/models"
 )
 
 // IOrgService defines the business-logic surface for the org plugin.

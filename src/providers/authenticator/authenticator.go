@@ -1,4 +1,4 @@
-package plugins
+package authenticator
 
 import (
 	"context"
@@ -17,13 +17,36 @@ import (
 // AuthenticateFunc authenticates an incoming request and returns the active SessionResponse.
 type AuthenticateFunc func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error)
 
+// SessionLookupRepo defines the data access methods required by Authenticator for fallback lookups.
+type SessionLookupRepo interface {
+	GetSessionByToken(ctx context.Context, token string) (*models.Session, error)
+	GetUserByID(ctx context.Context, id string) (*models.User, error)
+}
+
+// gormSessionLookup wraps a *gorm.DB to satisfy SessionLookupRepo for backward compatibility.
+type gormSessionLookup struct {
+	db *gorm.DB
+}
+
+func (g *gormSessionLookup) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
+	var sess models.Session
+	err := g.db.WithContext(ctx).Where("session_id = ? OR hashed_token = ?", token, token).First(&sess).Error
+	return &sess, err
+}
+
+func (g *gormSessionLookup) GetUserByID(ctx context.Context, id string) (*models.User, error) {
+	var user models.User
+	err := g.db.WithContext(ctx).Where("id = ?", id).First(&user).Error
+	return &user, err
+}
+
 // NewDefaultAuthenticator returns an AuthenticateFunc provided by the core to plugins.
 // It handles:
 // 1. Context claims (when Huma middleware has already authenticated the request)
 // 2. Token extraction from Bearer Authorization header or session cookies
 // 3. JWT verification against the session access secret
-// 4. Database session and user lookup fallback
-func NewDefaultAuthenticator(accessSecret string, db *gorm.DB) AuthenticateFunc {
+// 4. Database session and user lookup fallback via SessionLookupRepo
+func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) AuthenticateFunc {
 	return func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
 		// 1. Check if claims already exist in ctx (set by middleware)
 		if v, ok := ctx.Value(consts.CtxClaims.Str()).(crypto.CustomClaims); ok && v.UserId != "" {
@@ -38,6 +61,7 @@ func NewDefaultAuthenticator(accessSecret string, db *gorm.DB) AuthenticateFunc 
 		if strings.HasPrefix(strings.ToLower(token), "bearer ") {
 			token = strings.TrimSpace(token[7:])
 		}
+		// if the authorization token is empty, try to extract from cookie
 		if token == "" && auth.Cookie != "" {
 			parts := strings.Split(auth.Cookie, ";")
 			for _, part := range parts {
@@ -62,10 +86,9 @@ func NewDefaultAuthenticator(accessSecret string, db *gorm.DB) AuthenticateFunc 
 		}
 
 		// 4. Fallback: lookup session in database by token (for opaque or database sessions)
-		if db != nil {
-			var sess models.Session
-			err := db.WithContext(ctx).Where("session_id = ? OR hashed_token = ?", token, token).First(&sess).Error
-			if err == nil && sess.UserID != "" {
+		if lookup != nil {
+			sess, err := lookup.GetSessionByToken(ctx, token)
+			if err == nil && sess != nil && sess.UserID != "" {
 				if sess.ExpiresAt.Before(time.Now().UTC()) {
 					return nil, autherr.ErrUnauthorized
 				}
@@ -76,8 +99,8 @@ func NewDefaultAuthenticator(accessSecret string, db *gorm.DB) AuthenticateFunc 
 					return nil, autherr.ErrUnauthorized
 				}
 
-				var user models.User
-				if err := db.WithContext(ctx).Where("id = ?", sess.UserID).First(&user).Error; err == nil {
+				user, err := lookup.GetUserByID(ctx, sess.UserID)
+				if err == nil && user != nil {
 					var email string
 					if user.Email != nil {
 						email = *user.Email
@@ -111,11 +134,46 @@ func NewDefaultAuthenticator(accessSecret string, db *gorm.DB) AuthenticateFunc 
 	}
 }
 
+// NewDefaultAuthenticatorWithDB is a backward-compatible wrapper that takes a *gorm.DB.
+func NewDefaultAuthenticatorWithDB(accessSecret string, db *gorm.DB) AuthenticateFunc {
+	if db == nil {
+		return NewDefaultAuthenticator(accessSecret, nil)
+	}
+	return NewDefaultAuthenticator(accessSecret, &gormSessionLookup{db: db})
+}
+
+// SessionFromContext extracts the authenticated SessionResponse from context if claims were set by middleware.
+func SessionFromContext(ctx context.Context) (*dtos.SessionResponse, bool) {
+	if v, ok := ctx.Value(consts.CtxClaims.Str()).(crypto.CustomClaims); ok && v.UserId != "" {
+		sess, err := sessionResponseFromClaims(&v, "")
+		return sess, err == nil
+	}
+	if vp, ok := ctx.Value(consts.CtxClaims.Str()).(*crypto.CustomClaims); ok && vp != nil && vp.UserId != "" {
+		sess, err := sessionResponseFromClaims(vp, "")
+		return sess, err == nil
+	}
+	return nil, false
+}
+
+// UserFromContext extracts the authenticated UserResponse from context if present.
+func UserFromContext(ctx context.Context) (*dtos.UserResponse, bool) {
+	sess, ok := SessionFromContext(ctx)
+	if !ok || sess == nil {
+		return nil, false
+	}
+	return sess.User, true
+}
+
 func sessionResponseFromClaims(claims *crypto.CustomClaims, token string) (*dtos.SessionResponse, error) {
 	var activeOrgID *string
 	var activeOrgRole *string
-	if claims.CompanyId != "" {
-		activeOrgID = &claims.CompanyId
+
+	orgID := claims.OrgId
+	if orgID == "" {
+		orgID = claims.CompanyId // Fallback for deprecated CompanyId
+	}
+	if orgID != "" {
+		activeOrgID = &orgID
 	}
 	if claims.OrgRole != "" {
 		activeOrgRole = &claims.OrgRole
@@ -134,3 +192,4 @@ func sessionResponseFromClaims(claims *crypto.CustomClaims, token string) (*dtos
 		},
 	}, nil
 }
+

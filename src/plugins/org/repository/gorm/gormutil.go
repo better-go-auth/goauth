@@ -3,21 +3,15 @@ package gormorg
 import (
 	"context"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
 	"github.com/better-go-auth/goauth/src/plugins/org/repository/gorm/gorm_migrator"
 	"gorm.io/gorm"
 )
 
-type ContextKey string
-
-const TxKey ContextKey = "gorm_tx"
-
 // getDB retrieves the active GORM transaction DB from context, or falls back to db with context.
 func getDB(ctx context.Context, fallback *gorm.DB) *gorm.DB {
-	if tx, ok := ctx.Value(TxKey).(*gorm.DB); ok {
-		return tx.WithContext(ctx)
-	}
-	return fallback.WithContext(ctx)
+	return gormutil.GetDB(ctx, fallback)
 }
 
 //TODO: refactor this and make it return the interfaces not the struct

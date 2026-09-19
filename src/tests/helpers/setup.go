@@ -53,6 +53,7 @@ const (
 )
 
 type TestEnv struct {
+	Options bettergoauth.GoAuthOptions
 	DB               *gorm.DB
 	SecondaryStorage db.KeyValServ
 	Auth             *bettergoauth.GoAuth
@@ -254,6 +255,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	orgService := orgPlugin.Service()
 
 	env := &TestEnv{
+		Options:          auth.Options,
 		DB:               gormDB,
 		SecondaryStorage: secStorage,
 		Auth:             auth,
@@ -263,13 +265,13 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		Server:           server,
 		BaseURL:          server.URL,
 		Teardown:         fullTeardown,
-
+		//handler
 		AuthHandler:    authHandler,
 		ProfileHandler: profileHandler,
 		SessionHandler: sessionHandler,
 		AdminHandler:   adminHandler,
 		OrgHandler:     orgHandler,
-
+		//services
 		AuthService:    authSvc,
 		ProfileService: profileServ,
 		SessionService: sSvc,

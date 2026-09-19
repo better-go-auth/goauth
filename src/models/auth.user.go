@@ -47,8 +47,8 @@ type UserDto struct {
 	Timezone    *string    `json:"timezone,omitempty"                       bun:"timezone"`
 	//====================  Plugin  fields ===========================|
 	Username string `json:"username,omitempty"`
-	//company related
-	ActiveOrgId *string `json:"company_id" gorm:"index:idx_users_lookup,priority:1"`
+	//org related
+	ActiveOrgId *string `json:"org_id,omitempty" gorm:"index:idx_users_lookup,priority:1"`
 }
 
 func (u *UserDto) SetOnCreate(key string) {

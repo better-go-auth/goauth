@@ -26,8 +26,8 @@ func (opts *GoAuthOptions) SetDefaults() {
 
 // Validate verifies that required options are present and valid.
 func (opts *GoAuthOptions) Validate() error {
-	if opts.Conn == nil {
-		return errors.New("goauth: database connection (Conn) is required")
+	if opts.Conn == nil && opts.Repositories == nil {
+		return errors.New("goauth: either database connection (Conn) or Repositories must be provided")
 	}
 	if opts.SessionConfig.AccessSecret == "" {
 		return errors.New("goauth: SessionConfig.AccessSecret is required")

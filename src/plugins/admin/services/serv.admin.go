@@ -13,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/birukbelay/gocmn/src/provider/db"
 
 	// corerepo "github.com/better-go-auth/goauth/core/repository/interfaces"
@@ -36,9 +37,15 @@ type AdminService struct {
 	adminConfig      adminmodels.AdminConfig
 	secondaryStorage db.KeyValServ
 	sessionServ      serv_interfaces.ISessionService
+	hooks            plugins.HookRegistry
 }
 
 var _ IAdminService = (*AdminService)(nil)
+
+// SetHooks configures the lifecycle hooks for the admin service.
+func (s *AdminService) SetHooks(hooks plugins.HookRegistry) {
+	s.hooks = hooks
+}
 
 // NewAdminService creates a new AdminService.
 func NewAdminService(
@@ -191,6 +198,9 @@ func (s *AdminService) RemoveUser(ctx context.Context, input admindtos.AdminRemo
 	if err := s.adminRepo.RemoveUser(ctx, input.UserID); err != nil {
 		return fmt.Errorf("adminsvc: remove user: %w", err)
 	}
+	if s.hooks != nil {
+		_ = s.hooks.TriggerUserDeleted(ctx, input.UserID)
+	}
 	return nil
 }
 
@@ -209,6 +219,10 @@ func (s *AdminService) BanUser(ctx context.Context, input admindtos.AdminBanUser
 	user, err := s.adminRepo.BanUser(ctx, input.UserID, input.BanReason, expiresAt)
 	if err != nil {
 		return nil, err
+	}
+
+	if s.hooks != nil {
+		_ = s.hooks.TriggerUserBanned(ctx, input.UserID, input.BanReason)
 	}
 
 	// Terminate all sessions for the banned user

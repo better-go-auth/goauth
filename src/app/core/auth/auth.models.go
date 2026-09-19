@@ -40,5 +40,6 @@ type PwdResetInput struct {
 }
 
 type ChangeActiveCompanyInput struct {
-	CompanyID string `json:"company_id" validate:"required"`
+	OrgID     string `json:"org_id,omitempty"`
+	CompanyID string `json:"company_id,omitempty"` // Deprecated: use OrgID instead
 }

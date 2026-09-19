@@ -5,10 +5,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
+	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
@@ -18,16 +21,45 @@ import (
 )
 
 type Service struct {
-	ProvServ *providers.IProviderS
-	sConf    config.SessionConfig
-	sStore   db.KeyValServ
+	SessionRepo repo_interfaces.ISessionRepo
+	ProvServ    *providers.IProviderS
+	sConf       config.SessionConfig
+	sStore      db.KeyValServ
+	Hooks       plugins.HookRegistry
 }
 
-func NewService(conf config.SessionConfig, genServ *providers.IProviderS) *Service {
+func NewService(conf config.SessionConfig, genServ *providers.IProviderS, hooks ...plugins.HookRegistry) *Service {
+	var h plugins.HookRegistry
+	if len(hooks) > 0 {
+		h = hooks[0]
+	}
+	var repo repo_interfaces.ISessionRepo
+	var sStore db.KeyValServ
+	if genServ != nil {
+		sStore = genServ.SecondaryStorage
+		if genServ.GormConn != nil {
+			repo = gormauth.NewSessionRepo(genServ.GormConn)
+		}
+	}
 	return &Service{
-		ProvServ: genServ,
-		sConf:    conf,
-		sStore:   genServ.SecondaryStorage,
+		SessionRepo: repo,
+		ProvServ:    genServ,
+		sConf:       conf,
+		sStore:      sStore,
+		Hooks:       h,
+	}
+}
+
+func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISessionRepo, store db.KeyValServ, hooks ...plugins.HookRegistry) *Service {
+	var h plugins.HookRegistry
+	if len(hooks) > 0 {
+		h = hooks[0]
+	}
+	return &Service{
+		SessionRepo: repo,
+		sConf:       conf,
+		sStore:      store,
+		Hooks:       h,
 	}
 }
 
@@ -37,7 +69,9 @@ func (aus Service) GenerateTokens(user *crypto.CustomClaims) (*models.AuthTokens
 	claims := &crypto.CustomClaims{
 		Role:      user.Role,
 		UserId:    user.UserId,
+		OrgId:     user.OrgId,
 		CompanyId: user.CompanyId,
+		OrgRole:   user.OrgRole,
 		SessionId: user.SessionId,
 	}
 	accessToken, err := crypto.SignAccessToken(aus.sConf.JwtVar.AccessSecret, aus.sConf.JwtVar.AccessExpireMin, claims)
@@ -59,6 +93,8 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	//	3. Generate auth Token of password
 	claims := crypto.CustomClaims{Role: role, UserId: userId, SessionId: sessionId}
 	if opt != nil && opt.ActiveOrgID != nil {
+		claims.OrgId = *opt.ActiveOrgID
+		// depricated: used for backward compatability
 		claims.CompanyId = *opt.ActiveOrgID
 	}
 	if opt != nil && opt.OrgRole != nil {
@@ -73,21 +109,11 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	if err != nil {
 		return nil, err
 	}
-	tx := aus.ProvServ.GormConn.Begin()
-	defer func() {
-		if r := recover(); r != nil {
-			tx.Rollback()
-			eror = fmt.Errorf("panic occurred: %v", r)
-			tkn = nil
-		}
-	}()
-	if err := tx.Error; err != nil {
-		return nil, err
-	}
 	if opt != nil && opt.ClearSession {
-		_, err = generic.DbDeleteByFilter[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserID: userId}, &generic.Opt{Debug: false})
-		if err != nil {
-			// return nil, err
+		if aus.SessionRepo != nil {
+			_ = aus.SessionRepo.DeleteSessionsByUserID(ctx, userId)
+		} else if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
+			_, _ = generic.DbDeleteByFilter[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserID: userId}, &generic.Opt{Debug: false})
 		}
 	}
 
@@ -109,19 +135,47 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		session.DeviceToken = opt.DeviceToken
 	}
 
-	// 4.Create a session or update previous's hashed_token
-	_, err = generic.DbUpsertOneListedFields[models.Session](tx, ctx, session,
-		[]clause.Column{{Name: "session_id"}},
-		[]string{"hashed_token", "device_token", "active_org_id", "expires_at"}, &generic.Opt{Debug: false})
-	if err != nil {
-		tx.Rollback()
-		return nil, err
+	if aus.Hooks != nil {
+		_ = aus.Hooks.TriggerBeforeSessionCreate(ctx, &session, &claims)
 	}
-	commit := tx.Commit()
-	if commit.Error != nil {
-		return nil, commit.Error
+
+	if aus.SessionRepo != nil {
+		_, err = aus.SessionRepo.UpsertSession(ctx, &session)
+		if err != nil {
+			return nil, err
+		}
+		return tokens, nil
 	}
-	return tokens, nil
+
+	if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
+		tx := aus.ProvServ.GormConn.Begin()
+		defer func() {
+			if r := recover(); r != nil {
+				tx.Rollback()
+				eror = fmt.Errorf("panic occurred: %v", r)
+				tkn = nil
+			}
+		}()
+		if err := tx.Error; err != nil {
+			return nil, err
+		}
+
+		// 4.Create a session or update previous's hashed_token
+		_, err = generic.DbUpsertOneListedFields[models.Session](tx, ctx, session,
+			[]clause.Column{{Name: "session_id"}},
+			[]string{"hashed_token", "device_token", "active_org_id", "expires_at"}, &generic.Opt{Debug: false})
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		commit := tx.Commit()
+		if commit.Error != nil {
+			return nil, commit.Error
+		}
+		return tokens, nil
+	}
+
+	return nil, fmt.Errorf("session: no database or session repository configured")
 }
 
 func (aus Service) BlacklistSession(ctx context.Context, sessionId string) error {
@@ -137,20 +191,48 @@ func (aus Service) BlacklistSession(ctx context.Context, sessionId string) error
 }
 
 func (aus Service) DeleteSession(ctx context.Context, sessionId string) error {
-	_, err := generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{SessionId: sessionId}, nil)
-	if err != nil {
-		return err
+	if aus.SessionRepo != nil {
+		if err := aus.SessionRepo.DeleteSession(ctx, sessionId); err != nil {
+			return err
+		}
+	} else if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
+		_, err := generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{SessionId: sessionId}, nil)
+		if err != nil {
+			return err
+		}
+	}
+	if aus.Hooks != nil {
+		_ = aus.Hooks.TriggerSessionRevoked(ctx, sessionId)
 	}
 	return aus.BlacklistSession(ctx, sessionId)
 }
 
 func (aus Service) DeleteAllUserSessions(ctx context.Context, userId string) error {
-	sessions, err := generic.DbFetchManyWithOffset[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, dtos.PaginationInput{Limit: 10000}, nil)
-	if err == nil {
-		for _, s := range sessions.Body {
-			_ = aus.BlacklistSession(ctx, s.SessionId)
+	if aus.SessionRepo != nil {
+		sessions, err := aus.SessionRepo.ListSessionsByUserID(ctx, userId)
+		if err == nil {
+			for _, s := range sessions {
+				_ = aus.BlacklistSession(ctx, s.SessionId)
+				if aus.Hooks != nil {
+					_ = aus.Hooks.TriggerSessionRevoked(ctx, s.SessionId)
+				}
+			}
 		}
+		return aus.SessionRepo.DeleteSessionsByUserID(ctx, userId)
 	}
-	_, err = generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, nil)
-	return err
+	// TODO: Remove
+	if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
+		sessions, err := generic.DbFetchManyWithOffset[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, dtos.PaginationInput{Limit: 10000}, nil)
+		if err == nil {
+			for _, s := range sessions.Body {
+				_ = aus.BlacklistSession(ctx, s.SessionId)
+				if aus.Hooks != nil {
+					_ = aus.Hooks.TriggerSessionRevoked(ctx, s.SessionId)
+				}
+			}
+		}
+		_, err = generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, nil)
+		return err
+	}
+	return nil
 }

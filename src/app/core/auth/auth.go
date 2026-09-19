@@ -5,6 +5,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers"
 )
 
@@ -19,9 +20,14 @@ type Service struct {
 	SesSvc      serv_interfaces.ISessionService
 	TxMgr       interfaces.ITransactionManager
 	accountRepo repo_interfaces.IOAuthAccountRepo
+	Hooks       plugins.HookRegistry
 }
 
-func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, accountRepo repo_interfaces.IOAuthAccountRepo) *Service {
+func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, accountRepo repo_interfaces.IOAuthAccountRepo, hooks ...plugins.HookRegistry) *Service {
+	var h plugins.HookRegistry
+	if len(hooks) > 0 {
+		h = hooks[0]
+	}
 	return &Service{
 		Config:      conf,
 		Provider:    provSvc,
@@ -29,6 +35,7 @@ func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, v
 		SesSvc:      sSvc,
 		TxMgr:       provSvc.TxManager,
 		accountRepo: accountRepo,
+		Hooks:       h,
 	}
 }
 

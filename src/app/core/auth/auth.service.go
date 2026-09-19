@@ -73,6 +73,12 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 			return err
 		}
 
+		if aus.Hooks != nil {
+			if err := aus.Hooks.TriggerAfterUserCreate(txCtx, &createdUser); err != nil {
+				return fmt.Errorf("authsvc: after user create hook: %w", err)
+			}
+		}
+
 		return nil
 	})
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/plugins"
 
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
@@ -32,12 +33,29 @@ type OrgService struct {
 	// baseURL     string
 	// basePath    string
 	txManager interfaces.ITransactionManager
+	hooks     plugins.HookRegistry
 
 	Cfg    config.AuthConfig
 	Config orgconfig.OrgConfig
 }
 
 var _ IOrgService = (*OrgService)(nil)
+
+// SetHooks configures lifecycle hooks on the org service.
+func (s *OrgService) SetHooks(hooks plugins.HookRegistry) {
+	s.hooks = hooks
+}
+
+// HandleUserDeleted cleans up a deleted user's memberships across organizations.
+func (s *OrgService) HandleUserDeleted(ctx context.Context, userID string) error {
+	orgs, err := s.orgRepo.ListOrgsByUserID(ctx, userID)
+	if err == nil {
+		for _, o := range orgs {
+			_ = s.memberRepo.DeleteMemberByOrgAndUser(ctx, o.ID, userID)
+		}
+	}
+	return nil
+}
 
 // New creates a new OrgService.
 func New(
@@ -178,5 +196,8 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 		OrgRole:     new(member.Role.String()),
 		ActiveOrgID: orgID,
 	})
+	if err == nil && s.hooks != nil && orgID != nil {
+		_ = s.hooks.TriggerActiveOrgChanged(ctx, userId, *orgID)
+	}
 	return resp, err
 }

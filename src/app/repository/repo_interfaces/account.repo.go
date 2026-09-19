@@ -54,8 +54,13 @@ type IUserRepo interface {
 type IAuthRepos interface {
 	IOAuthAccountRepo
 	IUserRepo
+	ISessionRepo
+	IVerificationRepo
 }
+
 type AuthRepos struct {
-    IUserRepo
-    IOAuthAccountRepo
+	IUserRepo
+	IOAuthAccountRepo
+	ISessionRepo
+	IVerificationRepo
 }

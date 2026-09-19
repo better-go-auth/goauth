@@ -8,6 +8,7 @@ import (
 	"time"
 
 	autherr "github.com/better-go-auth/goauth/src/common/error"
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/plugins/admin/dtos"
@@ -29,7 +30,7 @@ func NewAdminRepo(db *gorm.DB) repository.IAdminRepo {
 
 // ListUsers searches, filters, and paginates users according to admin criteria.
 func (r *AdminRepo) ListUsers(ctx context.Context, input dtos.AdminListUsersInput) ([]models.User, int64, error) {
-	db := getDB(ctx, r.db).Model(&models.User{})
+	db := gormutil.GetDB(ctx, r.db).Model(&models.User{})
 
 	// Global / Field Search
 	if input.SearchValue != nil && *input.SearchValue != "" {
