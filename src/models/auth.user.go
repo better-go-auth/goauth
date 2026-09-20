@@ -4,7 +4,6 @@ import (
 	"time"
 
 	Imdl "github.com/birukbelay/gocmn/src/dtos"
-	"github.com/birukbelay/gocmn/src/generic"
 
 	"github.com/better-go-auth/goauth/src/models/enums"
 )
@@ -25,19 +24,19 @@ type UserDto struct {
 	Email         *string    `json:"email,omitempty" format:"email"  gorm:"uniqueIndex" `
 	EmailVerified bool       `json:"emailVerified"  gorm:"default:false"                  bun:"email_verified,default:false"`
 	Password      string     `json:"-" `
-	Role          enums.Role `gorm:"default:UNVERIFIED_PERSON" json:"role" ` //this is the company-level role,
+	Role          enums.Role `gorm:"default:UNVERIFIED_PERSON" json:"role" ` // this is the company-level role,
 
-	Active        *bool               `json:"active,omitempty"  gorm:"index:idx_users_lookup,priority:4"` //can the user login
+	Active        *bool               `json:"active,omitempty"  gorm:"index:idx_users_lookup,priority:4"` // can the user login
 	AccountStatus enums.AccountStatus `json:"-" `
-	//admin related fields
+	// admin related fields
 	Banned     bool       `json:"banned"    gorm:"default:false"               bun:"banned,default:false"`
 	BanReason  *string    `json:"banReason" gorm:"type:text"                   bun:"ban_reason"`
 	BanExpires *time.Time `json:"banExpires"                               bun:"ban_expires"`
 
-	//meta
+	// meta
 	LastLoginIP *string    `json:"lastLoginIP,omitempty"    gorm:"size:45"             bun:"last_login_ip"`
 	LastLoginAt *time.Time `json:"lastLoginAt,omitempty" `
-	//Extra better auth fields
+	// Extra better auth fields
 	DisplayName *string    `json:"displayName,omitempty"                   bun:"display_name"`
 	Image       string     `json:"image,omitempty" `
 	Bio         *string    `json:"bio,omitempty"                          bun:"bio"`
@@ -47,7 +46,7 @@ type UserDto struct {
 	Timezone    *string    `json:"timezone,omitempty"                       bun:"timezone"`
 	//====================  Plugin  fields ===========================|
 	Username string `json:"username,omitempty"`
-	//org related
+	// org related
 	ActiveOrgId *string `json:"org_id,omitempty" gorm:"index:idx_users_lookup,priority:1"`
 }
 
@@ -89,15 +88,15 @@ type UserQuery struct {
 	Sort                 string   `query:"_sort" enum:"first_name,last_name,email,avatar,company_id,account_status,created_at,updated_at"`
 }
 
-func (q UserQuery) GetFilter() (f UserFilter, pagi Imdl.PaginationInput, opt *generic.Opt) {
-	q.PaginationInput.SortBy = q.Sort
-	q.Select = q.SelectedFields
-	q.PaginationInput.Query = q.Query
-	q.PaginationInput.Like = q.Like
-	q.PaginationInput.TxtSearchCols = []string{"first_name", "last_name"}
-	q.PaginationInput.PrefixColLike = "first_name"
-	return q.UserFilter, q.PaginationInput, &generic.Opt{Preloads: []string{"CompanyRole"}}
-}
+// func (q UserQuery) GetFilter() (f UserFilter, pagi Imdl.PaginationInput, opt *generic.Opt) {
+// 	q.PaginationInput.SortBy = q.Sort
+// 	q.Select = q.SelectedFields
+// 	q.PaginationInput.Query = q.Query
+// 	q.PaginationInput.Like = q.Like
+// 	q.PaginationInput.TxtSearchCols = []string{"first_name", "last_name"}
+// 	q.PaginationInput.PrefixColLike = "first_name"
+// 	return q.UserFilter, q.PaginationInput, &generic.Opt{Preloads: []string{"CompanyRole"}}
+// }
 
 func (User) TableName() string { return "auth_users" }
 

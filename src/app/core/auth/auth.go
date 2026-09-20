@@ -14,27 +14,39 @@ type GinAuthHandler struct {
 	CmnServ       *providers.IProviderS
 }
 type Service struct {
-	Config      *config.SessionConfig
-	Provider    *providers.IProviderS
-	VSvc        serv_interfaces.IVerificationService
-	SesSvc      serv_interfaces.ISessionService
-	TxMgr       interfaces.ITransactionManager
+	Config   *config.SessionConfig
+	Provider *providers.IProviderS
+	// services
+	VSvc   serv_interfaces.IVerificationService
+	SesSvc serv_interfaces.ISessionService
+	// repos
+	userRepo    repo_interfaces.IUserRepo
 	accountRepo repo_interfaces.IOAuthAccountRepo
-	Hooks       plugins.HookRegistry
+	sessionRepo repo_interfaces.ISessionRepo
+	// hooks & txn
+	TxMgr interfaces.ITransactionManager
+	Hooks plugins.HookRegistry
 }
 
-func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, accountRepo repo_interfaces.IOAuthAccountRepo, hooks ...plugins.HookRegistry) *Service {
+func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, authRepos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) *Service {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]
 	}
+	var txMgr interfaces.ITransactionManager
+	if provSvc != nil {
+		txMgr = provSvc.TxManager
+	}
+
 	return &Service{
 		Config:      conf,
 		Provider:    provSvc,
 		VSvc:        vSvc,
 		SesSvc:      sSvc,
-		TxMgr:       provSvc.TxManager,
-		accountRepo: accountRepo,
+		TxMgr:       txMgr,
+		userRepo:    authRepos,
+		accountRepo: authRepos,
+		sessionRepo: authRepos,
 		Hooks:       h,
 	}
 }

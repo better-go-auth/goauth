@@ -17,8 +17,8 @@ import (
 	coreauth "github.com/better-go-auth/goauth/src/app/core/auth"
 	"github.com/better-go-auth/goauth/src/app/core/profile"
 	"github.com/better-go-auth/goauth/src/app/core/session"
-	gormauthrepo "github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
+	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
@@ -26,13 +26,12 @@ import (
 	humaorg "github.com/better-go-auth/goauth/src/plugins/org/adapters/huma"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
-	plugin "github.com/better-go-auth/goauth/src/plugins"
-	"github.com/better-go-auth/goauth/src/providers/memory"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/birukbelay/gocmn/src/config"
 	cmnConf "github.com/birukbelay/gocmn/src/config"
 	"github.com/birukbelay/gocmn/src/consts"
 	"github.com/birukbelay/gocmn/src/crypto"
-	"github.com/birukbelay/gocmn/src/provider/db"
 	gocmn_redis "github.com/birukbelay/gocmn/src/provider/db/redis"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -53,9 +52,9 @@ const (
 )
 
 type TestEnv struct {
-	Options bettergoauth.GoAuthOptions
+	Options          bettergoauth.GoAuthOptions
 	DB               *gorm.DB
-	SecondaryStorage db.KeyValServ
+	SecondaryStorage sec_storage.SecondaryStorage
 	Auth             *bettergoauth.GoAuth
 	HumaAPI          huma.API
 	Mux              *http.ServeMux
@@ -84,7 +83,7 @@ var containersToCleanup []testcontainers.Container
 func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	ctx := context.Background()
 	var gormDB *gorm.DB
-	var secStorage db.KeyValServ
+	var secStorage sec_storage.SecondaryStorage
 	// var redisClient *gocmn_redis.RedisService
 	teardown := func() {}
 
@@ -241,9 +240,10 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	}
 
 	sConf := loc_conf.SessionConfig{JwtVar: jwt}
-	accountRepo := gormauthrepo.NewAccountRepo(gormDB)
-	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.IAuthServices, auth.IAuthServices, accountRepo)
-	profileServ := profile.NewProfileServH(auth.Provider, auth.IAuthServices, auth.IAuthServices, accountRepo)
+
+	// gormauth.NewAuthRepos(opts.Conn)
+	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)
+	profileServ := profile.NewProfileServH(auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)
 	// Handlers
 	sSvc := session.NewService(sConf, auth.Provider)
 	authHandler := coreauth.NewAuthHandler(auth.Provider, authSvc)
@@ -265,13 +265,13 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		Server:           server,
 		BaseURL:          server.URL,
 		Teardown:         fullTeardown,
-		//handler
+		// handler
 		AuthHandler:    authHandler,
 		ProfileHandler: profileHandler,
 		SessionHandler: sessionHandler,
 		AdminHandler:   adminHandler,
 		OrgHandler:     orgHandler,
-		//services
+		// services
 		AuthService:    authSvc,
 		ProfileService: profileServ,
 		SessionService: sSvc,

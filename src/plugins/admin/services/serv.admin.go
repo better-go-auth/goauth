@@ -14,7 +14,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
-	"github.com/birukbelay/gocmn/src/provider/db"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 
 	// corerepo "github.com/better-go-auth/goauth/core/repository/interfaces"
 	// authsvc "github.com/better-go-auth/goauth/core/services/auth"
@@ -35,7 +35,7 @@ type AdminService struct {
 	// sessionRepo core_interfaces.S
 	authConfig       config.AuthConfig
 	adminConfig      adminmodels.AdminConfig
-	secondaryStorage db.KeyValServ
+	secondaryStorage sec_storage.SecondaryStorage
 	sessionServ      serv_interfaces.ISessionService
 	hooks            plugins.HookRegistry
 }

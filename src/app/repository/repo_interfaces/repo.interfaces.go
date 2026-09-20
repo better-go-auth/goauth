@@ -7,6 +7,18 @@ import (
 	"github.com/birukbelay/gocmn/src/dtos"
 )
 
+// IVerificationRepo defines the repository interface for verification codes and tokens.
+type IVerificationRepo interface {
+	// UpsertVerification inserts or updates a verification record matching the identifier.
+	UpsertVerification(ctx context.Context, verification *models.Verification) (*models.Verification, error)
+	// GetVerification fetches a verification record by identifier and purpose.
+	GetVerification(ctx context.Context, identifier string) (*models.Verification, error)
+	// DeleteVerification deletes a verification record by identifier and purpose.
+	DeleteVerification(ctx context.Context, identifier string) error
+	// DeleteExpired removes all expired verification records.
+	DeleteExpired(ctx context.Context) error
+}
+
 // IOAuthAccountRepo defines the repository interface for OAuth Account persistence.
 type IOAuthAccountRepo interface {
 	// CreateAccount inserts a new account.

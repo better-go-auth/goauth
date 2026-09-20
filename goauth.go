@@ -13,14 +13,14 @@ import (
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
-	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	"github.com/better-go-auth/goauth/src/models/migration"
+	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"gorm.io/gorm"
 
 	"github.com/better-go-auth/goauth/src/providers"
-	"github.com/birukbelay/gocmn/src/provider/db"
 	"github.com/birukbelay/gocmn/src/server/middleware"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -34,7 +34,8 @@ type GoAuth struct {
 	RevocationStore    middleware.RevocationStore
 	TransactionManager interfaces.ITransactionManager
 
-	Provider *providers.IProviderS
+	Provider     *providers.IProviderS
+	Repositories repo_interfaces.IAuthRepos
 }
 type GoAuthOptions struct {
 	config.AuthConfig
@@ -42,7 +43,7 @@ type GoAuthOptions struct {
 	Repositories     repo_interfaces.IAuthRepos
 	Migrator         migration.IMigrator
 	TxManager        interfaces.ITransactionManager
-	SecondaryStorage db.KeyValServ
+	SecondaryStorage sec_storage.SecondaryStorage
 	Plugins          []plugin.Plugin
 }
 
@@ -179,5 +180,6 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		RevocationStore:    revocationStore,
 		TransactionManager: txManager,
 		Provider:           providerService,
+		Repositories:       repos,
 	}, nil
 }

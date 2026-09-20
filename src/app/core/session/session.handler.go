@@ -7,7 +7,6 @@ import (
 	"github.com/birukbelay/gocmn/src/consts"
 	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
-	"github.com/birukbelay/gocmn/src/generic"
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/better-go-auth/goauth/src/models"
@@ -19,14 +18,19 @@ func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *dtos.Huma
 	if !ok {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
 	}
-	session, err := generic.DbGetOne[models.Session](uh.Service.ProvServ.GormConn, ctx, models.SessionFilter{UserId: v.UserId, SessionId: dto.ID}, nil)
-	if err != nil {
-		session, err = generic.DbGetOne[models.Session](uh.Service.ProvServ.GormConn, ctx, models.SessionFilter{UserId: v.UserId, ID: dto.ID}, nil)
+	if uh.Service.SessionRepo == nil {
+		return nil, huma.NewError(http.StatusInternalServerError, "Session repository not configured")
 	}
-	if err != nil {
-		return nil, huma.NewError(http.StatusNotFound, "Session NOt Found")
+
+	session, err := uh.Service.SessionRepo.GetSessionBySessionID(ctx, dto.ID)
+	if err != nil || session == nil {
+		session, err = uh.Service.SessionRepo.GetSessionByID(ctx, dto.ID)
 	}
-	err = uh.Service.DeleteSession(ctx, session.Body.SessionId)
+	if err != nil || session == nil || session.UserID != v.UserId {
+		return nil, huma.NewError(http.StatusNotFound, "Session Not Found")
+	}
+
+	err = uh.Service.DeleteSession(ctx, session.SessionId)
 	if err != nil {
 		return nil, huma.NewError(http.StatusInternalServerError, err.Error())
 	}
@@ -38,22 +42,19 @@ func (uh *HumaSessionHandler) GetMySession(ctx context.Context, q *models.Sessio
 	if !ok {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
 	}
-	resp, err := generic.DbFetchManyWithOffset[models.Session](uh.Service.ProvServ.GormConn, ctx, models.SessionFilter{UserId: v.UserId}, q.PaginationInput, &generic.Opt{Debug: false})
+	if uh.Service.SessionRepo == nil {
+		return nil, huma.NewError(http.StatusInternalServerError, "Session repository not configured")
+	}
+
+	sessions, total, err := uh.Service.SessionRepo.ListSessions(ctx, models.SessionFilter{UserId: v.UserId}, q.PaginationInput)
 	if err != nil {
 		return dtos.PHumaReturn(dtos.PResp[[]authDtos.SessionData]{}, err)
 	}
-	data := authDtos.SessionsToData(resp.Body)
+	data := authDtos.SessionsToData(sessions)
 	return dtos.PHumaReturn(dtos.PResp[[]authDtos.SessionData]{
 		Body:         data,
-		Status:       resp.Status,
-		RowsAffected: resp.RowsAffected,
-		Count:        resp.Count,
-		HasMore:      resp.HasMore,
-		HasPrev:      resp.HasPrev,
-		Code:         resp.Code,
-		Message:      resp.Message,
-		Error:        resp.Error,
-		// NextCursor:   resp.NextCursor,
-		// PrevCursor:   resp.PrevCursor,
+		Status:       http.StatusOK,
+		RowsAffected: int64(len(data)),
+		Count:        total,
 	}, nil)
 }

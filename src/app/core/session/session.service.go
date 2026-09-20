@@ -8,23 +8,19 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
-	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/birukbelay/gocmn/src/crypto"
-	"github.com/birukbelay/gocmn/src/dtos"
-	"github.com/birukbelay/gocmn/src/generic"
-	"github.com/birukbelay/gocmn/src/provider/db"
-	"gorm.io/gorm/clause"
 )
 
 type Service struct {
 	SessionRepo repo_interfaces.ISessionRepo
 	ProvServ    *providers.IProviderS
 	sConf       config.SessionConfig
-	sStore      db.KeyValServ
+	sStore      sec_storage.SecondaryStorage
 	Hooks       plugins.HookRegistry
 }
 
@@ -34,7 +30,7 @@ func NewService(conf config.SessionConfig, genServ *providers.IProviderS, hooks 
 		h = hooks[0]
 	}
 	var repo repo_interfaces.ISessionRepo
-	var sStore db.KeyValServ
+	var sStore sec_storage.SecondaryStorage
 	if genServ != nil {
 		sStore = genServ.SecondaryStorage
 		if genServ.GormConn != nil {
@@ -50,7 +46,7 @@ func NewService(conf config.SessionConfig, genServ *providers.IProviderS, hooks 
 	}
 }
 
-func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISessionRepo, store db.KeyValServ, hooks ...plugins.HookRegistry) *Service {
+func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISessionRepo, sStore sec_storage.SecondaryStorage, hooks ...plugins.HookRegistry) *Service {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]
@@ -58,7 +54,7 @@ func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISession
 	return &Service{
 		SessionRepo: repo,
 		sConf:       conf,
-		sStore:      store,
+		sStore:      sStore,
 		Hooks:       h,
 	}
 }
@@ -110,10 +106,9 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		return nil, err
 	}
 	if opt != nil && opt.ClearSession {
+		// TODO: make sure the repo
 		if aus.SessionRepo != nil {
 			_ = aus.SessionRepo.DeleteSessionsByUserID(ctx, userId)
-		} else if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
-			_, _ = generic.DbDeleteByFilter[models.Session](aus.ProvServ.GormConn, ctx, models.Session{UserID: userId}, &generic.Opt{Debug: false})
 		}
 	}
 
@@ -147,33 +142,33 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		return tokens, nil
 	}
 
-	if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
-		tx := aus.ProvServ.GormConn.Begin()
-		defer func() {
-			if r := recover(); r != nil {
-				tx.Rollback()
-				eror = fmt.Errorf("panic occurred: %v", r)
-				tkn = nil
-			}
-		}()
-		if err := tx.Error; err != nil {
-			return nil, err
-		}
+	// if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
+	// 	tx := aus.ProvServ.GormConn.Begin()
+	// 	defer func() {
+	// 		if r := recover(); r != nil {
+	// 			tx.Rollback()
+	// 			eror = fmt.Errorf("panic occurred: %v", r)
+	// 			tkn = nil
+	// 		}
+	// 	}()
+	// 	if err := tx.Error; err != nil {
+	// 		return nil, err
+	// 	}
 
-		// 4.Create a session or update previous's hashed_token
-		_, err = generic.DbUpsertOneListedFields[models.Session](tx, ctx, session,
-			[]clause.Column{{Name: "session_id"}},
-			[]string{"hashed_token", "device_token", "active_org_id", "expires_at"}, &generic.Opt{Debug: false})
-		if err != nil {
-			tx.Rollback()
-			return nil, err
-		}
-		commit := tx.Commit()
-		if commit.Error != nil {
-			return nil, commit.Error
-		}
-		return tokens, nil
-	}
+	// 	// 4.Create a session or update previous's hashed_token
+	// 	_, err = generic.DbUpsertOneListedFields[models.Session](tx, ctx, session,
+	// 		[]clause.Column{{Name: "session_id"}},
+	// 		[]string{"hashed_token", "device_token", "active_org_id", "expires_at"}, &generic.Opt{Debug: false})
+	// 	if err != nil {
+	// 		tx.Rollback()
+	// 		return nil, err
+	// 	}
+	// 	commit := tx.Commit()
+	// 	if commit.Error != nil {
+	// 		return nil, commit.Error
+	// 	}
+	// 	return tokens, nil
+	// }
 
 	return nil, fmt.Errorf("session: no database or session repository configured")
 }
@@ -195,12 +190,13 @@ func (aus Service) DeleteSession(ctx context.Context, sessionId string) error {
 		if err := aus.SessionRepo.DeleteSession(ctx, sessionId); err != nil {
 			return err
 		}
-	} else if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
-		_, err := generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{SessionId: sessionId}, nil)
-		if err != nil {
-			return err
-		}
 	}
+	// else if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
+	// 	_, err := generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{SessionId: sessionId}, nil)
+	// 	if err != nil {
+	// 		return err
+	// 	}
+	// }
 	if aus.Hooks != nil {
 		_ = aus.Hooks.TriggerSessionRevoked(ctx, sessionId)
 	}
@@ -221,18 +217,18 @@ func (aus Service) DeleteAllUserSessions(ctx context.Context, userId string) err
 		return aus.SessionRepo.DeleteSessionsByUserID(ctx, userId)
 	}
 	// TODO: Remove
-	if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
-		sessions, err := generic.DbFetchManyWithOffset[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, dtos.PaginationInput{Limit: 10000}, nil)
-		if err == nil {
-			for _, s := range sessions.Body {
-				_ = aus.BlacklistSession(ctx, s.SessionId)
-				if aus.Hooks != nil {
-					_ = aus.Hooks.TriggerSessionRevoked(ctx, s.SessionId)
-				}
-			}
-		}
-		_, err = generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, nil)
-		return err
-	}
+	// if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {
+	// 	sessions, err := generic.DbFetchManyWithOffset[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, dtos.PaginationInput{Limit: 10000}, nil)
+	// 	if err == nil {
+	// 		for _, s := range sessions.Body {
+	// 			_ = aus.BlacklistSession(ctx, s.SessionId)
+	// 			if aus.Hooks != nil {
+	// 				_ = aus.Hooks.TriggerSessionRevoked(ctx, s.SessionId)
+	// 			}
+	// 		}
+	// 	}
+	// 	_, err = generic.DbDeleteByFilter[models.Session](gormutil.GetDB(ctx, aus.ProvServ.GormConn), ctx, models.SessionFilter{UserId: userId}, nil)
+	// 	return err
+	// }
 	return nil
 }

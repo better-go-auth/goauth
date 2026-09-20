@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/birukbelay/gocmn/src/provider/db"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
 
 // entry holds a stored value and its optional expiry time.
@@ -25,7 +25,7 @@ type Store struct {
 	data map[string]entry
 }
 
-var _ db.KeyValServ = (*Store)(nil)
+var _ sec_storage.SecondaryStorage = (*Store)(nil)
 
 // New creates and returns a new in-memory Store.
 // It is safe for concurrent use by multiple goroutines.
@@ -36,7 +36,7 @@ func New() *Store {
 }
 
 // NewSecondaryStorage creates and returns a new Store satisfying db.KeyValServ.
-func NewSecondaryStorage() (db.KeyValServ, error) {
+func NewSecondaryStorage() (sec_storage.SecondaryStorage, error) {
 	return New(), nil
 }
 

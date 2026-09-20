@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/providers/memory"
-	"github.com/birukbelay/gocmn/src/provider/db"
+	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -111,7 +111,7 @@ func TestStore_MissingKeyReturnsNil(t *testing.T) {
 
 // TestStore_ImplementsKeyValServ verifies that memory.Store satisfies db.KeyValServ.
 func TestStore_ImplementsKeyValServ(t *testing.T) {
-	var _ db.KeyValServ = memory.New()
+	var _ sec_storage.SecondaryStorage = memory.New()
 
 	sec, err := memory.NewSecondaryStorage()
 	require.NoError(t, err)

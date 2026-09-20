@@ -7,7 +7,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/birukbelay/gocmn/src/provider/db"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/birukbelay/gocmn/src/server/middleware"
 	"gorm.io/gorm"
 )
@@ -36,12 +36,12 @@ type SessionRevocationChecker interface {
 type RevocationStore struct {
 	db          *gorm.DB
 	sessionRepo SessionRevocationChecker
-	store       db.KeyValServ
+	store       sec_storage.SecondaryStorage
 	sConfig     config.SessionConfig
 }
 
 // NewRevocationStore creates a RevocationStore backed by database and optional key-value storage.
-func NewRevocationStore(db *gorm.DB, store db.KeyValServ, sconfig config.SessionConfig) *RevocationStore {
+func NewRevocationStore(db *gorm.DB, store sec_storage.SecondaryStorage, sconfig config.SessionConfig) *RevocationStore {
 	if isNil(store) {
 		store = nil
 	}
@@ -56,7 +56,7 @@ func NewRevocationStore(db *gorm.DB, store db.KeyValServ, sconfig config.Session
 }
 
 // NewRevocationStoreWithRepo creates a RevocationStore backed by a SessionRevocationChecker repository.
-func NewRevocationStoreWithRepo(repo SessionRevocationChecker, store db.KeyValServ, sconfig config.SessionConfig) *RevocationStore {
+func NewRevocationStoreWithRepo(repo SessionRevocationChecker, store sec_storage.SecondaryStorage, sconfig config.SessionConfig) *RevocationStore {
 	if isNil(store) {
 		store = nil
 	}

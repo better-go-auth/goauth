@@ -5,9 +5,17 @@ import (
 	"net/http"
 	"testing"
 
+	"time"
+
 	bettergoauth "github.com/better-go-auth/goauth"
+	"github.com/better-go-auth/goauth/src/app/core/auth"
+	"github.com/better-go-auth/goauth/src/app/core/profile"
+	"github.com/better-go-auth/goauth/src/app/core/session"
+	"github.com/better-go-auth/goauth/src/app/core/verification"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/enums"
+	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/birukbelay/gocmn/src/dtos"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -40,6 +48,7 @@ func (m *mockAuthRepos) CreateUser(ctx context.Context, user *models.User) (*mod
 	m.users[user.ID] = user
 	return user, nil
 }
+
 func (m *mockAuthRepos) GetUserByID(ctx context.Context, id string) (*models.User, error) {
 	u, ok := m.users[id]
 	if !ok {
@@ -47,6 +56,7 @@ func (m *mockAuthRepos) GetUserByID(ctx context.Context, id string) (*models.Use
 	}
 	return u, nil
 }
+
 func (m *mockAuthRepos) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	for _, u := range m.users {
 		if u.Email != nil && *u.Email == email {
@@ -55,13 +65,38 @@ func (m *mockAuthRepos) GetUserByEmail(ctx context.Context, email string) (*mode
 	}
 	return nil, nil
 }
+
 func (m *mockAuthRepos) UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error) {
-	return m.users[id], nil
+	u, ok := m.users[id]
+	if !ok {
+		return nil, nil
+	}
+	if fn, ok := data["first_name"].(string); ok {
+		u.FirstName = fn
+	}
+	if ln, ok := data["last_name"].(string); ok {
+		u.LastName = ln
+	}
+	if img, ok := data["image"].(string); ok {
+		u.Image = img
+	}
+	if as, ok := data["account_status"].(enums.AccountStatus); ok {
+		u.AccountStatus = as
+	}
+	if act, ok := data["active"].(bool); ok {
+		u.Active = &act
+	}
+	if ev, ok := data["email_verified"].(bool); ok {
+		u.EmailVerified = ev
+	}
+	return u, nil
 }
+
 func (m *mockAuthRepos) DeleteUser(ctx context.Context, id string) error {
 	delete(m.users, id)
 	return nil
 }
+
 func (m *mockAuthRepos) ListUsers(ctx context.Context, filter repo_interfaces.UserFilter, pagi dtos.PaginationInput) ([]models.User, int64, error) {
 	var list []models.User
 	for _, u := range m.users {
@@ -75,21 +110,37 @@ func (m *mockAuthRepos) CreateAccount(ctx context.Context, account *models.Accou
 	m.accounts[account.ID] = account
 	return account, nil
 }
+
 func (m *mockAuthRepos) GetAccountByProviderAndAccountID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
+	for _, a := range m.accounts {
+		if a.ProviderId == providerID && a.AccountID == accountID {
+			return a, nil
+		}
+	}
 	return nil, nil
 }
+
 func (m *mockAuthRepos) GetAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error) {
+	for _, a := range m.accounts {
+		if a.UserID == userID && a.ProviderId == providerID {
+			return a, nil
+		}
+	}
 	return nil, nil
 }
+
 func (m *mockAuthRepos) UpdateAccount(ctx context.Context, id string, data map[string]interface{}) (*models.Account, error) {
 	return m.accounts[id], nil
 }
+
 func (m *mockAuthRepos) DeleteAccountsByUserID(ctx context.Context, userID string) error {
 	return nil
 }
+
 func (m *mockAuthRepos) ListAccountsByUserID(ctx context.Context, userID string) ([]models.Account, error) {
 	return nil, nil
 }
+
 func (m *mockAuthRepos) DeleteAccountByUserAndProvider(ctx context.Context, userID, providerID string) error {
 	return nil
 }
@@ -99,26 +150,33 @@ func (m *mockAuthRepos) CreateSession(ctx context.Context, session *models.Sessi
 	m.sessions[session.SessionId] = session
 	return session, nil
 }
+
 func (m *mockAuthRepos) UpsertSession(ctx context.Context, session *models.Session) (*models.Session, error) {
 	m.sessions[session.SessionId] = session
 	return session, nil
 }
+
 func (m *mockAuthRepos) GetSessionByID(ctx context.Context, id string) (*models.Session, error) {
 	return m.sessions[id], nil
 }
+
 func (m *mockAuthRepos) GetSessionBySessionID(ctx context.Context, sessionID string) (*models.Session, error) {
 	return m.sessions[sessionID], nil
 }
+
 func (m *mockAuthRepos) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
 	return m.sessions[token], nil
 }
+
 func (m *mockAuthRepos) UpdateSession(ctx context.Context, sessionID string, data map[string]interface{}) (*models.Session, error) {
 	return m.sessions[sessionID], nil
 }
+
 func (m *mockAuthRepos) DeleteSession(ctx context.Context, sessionID string) error {
 	delete(m.sessions, sessionID)
 	return nil
 }
+
 func (m *mockAuthRepos) DeleteSessionsByUserID(ctx context.Context, userID string) error {
 	for k, v := range m.sessions {
 		if v.UserID == userID {
@@ -127,6 +185,7 @@ func (m *mockAuthRepos) DeleteSessionsByUserID(ctx context.Context, userID strin
 	}
 	return nil
 }
+
 func (m *mockAuthRepos) ListSessionsByUserID(ctx context.Context, userID string) ([]models.Session, error) {
 	var list []models.Session
 	for _, s := range m.sessions {
@@ -136,6 +195,7 @@ func (m *mockAuthRepos) ListSessionsByUserID(ctx context.Context, userID string)
 	}
 	return list, nil
 }
+
 func (m *mockAuthRepos) ListSessions(ctx context.Context, filter models.SessionFilter, pagi dtos.PaginationInput) ([]models.Session, int64, error) {
 	var list []models.Session
 	for _, s := range m.sessions {
@@ -149,15 +209,16 @@ func (m *mockAuthRepos) UpsertVerification(ctx context.Context, verification *mo
 	m.verifications[verification.Identifier] = verification
 	return verification, nil
 }
-func (m *mockAuthRepos) GetVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose) (*models.Verification, error) {
-	full := purpose.Make(identifier)
-	return m.verifications[full], nil
+
+func (m *mockAuthRepos) GetVerification(ctx context.Context, identifier string) (*models.Verification, error) {
+	return m.verifications[identifier], nil
 }
-func (m *mockAuthRepos) DeleteVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose) error {
-	full := purpose.Make(identifier)
-	delete(m.verifications, full)
+
+func (m *mockAuthRepos) DeleteVerification(ctx context.Context, identifier string) error {
+	delete(m.verifications, identifier)
 	return nil
 }
+
 func (m *mockAuthRepos) DeleteExpired(ctx context.Context) error {
 	return nil
 }
@@ -199,3 +260,70 @@ func TestSetupGoAuth_CustomRepositoriesWithoutGorm(t *testing.T) {
 	assert.True(t, migrator.migrated, "Custom migrator should be executed")
 	assert.NotNil(t, app.IAuthServices)
 }
+
+func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("Test API", "1.0.0"))
+
+	mockRepos := newMockAuthRepos()
+	migrator := &noOpMigrator{}
+	txMgr := &noOpTxManager{}
+
+	mockEmail := helpers.NewMockEmailSender()
+
+	opts := bettergoauth.GoAuthOptions{
+		Conn:         nil, // zero GORM!
+		Repositories: mockRepos,
+		Migrator:     migrator,
+		TxManager:    txMgr,
+	}
+	opts.SessionConfig.AccessSecret = "super-secret-access-key-32-chars-long"
+	opts.EmailVerification.VerificationCodeSender = mockEmail
+	opts.EmailVerification.ExpiresIn = 15 * time.Minute
+
+	app, err := bettergoauth.SetupGoAuth(api, opts)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	vSvc := verification.NewVerificationServiceWithRepo(mockRepos, opts.EmailVerification)
+	sSvc := session.NewServiceWithRepo(opts.SessionConfig, mockRepos, nil, app.Hooks)
+	authSvc := auth.NewAuthService(&opts.SessionConfig, app.Provider, vSvc, sSvc, mockRepos, app.Hooks)
+	profileSvc := profile.NewProfileServH(app.Provider, vSvc, sSvc, mockRepos)
+
+	// 1. Register with email
+	regResp, err := authSvc.RegisterWithEmail(ctx, models.RegisterClientInput{
+		FirstName: "Alice",
+		LastName:  "Smith",
+		Email:     "alice@example.com",
+		Password:  "SecurePassword123!",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Alice", regResp.Body.FirstName)
+	assert.Equal(t, "Smith", regResp.Body.LastName)
+	assert.Equal(t, "alice@example.com", *regResp.Body.Email)
+	userID := regResp.Body.ID
+
+	// 2. Profile GetProfile
+	userProfile, err := profileSvc.GetProfile(ctx, userID)
+	require.NoError(t, err)
+	assert.NotNil(t, userProfile)
+	assert.Equal(t, "Alice", userProfile.FirstName)
+
+	// 3. Profile UpdateProfile
+	updatedProfile, err := profileSvc.UpdateProfile(ctx, userID, models.ProfileUpdateDto{
+		FirstName: "Alicia",
+		LastName:  "Keys",
+	})
+	require.NoError(t, err)
+	assert.NotNil(t, updatedProfile)
+	assert.Equal(t, "Alicia", updatedProfile.FirstName)
+	assert.Equal(t, "Keys", updatedProfile.LastName)
+
+	// Verify it persists in mock repository
+	retrieved, err := mockRepos.GetUserByID(ctx, userID)
+	require.NoError(t, err)
+	assert.Equal(t, "Alicia", retrieved.FirstName)
+	assert.Equal(t, "Keys", retrieved.LastName)
+}
+

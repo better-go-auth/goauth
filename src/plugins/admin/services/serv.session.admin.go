@@ -13,7 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
-	"github.com/birukbelay/gocmn/src/provider/db"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
 
 // ListUserSessions returns all active sessions for a target user.
@@ -191,7 +191,7 @@ type activeSessionEntry struct {
 	ExpiresAt int64  `json:"expiresAt"`
 }
 
-func deleteSecondaryStorageSessions(store db.KeyValServ, userID string) {
+func deleteSecondaryStorageSessions(store sec_storage.SecondaryStorage, userID string) {
 	if store == nil {
 		return
 	}

@@ -39,10 +39,10 @@ func (r *VerificationRepo) UpsertVerification(ctx context.Context, verification 
 	return verification, nil
 }
 
-func (r *VerificationRepo) GetVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose) (*models.Verification, error) {
-	fullIdentifier := purpose.Make(identifier)
+func (r *VerificationRepo) GetVerification(ctx context.Context, identifier string) (*models.Verification, error) {
+	
 	var v models.Verification
-	err := gormutil.GetDB(ctx, r.db).Where("identifier = ?", fullIdentifier).Take(&v).Error
+	err := gormutil.GetDB(ctx, r.db).Where("identifier = ?", identifier).Take(&v).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, loc_errors.NotFoundErr("gorm/verification: not found")
@@ -52,9 +52,8 @@ func (r *VerificationRepo) GetVerification(ctx context.Context, identifier strin
 	return &v, nil
 }
 
-func (r *VerificationRepo) DeleteVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose) error {
-	fullIdentifier := purpose.Make(identifier)
-	result := gormutil.GetDB(ctx, r.db).Where("identifier = ?", fullIdentifier).Delete(&models.Verification{})
+func (r *VerificationRepo) DeleteVerification(ctx context.Context, identifier string) error {
+	result := gormutil.GetDB(ctx, r.db).Where("identifier = ?", identifier).Delete(&models.Verification{})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/verification: delete: %w", result.Error)
 	}
