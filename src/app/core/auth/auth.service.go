@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
 	"github.com/birukbelay/gocmn/src/logger"
 	"github.com/birukbelay/gocmn/src/resp_const"
@@ -14,6 +13,8 @@ import (
 	errors "github.com/better-go-auth/goauth/src/common/error"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
+	"github.com/better-go-auth/goauth/src/providers/hasher"
+	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
 // RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
@@ -28,7 +29,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		}
 	}
 
-	hash, err := crypto.BcryptCreateHash(input.Password)
+	hash, err := hasher.BcryptCreateHash(input.Password)
 	if err != nil {
 		return dtos.InternalErrMS[models.User]("Hashing Error"), err
 	}
@@ -149,19 +150,19 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 	// 1. check the user exists and is active
 	usr, err := aus.userRepo.GetUserByEmail(ctx, input.LoginInfo)
 	if err != nil || usr == nil || usr.Active == nil || (usr.Active != nil && !*usr.Active) {
-		_, _ = crypto.BcryptCreateHash(input.Password) // for security timing protection
+		_, _ = hasher.BcryptCreateHash(input.Password) // for security timing protection
 		return dtos.BadReqC[TokenResponse](resp_const.EmailOrPassword), resp_const.EmailOrPasswordErr
 	}
 
 	// 2. Get password from account record
 	account, err := aus.accountRepo.GetAccountByUserAndProvider(ctx, usr.ID, models.ProvCredential)
 	if err != nil || account == nil || account.Password == nil {
-		_, _ = crypto.BcryptCreateHash(input.Password) // for security timing protection
+		_, _ = hasher.BcryptCreateHash(input.Password) // for security timing protection
 		return dtos.BadReqC[TokenResponse](resp_const.EmailOrPassword), errors.ErrInvalidCredentials
 	}
 
 	// 3. compare the password hash
-	valid := crypto.BcryptPasswordsMatch(input.Password, *account.Password)
+	valid := hasher.BcryptPasswordsMatch(input.Password, *account.Password)
 	if !valid {
 		return dtos.BadReqC[TokenResponse](resp_const.EmailOrPassword), resp_const.EmailOrPasswordErr
 	}
@@ -178,7 +179,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 			"ban_expires": nil,
 		})
 	}
-	//setup active org id
+	// setup active org id
 	now := time.Now()
 	updatedUsr, err := aus.userRepo.UpdateUser(ctx, usr.ID, map[string]interface{}{
 		"last_login_at": now,
@@ -196,7 +197,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 	if err != nil {
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
-	//TODO: add audit log
+	// TODO: add audit log
 	// tasks.EnqueueAuditActivityLog(ctx, aus.Provider.QueueClient, aus.Provider.GormConn, tasks.AuditActivityLogPayload{
 	// 	CompanyID:   companyID,
 	// 	UserID:      usr.Body.GetID(),
@@ -217,31 +218,31 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 // ResetToken (acc-04): FIXME to be update with redis: [Role, id]
 func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GResp[TokenResponse], error) {
 	// 1. validate the refresh token
-	claims, ok, err := crypto.Valid(refreshToken, aus.Config.RefreshSecret)
-	if !ok || (err != nil) {
+	claims, err := jwttoken.ValidateToken(refreshToken, aus.Config.RefreshSecret)
+	if err != nil {
 		return dtos.BadReqC[TokenResponse](resp_const.InvalidToken), resp_const.InvalidTokenError
 	}
 
 	// 2. get the user
-	usr, err := aus.userRepo.GetUserByID(ctx, claims.UserId)
+	usr, err := aus.userRepo.GetUserByID(ctx, claims.UserID)
 	if err != nil || usr == nil {
 		return dtos.BadReqC[TokenResponse](resp_const.DataNotFound), resp_const.UserNotFoundError
 	}
 
 	// 3. get the session that are not blacklisted
-	session, err := aus.sessionRepo.GetSessionBySessionID(ctx, claims.SessionId)
-	if err != nil || session == nil || session.UserID != claims.UserId || (session.Blacklisted != nil && *session.Blacklisted) {
+	session, err := aus.sessionRepo.GetSessionBySessionID(ctx, claims.SessionID)
+	if err != nil || session == nil || session.UserID != claims.UserID || (session.Blacklisted != nil && *session.Blacklisted) {
 		return dtos.BadReqC[TokenResponse](resp_const.DataNotFound), resp_const.UserNotFoundError
 	}
 
 	// 4. validate the refresh token matches
-	valid := crypto.ArgonPasswordsMatch(refreshToken, session.HashedToken)
+	valid := hasher.ArgonPasswordsMatch(refreshToken, session.HashedToken)
 	if !valid {
 		return dtos.BadReqC[TokenResponse](resp_const.TokenDontMatch), resp_const.TokenDontMatchError
 	}
 
 	// 5. recreate session tokens
-	tokens, err := aus.SesSvc.CreateSession(ctx, claims.SessionId, usr.Role.S(), usr.ID, nil)
+	tokens, err := aus.SesSvc.CreateSession(ctx, claims.SessionID, usr.Role.S(), usr.ID, nil)
 	if err != nil {
 		return dtos.InternalErrMS[TokenResponse](err.Error()), err
 	}
@@ -255,17 +256,17 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 // Logout [-]
 func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[bool], error) {
 	// 1. the jwt token
-	claims, ok, err := crypto.Valid(refreshToken, aus.Config.RefreshSecret)
-	if !ok || (err != nil) {
+	claims, err := jwttoken.ValidateToken(refreshToken, aus.Config.RefreshSecret)
+	if err != nil {
 		return dtos.BadReqC[bool](resp_const.InvalidToken), resp_const.InvalidTokenError
 	}
 
-	session, err := aus.sessionRepo.GetSessionBySessionID(ctx, claims.SessionId)
+	session, err := aus.sessionRepo.GetSessionBySessionID(ctx, claims.SessionID)
 	if err != nil || session == nil {
 		return dtos.BadReqC[bool](resp_const.DataNotFound), resp_const.UserNotFoundError
 	}
 
-	valid := crypto.ArgonPasswordsMatch(refreshToken, session.HashedToken)
+	valid := hasher.ArgonPasswordsMatch(refreshToken, session.HashedToken)
 	if !valid {
 		return dtos.BadReqC[bool](resp_const.TokenDontMatch), resp_const.TokenDontMatchError
 	}
@@ -288,7 +289,7 @@ func (aus Service) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GR
 
 // ResetPwd [ID]
 func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GResp[bool], error) {
-	hash, err := crypto.BcryptCreateHash(input.NewPassword)
+	hash, err := hasher.BcryptCreateHash(input.NewPassword)
 	if err != nil {
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}

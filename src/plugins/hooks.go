@@ -5,7 +5,7 @@ import (
 	"sync"
 
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/birukbelay/gocmn/src/crypto"
+	"github.com/better-go-auth/goauth/src/providers/token"
 )
 
 // HookService defines the hook lifecycle methods that a plugin or service can implement.
@@ -16,7 +16,7 @@ type HookService interface {
 	AfterUserCreate(ctx context.Context, user *models.User) error
 	UserDeleted(ctx context.Context, userID string) error
 	UserBanned(ctx context.Context, userID string, reason *string) error
-	BeforeSessionCreate(ctx context.Context, session *models.Session, claims *crypto.CustomClaims) error
+	BeforeSessionCreate(ctx context.Context, session *models.Session, claims *token.CustomClaims) error
 	SessionRevoked(ctx context.Context, sessionID string) error
 	ActiveOrgChanged(ctx context.Context, userID, newOrgID string) error
 }
@@ -42,7 +42,7 @@ func (DefaultHookService) UserBanned(ctx context.Context, userID string, reason 
 	return nil
 }
 
-func (DefaultHookService) BeforeSessionCreate(ctx context.Context, session *models.Session, claims *crypto.CustomClaims) error {
+func (DefaultHookService) BeforeSessionCreate(ctx context.Context, session *models.Session, claims *token.CustomClaims) error {
 	return nil
 }
 
@@ -68,7 +68,7 @@ type HookRegistry interface {
 	OnAfterUserCreate(fn func(ctx context.Context, user *models.User) error)
 	OnUserDeleted(fn func(ctx context.Context, userID string) error)
 	OnUserBanned(fn func(ctx context.Context, userID string, reason *string) error)
-	OnBeforeSessionCreate(fn func(ctx context.Context, session *models.Session, claims *crypto.CustomClaims) error)
+	OnBeforeSessionCreate(fn func(ctx context.Context, session *models.Session, claims *token.CustomClaims) error)
 	OnSessionRevoked(fn func(ctx context.Context, sessionID string) error)
 	OnActiveOrgChanged(fn func(ctx context.Context, userID, newOrgID string) error)
 
@@ -77,7 +77,7 @@ type HookRegistry interface {
 	TriggerAfterUserCreate(ctx context.Context, user *models.User) error
 	TriggerUserDeleted(ctx context.Context, userID string) error
 	TriggerUserBanned(ctx context.Context, userID string, reason *string) error
-	TriggerBeforeSessionCreate(ctx context.Context, session *models.Session, claims *crypto.CustomClaims) error
+	TriggerBeforeSessionCreate(ctx context.Context, session *models.Session, claims *token.CustomClaims) error
 	TriggerSessionRevoked(ctx context.Context, sessionID string) error
 	TriggerActiveOrgChanged(ctx context.Context, userID, newOrgID string) error
 }
@@ -91,7 +91,7 @@ type DefaultHookRegistry struct {
 	afterUserCreate     []func(ctx context.Context, user *models.User) error
 	userDeleted         []func(ctx context.Context, userID string) error
 	userBanned          []func(ctx context.Context, userID string, reason *string) error
-	beforeSessionCreate []func(ctx context.Context, session *models.Session, claims *crypto.CustomClaims) error
+	beforeSessionCreate []func(ctx context.Context, session *models.Session, claims *token.CustomClaims) error
 	sessionRevoked      []func(ctx context.Context, sessionID string) error
 	activeOrgChanged    []func(ctx context.Context, userID, newOrgID string) error
 }
@@ -143,7 +143,7 @@ func (h *DefaultHookRegistry) OnUserBanned(fn func(ctx context.Context, userID s
 	h.userBanned = append(h.userBanned, fn)
 }
 
-func (h *DefaultHookRegistry) OnBeforeSessionCreate(fn func(ctx context.Context, session *models.Session, claims *crypto.CustomClaims) error) {
+func (h *DefaultHookRegistry) OnBeforeSessionCreate(fn func(ctx context.Context, session *models.Session, claims *token.CustomClaims) error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.beforeSessionCreate = append(h.beforeSessionCreate, fn)
@@ -225,7 +225,7 @@ func (h *DefaultHookRegistry) TriggerUserBanned(ctx context.Context, userID stri
 	return nil
 }
 
-func (h *DefaultHookRegistry) TriggerBeforeSessionCreate(ctx context.Context, session *models.Session, claims *crypto.CustomClaims) error {
+func (h *DefaultHookRegistry) TriggerBeforeSessionCreate(ctx context.Context, session *models.Session, claims *token.CustomClaims) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, s := range h.services {

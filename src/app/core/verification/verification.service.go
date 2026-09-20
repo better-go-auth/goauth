@@ -10,7 +10,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/birukbelay/gocmn/src/crypto"
+	"github.com/better-go-auth/goauth/src/providers/hasher"
 	"github.com/birukbelay/gocmn/src/dtos"
 	"github.com/birukbelay/gocmn/src/logger"
 	"github.com/birukbelay/gocmn/src/provider/email"
@@ -62,7 +62,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 		verificationCode = util.GenerateRandomString(6)
 	}
 
-	codeHash, err := crypto.BcryptCreateHash(verificationCode)
+	codeHash, err := hasher.BcryptCreateHash(verificationCode)
 	if err != nil {
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
@@ -115,7 +115,7 @@ func (vSvc Service) VerifyCode(ctx context.Context, identifier string, purpose m
 	if v.ExpiresAt.Before(time.Now()) {
 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("code expired")
 	}
-	valid := crypto.BcryptPasswordsMatch(code, v.Value)
+	valid := hasher.BcryptPasswordsMatch(code, v.Value)
 	if !valid {
 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("invalid verification code")
 	}

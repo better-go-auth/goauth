@@ -30,16 +30,69 @@ func JwtValid[T jwt.Claims](signedToken string, signingKey string, claims T) (T,
 	return zero, false, err
 }
 
-// Generate generates jwt token
-func Generate(signingKey string, claims jwt.Claims) (string, error) {
-	tn := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	signedString, err := tn.SignedString([]byte(signingKey))
-	return signedString, err
+// ValidateToken validates a JWT token.
+// It checks the signature and expiration time.
+func ValidateToken(tokenStr string, signingKey string) (*token.CustomClaims, error) {
+	tkn, err := jwt.ParseWithClaims(tokenStr, &jwtClaims{}, func(tk *jwt.Token) (interface{}, error) {
+		if _, ok := tk.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("jwttoken: unexpected signing method: %v", tk.Header["alg"])
+		}
+		return []byte(signingKey), nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	if claims, ok := tkn.Claims.(*jwtClaims); ok && tkn.Valid {
+		return &token.CustomClaims{
+			UserID:    claims.UserID,
+			SessionID: claims.SessionID,
+			Role:      claims.Role,
+			ExpiresAt: claims.ExpiresAt.Unix(),
+			// multi tenancy support
+			ActiveOrgId:   claims.ActiveOrgID,
+			ActiveOrgRole: claims.ActiveOrgRole,
+		}, nil
+	}
+	return nil, jwt.ErrInvalidKey
 }
 
-//================================================   The Jwt Manager =======================
+// Generate generates jwt token
+func SignWithExpiry(signingKey string, claims *token.CustomClaims, expiryMinutes time.Duration) (string, error) {
+	now := time.Now()
+	jwtClaims := jwtClaims{
+		RegisteredClaims: jwt.RegisteredClaims{
+			IssuedAt:  jwt.NewNumericDate(now),
+			ExpiresAt: jwt.NewNumericDate(now.Add(expiryMinutes)),
+			Issuer:    "better-go-auth",
+		},
+		UserID:        claims.UserID,
+		SessionID:     claims.SessionID,
+		Role:          claims.Role,
+		ActiveOrgID:   claims.ActiveOrgId,
+		ActiveOrgRole: claims.ActiveOrgRole,
+	}
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtClaims)
+	signed, err := token.SignedString([]byte(signingKey))
+	if err != nil {
+		return "", fmt.Errorf("jwttoken: failed to sign token: %w", err)
+	}
+	return signed, nil
+}
+
+// func SignWithExpiry(RefreshSecret string, expMin int, claims token.Claims) (string, error) {
+// 	//claims.ExpiresAt= 20
+// 	claims.IssuedAt = jwt.NewNumericDate(time.Now())
+// 	claims.ExpiresAt = jwt.NewNumericDate(time.Now().Add(time.Minute * time.Duration(expMin)))
+// 	token, err := Generate(RefreshSecret, claims)
+// 	if err != nil {
+// 		return "", err
+// 	}
+// 	return token, nil
+// }
+
+// ================================================   The Jwt Manager =======================
 //
-//==================================================================================
+// ==================================================================================
 // JWTManager signs and verifies HS256 JWTs.
 type JWTManager struct {
 	Secret    []byte
@@ -67,7 +120,7 @@ type jwtClaims struct {
 
 // GenerateToken creates a new JWT token with HS256 algorithm.
 // It sets the standard claims (IssuedAt, ExpiresAt, Issuer) and custom claims.
-func (m *JWTManager) GenerateToken(_ context.Context, claims token.Claims) (string, error) {
+func (m *JWTManager) GenerateToken(_ context.Context, claims token.CustomClaims) (string, error) {
 	now := time.Now()
 	jwtClaims := jwtClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
@@ -91,7 +144,7 @@ func (m *JWTManager) GenerateToken(_ context.Context, claims token.Claims) (stri
 
 // ValidateToken validates a JWT token.
 // It checks the signature and expiration time.
-func (m *JWTManager) ValidateToken(ctx context.Context, tokenStr string) (*token.Claims, error) {
+func (m *JWTManager) ValidateToken(ctx context.Context, tokenStr string) (*token.CustomClaims, error) {
 	tkn, err := jwt.ParseWithClaims(tokenStr, &jwtClaims{}, func(tk *jwt.Token) (interface{}, error) {
 		if _, ok := tk.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("jwttoken: unexpected signing method: %v", tk.Header["alg"])
@@ -102,7 +155,7 @@ func (m *JWTManager) ValidateToken(ctx context.Context, tokenStr string) (*token
 		return nil, err
 	}
 	if claims, ok := tkn.Claims.(*jwtClaims); ok && tkn.Valid {
-		return &token.Claims{
+		return &token.CustomClaims{
 			UserID:    claims.UserID,
 			SessionID: claims.SessionID,
 			Role:      claims.Role,

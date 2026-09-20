@@ -7,8 +7,8 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core/auth"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
+	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
 )
 
@@ -70,11 +70,11 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 		}
 
 		userID = loginResp.Body.Body.User.ID
-		claims, ok, err := crypto.Valid(loginResp.Body.Body.AuthTokens.AccessToken, helpers.TestAccessSecret)
-		if err != nil || !ok {
+		claims, err := jwttoken.ValidateToken(loginResp.Body.Body.AuthTokens.AccessToken, helpers.TestAccessSecret)
+		if err != nil {
 			t.Fatalf("Failed to parse token claims: %v", err)
 		}
-		sessionID = claims.SessionId
+		sessionID = claims.SessionID
 		authCtx = helpers.AuthContext(userID, sessionID, string(enums.User))
 	})
 

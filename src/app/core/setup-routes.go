@@ -31,12 +31,6 @@ func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg conf
 	}
 	sSvc := session.NewServiceWithRepo(conf.SessionConfig, repos, secondaryStorage, h)
 
-	// else if provServ != nil && provServ.GormConn != nil {
-	// 	vSvc = verification.NewVerificationService(provServ.GormConn, vCfg)
-	// 	sSvc = session.NewService(conf.SessionConfig, provServ, h)
-
-	// }
-
 	authSvc := auth.NewAuthService(&conf.SessionConfig, provServ, vSvc, sSvc, repos, h)
 	profileServ := profile.NewProfileServH(provServ, vSvc, sSvc, repos)
 

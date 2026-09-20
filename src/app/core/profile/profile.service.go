@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	ICrypt "github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
 	ICnst "github.com/birukbelay/gocmn/src/resp_const"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
+	"github.com/better-go-auth/goauth/src/providers/hasher"
 )
 
 type Service struct {
@@ -84,12 +84,12 @@ func (aus *Service) ChangePassword(ctx context.Context, userId, sessionId string
 		return dtos.BadReqM[models.User](ICnst.PasswordDontMatch.Msg()), ICnst.PwdDontMatch
 	}
 
-	valid := ICrypt.BcryptPasswordsMatch(input.OldPassword, *account.Password)
+	valid := hasher.BcryptPasswordsMatch(input.OldPassword, *account.Password)
 	if !valid {
 		return dtos.BadReqM[models.User](ICnst.PasswordDontMatch.Msg()), ICnst.PwdDontMatch
 	}
 
-	hash, err := ICrypt.BcryptCreateHash(input.NewPassword)
+	hash, err := hasher.BcryptCreateHash(input.NewPassword)
 	if err != nil {
 		return dtos.InternalErrMS[models.User]("Hashing Error"), err
 	}
@@ -131,7 +131,7 @@ func (aus *Service) SendChangeEmail(ctx context.Context, userId string, input mo
 	if err != nil || account == nil || account.Password == nil {
 		return dtos.BadReqM[bool](ICnst.InfoOrCode.Msg()), ICnst.InfoOrCodeErr
 	}
-	valid := ICrypt.BcryptPasswordsMatch(input.Password, *account.Password)
+	valid := hasher.BcryptPasswordsMatch(input.Password, *account.Password)
 	if !valid {
 		return dtos.BadReqM[bool](ICnst.InfoOrCode.Msg()), ICnst.InfoOrCodeErr
 	}

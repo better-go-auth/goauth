@@ -6,7 +6,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins"
-	"github.com/birukbelay/gocmn/src/crypto"
+	"github.com/better-go-auth/goauth/src/providers/token"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -40,7 +40,7 @@ func TestHookRegistry_TriggersAndSubscriptions(t *testing.T) {
 		return nil
 	})
 
-	registry.OnBeforeSessionCreate(func(ctx context.Context, session *models.Session, claims *crypto.CustomClaims) error {
+	registry.OnBeforeSessionCreate(func(ctx context.Context, session *models.Session, claims *token.CustomClaims) error {
 		sessionCreatedID = session.SessionId
 		return nil
 	})
@@ -73,7 +73,7 @@ func TestHookRegistry_TriggersAndSubscriptions(t *testing.T) {
 	assert.Equal(t, "user_123", userBannedID)
 
 	// 4. Trigger BeforeSessionCreate
-	err = registry.TriggerBeforeSessionCreate(ctx, &models.Session{SessionId: "sess_abc"}, &crypto.CustomClaims{})
+	err = registry.TriggerBeforeSessionCreate(ctx, &models.Session{SessionId: "sess_abc"}, &token.CustomClaims{})
 	require.NoError(t, err)
 	assert.Equal(t, "sess_abc", sessionCreatedID)
 
@@ -121,4 +121,3 @@ func TestHookRegistry_HookService(t *testing.T) {
 	assert.True(t, svc.userDeletedCalled)
 	assert.Equal(t, "user_456", svc.lastUserID)
 }
-

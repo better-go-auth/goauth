@@ -28,10 +28,10 @@ import (
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
+	"github.com/better-go-auth/goauth/src/providers/token"
 	"github.com/birukbelay/gocmn/src/config"
 	cmnConf "github.com/birukbelay/gocmn/src/config"
 	"github.com/birukbelay/gocmn/src/consts"
-	"github.com/birukbelay/gocmn/src/crypto"
 	gocmn_redis "github.com/birukbelay/gocmn/src/provider/db/redis"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -245,7 +245,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)
 	profileServ := profile.NewProfileServH(auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)
 	// Handlers
-	sSvc := session.NewService(sConf, auth.Provider)
+	sSvc := session.NewServiceWithRepo(sConf, auth.Repositories, secStorage)
 	authHandler := coreauth.NewAuthHandler(auth.Provider, authSvc)
 	profileHandler := profile.NewProfileHandler(auth.Provider, profileServ)
 	sessionHandler := session.NewSessionHandler(sSvc)
@@ -343,16 +343,16 @@ func (e *TestEnv) doJSON(method, path string, body any, headers ...map[string]st
 	return resp, string(respBytes)
 }
 
-// ContextWithClaims wraps a context with authenticated crypto.CustomClaims for direct handler testing.
-func ContextWithClaims(ctx context.Context, claims crypto.CustomClaims) context.Context {
+// ContextWithClaims wraps a context with authenticated token.CustomClaims for direct handler testing.
+func ContextWithClaims(ctx context.Context, claims token.CustomClaims) context.Context {
 	return context.WithValue(ctx, consts.CtxClaims.Str(), claims)
 }
 
 // AuthContext creates a context with user claims for direct handler testing.
 func AuthContext(userID, sessionID, role string) context.Context {
-	return ContextWithClaims(context.Background(), crypto.CustomClaims{
-		UserId:    userID,
-		SessionId: sessionID,
+	return ContextWithClaims(context.Background(), token.CustomClaims{
+		UserID:    userID,
+		SessionID: sessionID,
 		Role:      role,
 	})
 }

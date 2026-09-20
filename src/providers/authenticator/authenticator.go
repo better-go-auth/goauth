@@ -9,8 +9,9 @@ import (
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/providers/token"
+	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/birukbelay/gocmn/src/consts"
-	"github.com/birukbelay/gocmn/src/crypto"
 	"gorm.io/gorm"
 )
 
@@ -49,11 +50,8 @@ func (g *gormSessionLookup) GetUserByID(ctx context.Context, id string) (*models
 func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) AuthenticateFunc {
 	return func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
 		// 1. Check if claims already exist in ctx (set by middleware)
-		if v, ok := ctx.Value(consts.CtxClaims.Str()).(crypto.CustomClaims); ok && v.UserId != "" {
-			return sessionResponseFromClaims(&v, "")
-		}
-		if vp, ok := ctx.Value(consts.CtxClaims.Str()).(*crypto.CustomClaims); ok && vp != nil && vp.UserId != "" {
-			return sessionResponseFromClaims(vp, "")
+		if sesResp, valid := SessionFromContext(ctx); valid {
+			return sesResp, nil
 		}
 
 		// 2. Extract token from Authorization header or Cookie
@@ -79,9 +77,9 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 
 		// 3. Verify JWT
 		if accessSecret != "" {
-			claims, ok, err := crypto.Valid(token, accessSecret)
-			if err == nil && ok && claims.UserId != "" {
-				return sessionResponseFromClaims(&claims, token)
+			claims, err := jwttoken.ValidateToken(token, accessSecret)
+			if err == nil && claims.UserID != "" {
+				return sessionResponseFromClaims(claims, token)
 			}
 		}
 
@@ -143,12 +141,12 @@ func NewDefaultAuthenticatorWithDB(accessSecret string, db *gorm.DB) Authenticat
 }
 
 // SessionFromContext extracts the authenticated SessionResponse from context if claims were set by middleware.
-func SessionFromContext(ctx context.Context) (*dtos.SessionResponse, bool) {
-	if v, ok := ctx.Value(consts.CtxClaims.Str()).(crypto.CustomClaims); ok && v.UserId != "" {
+func SessionFromContext(ctx context.Context) (session *dtos.SessionResponse, valid bool) {
+	if v, ok := ctx.Value(consts.CtxClaims.Str()).(token.CustomClaims); ok && v.UserID != "" {
 		sess, err := sessionResponseFromClaims(&v, "")
 		return sess, err == nil
 	}
-	if vp, ok := ctx.Value(consts.CtxClaims.Str()).(*crypto.CustomClaims); ok && vp != nil && vp.UserId != "" {
+	if vp, ok := ctx.Value(consts.CtxClaims.Str()).(*token.CustomClaims); ok && vp != nil && vp.UserID != "" {
 		sess, err := sessionResponseFromClaims(vp, "")
 		return sess, err == nil
 	}
@@ -164,32 +162,29 @@ func UserFromContext(ctx context.Context) (*dtos.UserResponse, bool) {
 	return sess.User, true
 }
 
-func sessionResponseFromClaims(claims *crypto.CustomClaims, token string) (*dtos.SessionResponse, error) {
+func sessionResponseFromClaims(claims *token.CustomClaims, token string) (*dtos.SessionResponse, error) {
 	var activeOrgID *string
 	var activeOrgRole *string
 
-	orgID := claims.OrgId
-	if orgID == "" {
-		orgID = claims.CompanyId // Fallback for deprecated CompanyId
-	}
+	orgID := claims.ActiveOrgId
 	if orgID != "" {
 		activeOrgID = &orgID
 	}
-	if claims.OrgRole != "" {
-		activeOrgRole = &claims.OrgRole
+	if claims.ActiveOrgRole != "" {
+		activeOrgRole = &claims.ActiveOrgRole
 	}
 	return &dtos.SessionResponse{
 		User: &dtos.UserResponse{
-			ID:   claims.UserId,
+			ID:   claims.UserID,
 			Role: claims.Role,
 		},
 		Session: &dtos.SessionData{
-			ID:                   claims.SessionId,
-			UserID:               claims.UserId,
+			ID:                   claims.SessionID,
+			UserID:               claims.UserID,
 			Token:                token,
 			ActiveOrganizationID: activeOrgID,
 			ActiveOrgRole:        activeOrgRole,
+			Role:                 claims.Role,
 		},
 	}, nil
 }
-

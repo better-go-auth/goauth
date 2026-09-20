@@ -4,8 +4,8 @@ package token
 
 import "context"
 
-// Claims carries the data embedded in a token.
-type Claims struct {
+// CustomClaims carries the data embedded in a token.
+type CustomClaims struct {
 	UserID    string `json:"userId"`
 	SessionID string `json:"sessionId"`
 	Role      string `json:"role"`
@@ -21,10 +21,10 @@ type Claims struct {
 // Swap implementations to change from session-based to JWT-based auth.
 type ITokenManager interface {
 	// GenerateToken creates a new opaque/signed token string for a session.
-	GenerateToken(ctx context.Context, claims Claims) (string, error)
+	GenerateToken(ctx context.Context, claims CustomClaims) (string, error)
 	// ValidateToken validates a token string and returns the embedded claims.
 	// Returns an error if the token is invalid, expired, or tampered.
-	ValidateToken(ctx context.Context, token string) (*Claims, error)
+	ValidateToken(ctx context.Context, token string) (*CustomClaims, error)
 	// IsJWT returns true if this manager produces/validates JWTs (stateless).
 	// When true, the middleware can validate tokens cryptographically without a DB lookup.
 	IsJWT() bool

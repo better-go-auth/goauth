@@ -50,6 +50,7 @@ type SessionData struct {
 	UpdatedAt            string  `json:"updatedAt"`
 	ActiveOrganizationID *string `json:"activeOrganizationId,omitempty"`
 	ActiveOrgRole        *string `json:"activeOrgRole,omitempty"`
+	Role                 string  `json:"role,omitempty"`
 }
 
 // SignUpResponse is returned after a successful sign-up.

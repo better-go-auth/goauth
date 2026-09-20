@@ -57,7 +57,7 @@ require (
 	github.com/knadh/koanf/v2 v2.2.2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e // indirect
 	github.com/magiconair/properties v1.8.10 // indirect
-	github.com/matthewhartstonge/argon2 v1.3.3 // indirect
+	github.com/matthewhartstonge/argon2 v1.3.3
 	github.com/mattn/go-colorable v0.1.15 // indirect
 	github.com/mattn/go-isatty v0.0.23 // indirect
 	github.com/mattn/go-sqlite3 v1.14.28 // indirect

@@ -5,45 +5,23 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins"
-	"github.com/better-go-auth/goauth/src/providers"
+	"github.com/better-go-auth/goauth/src/providers/hasher"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
-	"github.com/birukbelay/gocmn/src/crypto"
+	"github.com/better-go-auth/goauth/src/providers/token"
+	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
 type Service struct {
 	SessionRepo repo_interfaces.ISessionRepo
-	ProvServ    *providers.IProviderS
-	sConf       config.SessionConfig
-	sStore      sec_storage.SecondaryStorage
-	Hooks       plugins.HookRegistry
-}
-
-func NewService(conf config.SessionConfig, genServ *providers.IProviderS, hooks ...plugins.HookRegistry) *Service {
-	var h plugins.HookRegistry
-	if len(hooks) > 0 {
-		h = hooks[0]
-	}
-	var repo repo_interfaces.ISessionRepo
-	var sStore sec_storage.SecondaryStorage
-	if genServ != nil {
-		sStore = genServ.SecondaryStorage
-		if genServ.GormConn != nil {
-			repo = gormauth.NewSessionRepo(genServ.GormConn)
-		}
-	}
-	return &Service{
-		SessionRepo: repo,
-		ProvServ:    genServ,
-		sConf:       conf,
-		sStore:      sStore,
-		Hooks:       h,
-	}
+	// ProvServ    *providers.IProviderS
+	sConf  config.SessionConfig
+	sStore sec_storage.SecondaryStorage
+	Hooks  plugins.HookRegistry
 }
 
 func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISessionRepo, sStore sec_storage.SecondaryStorage, hooks ...plugins.HookRegistry) *Service {
@@ -61,20 +39,20 @@ func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISession
 
 var _ serv_interfaces.ISessionService = (*Service)(nil)
 
-func (aus Service) GenerateTokens(user *crypto.CustomClaims) (*models.AuthTokens, error) {
-	claims := &crypto.CustomClaims{
-		Role:      user.Role,
-		UserId:    user.UserId,
-		OrgId:     user.OrgId,
-		CompanyId: user.CompanyId,
-		OrgRole:   user.OrgRole,
-		SessionId: user.SessionId,
+func (aus Service) GenerateTokens(user *token.CustomClaims) (*models.AuthTokens, error) {
+	claims := &token.CustomClaims{
+		Role:        user.Role,
+		UserID:      user.UserID,
+		ActiveOrgId: user.ActiveOrgId,
+		// CompanyId: user.CompanyId,
+		ActiveOrgRole: user.ActiveOrgRole,
+		SessionID:     user.SessionID,
 	}
-	accessToken, err := crypto.SignAccessToken(aus.sConf.JwtVar.AccessSecret, aus.sConf.JwtVar.AccessExpireMin, claims)
+	accessToken, err := jwttoken.SignWithExpiry(aus.sConf.JwtVar.AccessSecret, claims, time.Duration(aus.sConf.JwtVar.AccessExpireMin)*time.Minute)
 	if err != nil {
 		return nil, err
 	}
-	refreshToken, err := crypto.SignRefreshToken(aus.sConf.JwtVar.RefreshSecret, aus.sConf.JwtVar.RefreshExpireMin, claims)
+	refreshToken, err := jwttoken.SignWithExpiry(aus.sConf.JwtVar.RefreshSecret, claims, time.Duration(aus.sConf.JwtVar.RefreshExpireMin)*time.Minute)
 	if err != nil {
 		return nil, err
 	}
@@ -87,21 +65,21 @@ func (aus Service) GenerateTokens(user *crypto.CustomClaims) (*models.AuthTokens
 
 func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error) {
 	//	3. Generate auth Token of password
-	claims := crypto.CustomClaims{Role: role, UserId: userId, SessionId: sessionId}
+	claims := token.CustomClaims{Role: role, UserID: userId, SessionID: sessionId}
 	if opt != nil && opt.ActiveOrgID != nil {
-		claims.OrgId = *opt.ActiveOrgID
+		claims.ActiveOrgId = *opt.ActiveOrgID
 		// depricated: used for backward compatability
-		claims.CompanyId = *opt.ActiveOrgID
+		// claims.CompanyId = *opt.ActiveOrgID
 	}
 	if opt != nil && opt.OrgRole != nil {
-		claims.OrgRole = *opt.OrgRole
+		claims.ActiveOrgRole = *opt.OrgRole
 	}
 	tokens, err := aus.GenerateTokens(&claims)
 	if err != nil {
 		return nil, err
 	}
 	// 4. hash the refresh token
-	refreshHash, err := crypto.ArgonCreateHash(tokens.RefreshToken)
+	refreshHash, err := hasher.ArgonCreateHash(tokens.RefreshToken)
 	if err != nil {
 		return nil, err
 	}

@@ -7,8 +7,8 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core/auth"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
+	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/birukbelay/gocmn/src/dtos"
 )
 
@@ -74,11 +74,11 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 		}
 
 		userID = loginResp.Body.Body.User.ID
-		claims, ok, err := crypto.Valid(loginResp.Body.Body.AuthTokens.AccessToken, helpers.TestAccessSecret)
-		if err != nil || !ok {
+		claims, err := jwttoken.ValidateToken(loginResp.Body.Body.AuthTokens.AccessToken, helpers.TestAccessSecret)
+		if err != nil {
 			t.Fatalf("Failed to parse token claims: %v", err)
 		}
-		sessionID = claims.SessionId
+		sessionID = claims.SessionID
 		authCtx = helpers.AuthContext(userID, sessionID, string(enums.User))
 	})
 
@@ -142,11 +142,11 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 			t.Fatalf("Login with new password failed: %v", err)
 		}
 
-		claims, ok, err := crypto.Valid(reLoginResp.Body.Body.AuthTokens.AccessToken, helpers.TestAccessSecret)
-		if err != nil || !ok {
+		claims, err := jwttoken.ValidateToken(reLoginResp.Body.Body.AuthTokens.AccessToken, helpers.TestAccessSecret)
+		if err != nil {
 			t.Fatalf("Failed to parse token claims after password change: %v", err)
 		}
-		reAuthCtx = helpers.AuthContext(userID, claims.SessionId, string(enums.User))
+		reAuthCtx = helpers.AuthContext(userID, claims.SessionID, string(enums.User))
 	})
 
 	t.Run("06 Request Change Email", func(t *testing.T) {

@@ -12,11 +12,10 @@ import (
 
 	bettergoauth "github.com/better-go-auth/goauth"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/plugins/admin"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
+	"github.com/better-go-auth/goauth/src/plugins/admin"
+	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/birukbelay/gocmn/src/config"
-	"github.com/birukbelay/gocmn/src/consts"
-	"github.com/birukbelay/gocmn/src/crypto"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"gorm.io/driver/sqlite"
@@ -105,10 +104,12 @@ func main() {
 	}, func(ctx context.Context, input *ProtectedInput) (*ProtectedOutput, error) {
 		out := &ProtectedOutput{}
 		out.Body.Message = "Access granted to protected endpoint"
-		if claims, ok := ctx.Value(consts.CtxClaims.Str()).(crypto.CustomClaims); ok {
-			out.Body.UserID = claims.UserId
-			out.Body.Role = claims.Role
+		if claims, valid := authenticator.SessionFromContext(ctx); valid {
+
+			out.Body.UserID = claims.Session.UserID
+			out.Body.Role = claims.Session.Role
 		}
+
 		return out, nil
 	})
 
