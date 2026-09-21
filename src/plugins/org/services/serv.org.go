@@ -9,7 +9,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	corerepo "github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
-	autherr "github.com/better-go-auth/goauth/src/common/error"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
@@ -18,6 +18,7 @@ import (
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
+	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
 )
 
@@ -89,7 +90,7 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 
 	// Check slug uniqueness
 	if existing, err := s.orgRepo.GetOrgBySlug(ctx, slug); err == nil && existing != nil {
-		return nil, autherr.ErrSlugTaken
+		return nil, orgerrors.ErrSlugTaken
 	}
 
 	now := new(coremodels.TimeNow())
@@ -130,7 +131,7 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 func (s *OrgService) GetOrganization(ctx context.Context, orgID string) (*models.Organization, error) {
 	org, err := s.orgRepo.GetOrgByID(ctx, orgID)
 	if err != nil {
-		return nil, autherr.ErrOrgNotFound
+		return nil, orgerrors.ErrOrgNotFound
 	}
 	return org, nil
 }
@@ -143,7 +144,7 @@ func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input
 	if input.Slug != nil {
 		slug := strings.ToLower(strings.TrimSpace(*input.Slug))
 		if existing, err := s.orgRepo.GetOrgBySlug(ctx, slug); err == nil && existing != nil && existing.ID != orgID {
-			return nil, autherr.ErrSlugTaken
+			return nil, orgerrors.ErrSlugTaken
 		}
 		data["slug"] = slug
 	}

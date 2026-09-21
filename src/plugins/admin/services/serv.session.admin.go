@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"time"
 
-	autherr "github.com/better-go-auth/goauth/src/common/error"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"

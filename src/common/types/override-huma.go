@@ -1,11 +1,11 @@
 // Package humatypes provides shared Huma adapter types used across all domain modules.
-package humatypes
+package types
 
 import (
 	"net/http"
 	"strings"
 
-	erors "github.com/better-go-auth/goauth/src/common/error"
+	erors "github.com/better-go-auth/goauth/src/common/errors"
 
 	"github.com/danielgtaylor/huma/v2"
 )

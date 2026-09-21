@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/models"
-	autherr "github.com/better-go-auth/goauth/src/common/error"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"gorm.io/gorm"
 )
 

@@ -69,7 +69,7 @@ const (
 	UserBanned         = RespCode("USER_BANNED")
 	Unauthorized       = RespCode("UNAUTHORIZED")
 	Forbidden          = RespCode("FORBIDDEN")
-	SlugTaken          = RespCode("SLUG_TAKEN")
+	
 	InvalidEmail       = RespCode("INVALID_EMAIL")
 	SessionExpired     = RespCode("SESSION_EXPIRED")
 
@@ -92,14 +92,6 @@ const (
 	SessionNotFresh                      = RespCode("SESSION_NOT_FRESH")
 )
 
-const (
-	// org related
-	OrgNotFound        = RespCode("ORGANIZATION_NOT_FOUND")
-	MemberNotFound     = RespCode("MEMBER_NOT_FOUND")
-	InvitationNotFound = RespCode("INVITATION_NOT_FOUND")
-	InvitationExpired  = RespCode("INVITATION_EXPIRED")
-	AlreadyMember      = RespCode("ALREADY_A_MEMBER")
-)
 
 // Account Status Codes
 const (
@@ -159,12 +151,7 @@ var errorText = map[RespCode]string{
 	Unauthorized:                         "Unauthorized",
 	Forbidden:                            "Forbidden",
 	WeakPassword:                         "Password does not meet requirements",
-	OrgNotFound:                          "Organization not found",
-	MemberNotFound:                       "Member not found in this organization",
-	AlreadyMember:                        "User is already a member of this organization",
-	InvitationNotFound:                   "Invitation not found",
-	InvitationExpired:                    "This invitation has expired",
-	SlugTaken:                            "Organization slug is already taken",
+//
 	InvalidEmail:                         "Invalid email",
 	PasswordTooShort:                     "Password too short",
 	PasswordTooLong:                      "Password too long",

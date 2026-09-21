@@ -3,9 +3,10 @@ package orgsvc
 import (
 	"context"
 
-	autherr "github.com/better-go-auth/goauth/src/common/error"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
+	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
 )
 
 // ─── Members ──────────────────────────────────────────────────────────────────
@@ -13,7 +14,7 @@ import (
 func (s *OrgService) GetMember(ctx context.Context, orgID, userID string) (*models.Member, error) {
 	member, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, userID)
 	if err != nil {
-		return nil, autherr.ErrMemberNotFound
+		return nil, orgerrors.ErrMemberNotFound
 	}
 	return member, nil
 }
@@ -31,7 +32,7 @@ func (s *OrgService) UpdateMemberRole(ctx context.Context, input dtos.UpdateMemb
 	// Cannot demote the owner
 	target, err := s.memberRepo.GetMemberByID(ctx, input.MemberID)
 	if err != nil {
-		return nil, autherr.ErrMemberNotFound
+		return nil, orgerrors.ErrMemberNotFound
 	}
 	if target.Role == models.OrgRoleOwner && input.Role != models.OrgRoleOwner {
 		return nil, autherr.New("CANNOT_DEMOTE_OWNER", "Cannot change the owner's role", 400)
@@ -46,7 +47,7 @@ func (s *OrgService) RemoveMember(ctx context.Context, input dtos.RemoveMemberIn
 	}
 	target, err := s.memberRepo.GetMemberByID(ctx, input.MemberID)
 	if err != nil {
-		return autherr.ErrMemberNotFound
+		return orgerrors.ErrMemberNotFound
 	}
 	if target.Role == models.OrgRoleOwner {
 		return autherr.New("CANNOT_REMOVE_OWNER", "Cannot remove the organization owner", 400)

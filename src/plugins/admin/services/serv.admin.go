@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
-	autherr "github.com/better-go-auth/goauth/src/common/error"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"

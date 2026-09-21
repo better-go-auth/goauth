@@ -46,8 +46,8 @@ type UpdateMemberRoleInput struct {
 	Role           models.OrgMemberRole `json:"role"           validate:"required"`
 }
 
-// AcceptInvitationInput matches better-auth POST /organization/accept-invitation body.
-type AcceptInvitationInput struct {
+// InvitationInput matches better-auth POST /organization/accept-invitation body.
+type InvitationInput struct {
 	InvitationID string `json:"invitationId" validate:"required"`
 }
 

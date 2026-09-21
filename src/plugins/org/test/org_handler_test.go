@@ -164,9 +164,9 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("09 Accept Invitation", func(t *testing.T) {
-		resp, err := env.OrgHandler.AcceptInvitation(ctx, &humaorg.AcceptInvitationInput{
+		resp, err := env.OrgHandler.AcceptInvitation(ctx, &humaorg.HumaInvitationInput{
 			AuthHeaders: memberAuth,
-			Body: orgdtos.AcceptInvitationInput{
+			Body: orgdtos.InvitationInput{
 				InvitationID: invitationID,
 			},
 		})

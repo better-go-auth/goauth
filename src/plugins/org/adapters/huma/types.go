@@ -2,8 +2,8 @@
 package humaorg
 
 import (
-	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
+	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 )
 
 // ─── Org Inputs ───────────────────────────────────────────────────────────────
@@ -15,10 +15,12 @@ type GetOrgInput struct {
 	OrganizationID string `query:"organizationId" doc:"Organization ID"`
 }
 
-type UpdateOrgInput = humatypes.HumaReqBody[orgdtos.UpdateOrgInput]
-type DeleteOrgInput = humatypes.HumaReqBody[orgdtos.DeleteOrgInput]
-type ListOrgsInput struct{ humatypes.AuthHeaders }
-type SetActiveOrgInput = humatypes.HumaReqBody[orgdtos.SetActiveOrgInput]
+type (
+	UpdateOrgInput    = humatypes.HumaReqBody[orgdtos.UpdateOrgInput]
+	DeleteOrgInput    = humatypes.HumaReqBody[orgdtos.DeleteOrgInput]
+	ListOrgsInput     struct{ humatypes.AuthHeaders }
+	SetActiveOrgInput = humatypes.HumaReqBody[orgdtos.SetActiveOrgInput]
+)
 
 // ─── Invitation Inputs ────────────────────────────────────────────────────────
 
@@ -29,9 +31,11 @@ type GetInvitationInput struct {
 	InvitationID string `query:"invitationId" doc:"Invitation ID"`
 }
 
-type AcceptInvitationInput = humatypes.HumaReqBody[orgdtos.AcceptInvitationInput]
-type RejectInvitationInput = humatypes.HumaReqBody[orgdtos.AcceptInvitationInput]
-type CancelInvitationInput = humatypes.HumaReqBody[orgdtos.AcceptInvitationInput]
+type (
+	HumaInvitationInput   = humatypes.HumaReqBody[orgdtos.InvitationInput]
+	// RejectInvitationInput = humatypes.HumaReqBody[orgdtos.InvitationInput]
+	// CancelInvitationInput = humatypes.HumaReqBody[orgdtos.InvitationInput]
+)
 
 type ListInvitationsInput struct {
 	humatypes.AuthHeaders
@@ -51,5 +55,7 @@ type ListMembersInput struct {
 	OrganizationID string `query:"organizationId" doc:"Organization ID"`
 }
 
-type UpdateMemberRoleInput = humatypes.HumaReqBody[orgdtos.UpdateMemberRoleInput]
-type RemoveMemberInput = humatypes.HumaReqBody[orgdtos.RemoveMemberInput]
+type (
+	UpdateMemberRoleInput = humatypes.HumaReqBody[orgdtos.UpdateMemberRoleInput]
+	RemoveMemberInput     = humatypes.HumaReqBody[orgdtos.RemoveMemberInput]
+)

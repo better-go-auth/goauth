@@ -1,9 +1,9 @@
-package humatypes
+package types
 
 import (
 	"net/http"
 
-	autherr "github.com/better-go-auth/goauth/src/common/error"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 )
 

@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	loc_errors "github.com/better-go-auth/goauth/src/common/error"
+	loc_errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/common/dtos"

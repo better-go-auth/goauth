@@ -9,7 +9,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/logger"
 
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
-	errors "github.com/better-go-auth/goauth/src/common/error"
+	errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers/hasher"

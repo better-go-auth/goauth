@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/common/dtos"
-	ICnst "github.com/better-go-auth/goauth/src/common/error"
+	ICnst "github.com/better-go-auth/goauth/src/common/errors"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"

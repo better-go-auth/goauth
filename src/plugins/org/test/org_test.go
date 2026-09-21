@@ -222,7 +222,7 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("09 Accept Invitation", func(t *testing.T) {
-		acceptInput := orgdtos.AcceptInvitationInput{
+		acceptInput := orgdtos.InvitationInput{
 			InvitationID: invitationID,
 		}
 		resp, body := env.PostJSON("/api/auth/organization/accept-invitation", acceptInput, memberAuthHeader)

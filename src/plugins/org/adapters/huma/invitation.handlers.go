@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
+	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 )
 
 // ─── Invitation ───────────────────────────────────────────────────────────────
@@ -36,7 +36,7 @@ func (h *OrgHandler) GetInvitation(ctx context.Context, input *GetInvitationInpu
 	return humatypes.MakeRes(*orgdtos.InvitationToResponse(inv), http.StatusOK), nil
 }
 
-func (h *OrgHandler) AcceptInvitation(ctx context.Context, input *AcceptInvitationInput) (*humatypes.SuccessOutput, error) {
+func (h *OrgHandler) AcceptInvitation(ctx context.Context, input *HumaInvitationInput) (*humatypes.SuccessOutput, error) {
 	session, err := h.Authenticate(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
@@ -47,7 +47,7 @@ func (h *OrgHandler) AcceptInvitation(ctx context.Context, input *AcceptInvitati
 	return humatypes.SuccessRes(http.StatusOK), nil
 }
 
-func (h *OrgHandler) RejectInvitation(ctx context.Context, input *RejectInvitationInput) (*humatypes.SuccessOutput, error) {
+func (h *OrgHandler) RejectInvitation(ctx context.Context, input *HumaInvitationInput) (*humatypes.SuccessOutput, error) {
 	session, err := h.Authenticate(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
@@ -58,7 +58,7 @@ func (h *OrgHandler) RejectInvitation(ctx context.Context, input *RejectInvitati
 	return humatypes.SuccessRes(http.StatusOK), nil
 }
 
-func (h *OrgHandler) CancelInvitation(ctx context.Context, input *CancelInvitationInput) (*humatypes.SuccessOutput, error) {
+func (h *OrgHandler) CancelInvitation(ctx context.Context, input *HumaInvitationInput) (*humatypes.SuccessOutput, error) {
 	session, err := h.Authenticate(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
@@ -68,6 +68,7 @@ func (h *OrgHandler) CancelInvitation(ctx context.Context, input *CancelInvitati
 	}
 	return humatypes.SuccessRes(http.StatusOK), nil
 }
+
 type InvitationResp struct {
 	Invitations []orgdtos.InvitationResponse `json:"invitations"`
 }

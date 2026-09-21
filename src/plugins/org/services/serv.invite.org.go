@@ -6,10 +6,11 @@ import (
 	"strings"
 	"time"
 
-	autherr "github.com/better-go-auth/goauth/src/common/error"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
+	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
 )
 
 // ─── Invitations ─────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 	user, _ := s.userRepo.GetUserByEmail(ctx, strings.ToLower(input.Email))
 	if user != nil {
 		if m, err := s.memberRepo.GetMemberByOrgAndUser(ctx, input.OrganizationID, user.ID); err == nil && m != nil {
-			return nil, autherr.ErrAlreadyMember
+			return nil, orgerrors.ErrAlreadyMember
 		}
 	}
 
@@ -83,7 +84,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 func (s *OrgService) GetInvitation(ctx context.Context, invitationID string) (*models.Invitation, error) {
 	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
 	if err != nil {
-		return nil, autherr.ErrInvitationNotFound
+		return nil, orgerrors.ErrInvitationNotFound
 	}
 	return inv, nil
 }
@@ -91,13 +92,13 @@ func (s *OrgService) GetInvitation(ctx context.Context, invitationID string) (*m
 func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID string) error {
 	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
 	if err != nil || inv == nil {
-		return autherr.ErrInvitationNotFound
+		return orgerrors.ErrInvitationNotFound
 	}
 	if inv.Status != models.InvitationPending {
 		return autherr.New("INVITATION_ALREADY_USED", "This invitation has already been used", 400)
 	}
 	if time.Now().After(inv.ExpiresAt) {
-		return autherr.ErrInvitationExpired
+		return orgerrors.ErrInvitationExpired
 	}
 
 	// Verify accepting user's email matches the invite
@@ -141,7 +142,7 @@ func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID 
 func (s *OrgService) RejectInvitation(ctx context.Context, invitationID, userID string) error {
 	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
 	if err != nil {
-		return autherr.ErrInvitationNotFound
+		return orgerrors.ErrInvitationNotFound
 	}
 	user, _ := s.userRepo.GetUserByID(ctx, userID)
 	if user == nil || !strings.EqualFold(user.GetEmail(), inv.Email) {
@@ -154,7 +155,7 @@ func (s *OrgService) RejectInvitation(ctx context.Context, invitationID, userID 
 func (s *OrgService) CancelInvitation(ctx context.Context, invitationID, requestingUserID string) error {
 	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
 	if err != nil {
-		return autherr.ErrInvitationNotFound
+		return orgerrors.ErrInvitationNotFound
 	}
 	// Only admin/owner of the org can cancel
 	member, err := s.memberRepo.GetMemberByOrgAndUser(ctx, inv.OrganizationID, requestingUserID)
