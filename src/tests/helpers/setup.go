@@ -179,7 +179,10 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	api := humago.New(mux, huma.DefaultConfig("Better Go Auth Test API", "1.0.0"))
 
 	adminPlugin := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
-	orgPlugin := org.NewWithGorm(gormDB, orgconfig.OrgConfig{})
+	orgPlugin, err := org.NewWithGorm(gormDB, orgconfig.OrgConfig{})
+	if err != nil {
+		log.Fatalf("failed to initialize org plugin: %v", err)
+	}
 
 	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn:             gormDB,

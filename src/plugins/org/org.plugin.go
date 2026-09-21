@@ -22,10 +22,11 @@ const PluginID = "org"
 
 // Plugin implements the plugins.Plugin interface for multi-tenancy / organizations.
 type Plugin struct {
-	Config       config.OrgConfig
-	authConfig   authconf.AuthConfig
-	orgRepos     orgrepo.OrgRepositories
-	migrator     migration.IMigrator
+	Config     config.OrgConfig
+	authConfig authconf.AuthConfig
+	orgRepos   orgrepo.OrgRepositories
+	migrator   migration.IMigrator
+	// org related service
 	service      orgsvc.IOrgService
 	hookService  *orgsvc.OrgHookService
 	handler      *humaorg.OrgHandler
@@ -34,7 +35,7 @@ type Plugin struct {
 type Option func(*Plugin)
 
 // NewWithGorm creates a new Org plugin directly backed by GORM.
-func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) *Plugin {
+func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) (*Plugin, error) {
 	repos := gormorg.NewOrgRepos(db)
 	orgOptions := OrgOptions{
 		repo:   repos,
@@ -49,12 +50,18 @@ type OrgOptions struct {
 }
 
 // New creates a new Org plugin instance with optional configuration.
-func New(options OrgOptions, opts ...Option) *Plugin {
+func New(options OrgOptions, opts ...Option) (*Plugin, error) {
 	p := &Plugin{orgRepos: options.repo, Config: options.config}
+
 	for _, opt := range opts {
 		opt(p)
 	}
-	return p
+
+	if p.orgRepos.IOrgRepo == nil || p.orgRepos.IMemberRepo == nil || p.orgRepos.IInvitationRepo == nil || p.orgRepos.IMigrator == nil {
+		return nil, fmt.Errorf("org plugin: OrgRepo, MemberRepo, InviteRepo and Migrator are required")
+	}
+	p.migrator = p.orgRepos.IMigrator
+	return p, nil
 }
 
 func WithOrgConfig(orgConfig config.OrgConfig) Option {
@@ -68,10 +75,6 @@ func (p *Plugin) ID() string {
 }
 
 func (p *Plugin) Init(ictx *plugin.InitContext) error {
-	if p.orgRepos.IOrgRepo == nil || p.orgRepos.IMemberRepo == nil || p.orgRepos.IInvitationRepo == nil || p.orgRepos.IMigrator == nil {
-		return fmt.Errorf("org plugin: OrgRepo, MemberRepo, InviteRepo and Migrator are required")
-	}
-
 	// 2. Resolve Migrator
 	p.migrator = p.orgRepos.IMigrator
 
@@ -82,6 +85,7 @@ func (p *Plugin) Init(ictx *plugin.InitContext) error {
 		p.orgRepos.IInvitationRepo,
 		ictx.TxManager,
 		ictx.IAuthRepos,
+		ictx.IAuthServices,
 	)
 
 	p.hookService = orgsvc.NewOrgHookService(p.orgRepos.IOrgRepo, p.orgRepos.IMemberRepo)

@@ -24,13 +24,13 @@ import (
 
 // OrgService implements IOrgService.
 type OrgService struct {
-	orgRepo     orgrepo.IOrgRepo
-	memberRepo  orgrepo.IMemberRepo
-	inviteRepo  orgrepo.IInvitationRepo
-	sessionServ serv_interfaces.ISessionService
+	orgRepo    orgrepo.IOrgRepo
+	memberRepo orgrepo.IMemberRepo
+	inviteRepo orgrepo.IInvitationRepo
 	// sessionRepo repoimpl2.ISessionRepo
-	userRepo corerepo.IUserRepo
 	// emailSender emailiface.IVerificationSender
+	userRepo    corerepo.IUserRepo
+	sessionServ serv_interfaces.ISessionService
 	// baseURL     string
 	// basePath    string
 	txManager interfaces.ITransactionManager
@@ -65,15 +65,17 @@ func New(
 	inviteRepo orgrepo.IInvitationRepo,
 	txManager interfaces.ITransactionManager,
 	authRepos repo_interfaces.IAuthRepos,
+	sessionServ serv_interfaces.ISessionService,
 ) *OrgService {
 	// if basePath == "" {
 	// 	basePath = "/api/auth"
 	// }
 	return &OrgService{
-		orgRepo:    orgRepo,
-		memberRepo: memberRepo,
-		inviteRepo: inviteRepo,
-		userRepo:   authRepos,
+		orgRepo:     orgRepo,
+		memberRepo:  memberRepo,
+		inviteRepo:  inviteRepo,
+		userRepo:    authRepos,
+		sessionServ: sessionServ,
 		// sessionRepo: sessionRepo,
 		// userRepo:    userRepo,
 		// emailSender: emailSender,
@@ -191,12 +193,13 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 			return nil, autherr.ErrForbidden
 		}
 	}
-	// TODO make sure cached tokens and etc are updated and same sessin with old ord id is not used
-	// use some sort of version mechanism and etc
-	resp, err := s.sessionServ.CreateSession(ctx, sessionID, role, userId, &coremodels.SessionOpt{
+	sesOpt := coremodels.SessionOpt{
 		OrgRole:     new(member.Role.String()),
 		ActiveOrgID: orgID,
-	})
+	}
+	// TODO make sure cached tokens and etc are updated and same sessin with old ord id is not used
+	// use some sort of version mechanism and etc
+	resp, err := s.sessionServ.CreateSession(ctx, sessionID, role, userId, &sesOpt)
 	if err == nil && s.hooks != nil && orgID != nil {
 		_ = s.hooks.TriggerActiveOrgChanged(ctx, userId, *orgID)
 	}
