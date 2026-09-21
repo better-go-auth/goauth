@@ -5,11 +5,9 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/birukbelay/gocmn/src/provider/email"
 )
 
 type EmailVerification struct {
-
 	/**
 	 * Number of seconds the verification token is
 	 * valid for.
@@ -17,8 +15,8 @@ type EmailVerification struct {
 	 */
 	ExpiresIn time.Duration
 
-	VerificationCodeSender email.VerificationSender
-	CodeGenerator GenerateCode
+	VerificationCodeSender VerificationSender
+	CodeGenerator          GenerateCode
 
 	//===================================    TO USE NOW ===================================
 
@@ -56,11 +54,17 @@ type EmailVerification struct {
 	// AfterEmailVerification func(user models.User, request *http.Request) error
 }
 
-type SendVerificationEmail func(data EmailVerificationData, request *http.Request) error
-type GenerateCode func() string
+type (
+	SendVerificationEmail func(data EmailVerificationData, request *http.Request) error
+	GenerateCode          func() string
+)
 
 type EmailVerificationData struct {
 	User  models.User
 	URL   string
 	Token string
+}
+
+type VerificationSender interface {
+	SendVerificationCode(to string, code string) error
 }

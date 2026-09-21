@@ -21,7 +21,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/better-go-auth/goauth/src/providers"
-	"github.com/birukbelay/gocmn/src/server/middleware"
+	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/danielgtaylor/huma/v2"
 )
 

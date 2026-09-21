@@ -12,7 +12,7 @@ import (
 )
 
 // ListUserSessions handles POST /api/auth/admin/list-user-sessions.
-func (h *AdminHandler) ListUserSessions(ctx context.Context, input *ListUserSessionsInput) (*ListUserSessionsOutput, error) {
+func (h *AdminHandler) ListUserSessions(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminListUserSessionsInput]) (*humatypes.HumaRes[admindtos.AdminListUserSessionsResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
@@ -22,13 +22,11 @@ func (h *AdminHandler) ListUserSessions(ctx context.Context, input *ListUserSess
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &ListUserSessionsOutput{
-		Body: admindtos.AdminListUserSessionsResponse{Sessions: sessions},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminListUserSessionsResponse{Sessions: sessions}, 200), nil
 }
 
 // RevokeUserSession handles POST /api/auth/admin/revoke-user-session.
-func (h *AdminHandler) RevokeUserSession(ctx context.Context, input *RevokeUserSessionInput) (*RevokeUserSessionOutput, error) {
+func (h *AdminHandler) RevokeUserSession(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminRevokeUserSessionInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -37,13 +35,11 @@ func (h *AdminHandler) RevokeUserSession(ctx context.Context, input *RevokeUserS
 	if err := h.Admin.RevokeUserSession(ctx, input.Body, session.User.ID); err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &RevokeUserSessionOutput{
-		Body: admindtos.AdminStatusResponse{Status: true},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminStatusResponse{Status: true}, 200), nil
 }
 
 // RevokeUserSessions handles POST /api/auth/admin/revoke-user-sessions.
-func (h *AdminHandler) RevokeUserSessions(ctx context.Context, input *RevokeUserSessionsInput) (*RevokeUserSessionsOutput, error) {
+func (h *AdminHandler) RevokeUserSessions(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminRevokeUserSessionsInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -52,13 +48,11 @@ func (h *AdminHandler) RevokeUserSessions(ctx context.Context, input *RevokeUser
 	if err := h.Admin.RevokeUserSessions(ctx, input.Body, session.User.ID); err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &RevokeUserSessionsOutput{
-		Body: admindtos.AdminStatusResponse{Status: true},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminStatusResponse{Status: true}, 200), nil
 }
 
 // ImpersonateUser handles POST /api/auth/admin/impersonate-user.
-func (h *AdminHandler) ImpersonateUser(ctx context.Context, input *ImpersonateUserInput) (*ImpersonateUserOutput, error) {
+func (h *AdminHandler) ImpersonateUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminImpersonateUserInput]) (*humatypes.HumaRes[dtos.SessionResponse], error) {
 	adminSession, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -72,17 +66,14 @@ func (h *AdminHandler) ImpersonateUser(ctx context.Context, input *ImpersonateUs
 
 	// cookies := h.EmitSessionCookies(signInResp.User, signInResp.SessionData, true)
 
-	return &ImpersonateUserOutput{
-		// SetCookie: cookies,
-		Body: dtos.SessionResponse{
-			Session: signInResp.SessionData,
-			User:    signInResp.User,
-		},
-	}, nil
+	return humatypes.MakeResPtr(&dtos.SessionResponse{
+		Session: signInResp.SessionData,
+		User:    signInResp.User,
+	}, 200), nil
 }
 
 // StopImpersonating handles POST /api/auth/admin/stop-impersonating.
-func (h *AdminHandler) StopImpersonating(ctx context.Context, input *StopImpersonatingInput) (*StopImpersonatingOutput, error) {
+func (h *AdminHandler) StopImpersonating(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminStopImpersonatingInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
 	session, err := h.Authenticate(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -95,11 +86,8 @@ func (h *AdminHandler) StopImpersonating(ctx context.Context, input *StopImperso
 	// jar := map[string]string{}
 	// cookies := h.DeleteSessionCookies(false, jar)
 
-	return &StopImpersonatingOutput{
-		// SetCookie: cookies,
-		Body: admindtos.AdminStatusResponse{
-			Status:  true,
-			Message: "Impersonation session terminated successfully",
-		},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminStatusResponse{
+		Status:  true,
+		Message: "Impersonation session terminated successfully",
+	}, 200), nil
 }

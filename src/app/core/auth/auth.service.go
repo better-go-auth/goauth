@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/birukbelay/gocmn/src/dtos"
-	"github.com/birukbelay/gocmn/src/logger"
-	"github.com/birukbelay/gocmn/src/resp_const"
+	"github.com/better-go-auth/goauth/src/common/dtos"
+	"github.com/better-go-auth/goauth/src/common/logger"
 
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	errors "github.com/better-go-auth/goauth/src/common/error"
@@ -25,7 +24,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		// If the User is still pending verification, throw error
 		// todo create a time out
 		if usr.AccountStatus != enums.AccountPendingVerification {
-			return dtos.BadReqC[models.User](resp_const.UserExists), resp_const.UserExistError
+			return dtos.BadReqC[models.User](errors.UserExists), errors.UserExistError
 		}
 	}
 
@@ -117,13 +116,13 @@ func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationI
 	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
 		usr, err := aus.userRepo.GetUserByEmail(txCtx, input.Info)
 		if err != nil || usr == nil || usr.AccountStatus != enums.AccountPendingVerification {
-			return resp_const.InfoOrCodeErr
+			return errors.InfoOrCodeErr
 		}
 
 		// Validate the code
 		_, err = aus.VSvc.VerifyCode(txCtx, usr.GetEmail(), models.PurposeEmailVerification, input.Code)
 		if err != nil {
-			return resp_const.InfoOrCodeErr
+			return errors.InfoOrCodeErr
 		}
 
 		// Update the user's status
@@ -151,20 +150,20 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 	usr, err := aus.userRepo.GetUserByEmail(ctx, input.LoginInfo)
 	if err != nil || usr == nil || usr.Active == nil || (usr.Active != nil && !*usr.Active) {
 		_, _ = hasher.BcryptCreateHash(input.Password) // for security timing protection
-		return dtos.BadReqC[TokenResponse](resp_const.EmailOrPassword), resp_const.EmailOrPasswordErr
+		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
 	}
 
 	// 2. Get password from account record
 	account, err := aus.accountRepo.GetAccountByUserAndProvider(ctx, usr.ID, models.ProvCredential)
 	if err != nil || account == nil || account.Password == nil {
 		_, _ = hasher.BcryptCreateHash(input.Password) // for security timing protection
-		return dtos.BadReqC[TokenResponse](resp_const.EmailOrPassword), errors.ErrInvalidCredentials
+		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.ErrInvalidCredentials
 	}
 
 	// 3. compare the password hash
 	valid := hasher.BcryptPasswordsMatch(input.Password, *account.Password)
 	if !valid {
-		return dtos.BadReqC[TokenResponse](resp_const.EmailOrPassword), resp_const.EmailOrPasswordErr
+		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
 	}
 
 	// 4. Check ban (after credential check; expired bans are lifted silently)
@@ -220,25 +219,25 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 	// 1. validate the refresh token
 	claims, err := jwttoken.ValidateToken(refreshToken, aus.Config.RefreshSecret)
 	if err != nil {
-		return dtos.BadReqC[TokenResponse](resp_const.InvalidToken), resp_const.InvalidTokenError
+		return dtos.BadReqC[TokenResponse](errors.InvalidToken), errors.InvalidTokenError
 	}
 
 	// 2. get the user
 	usr, err := aus.userRepo.GetUserByID(ctx, claims.UserID)
 	if err != nil || usr == nil {
-		return dtos.BadReqC[TokenResponse](resp_const.DataNotFound), resp_const.UserNotFoundError
+		return dtos.BadReqC[TokenResponse](errors.DataNotFound), errors.UserNotFoundError
 	}
 
 	// 3. get the session that are not blacklisted
 	session, err := aus.sessionRepo.GetSessionBySessionID(ctx, claims.SessionID)
 	if err != nil || session == nil || session.UserID != claims.UserID || (session.Blacklisted != nil && *session.Blacklisted) {
-		return dtos.BadReqC[TokenResponse](resp_const.DataNotFound), resp_const.UserNotFoundError
+		return dtos.BadReqC[TokenResponse](errors.DataNotFound), errors.UserNotFoundError
 	}
 
 	// 4. validate the refresh token matches
 	valid := hasher.ArgonPasswordsMatch(refreshToken, session.HashedToken)
 	if !valid {
-		return dtos.BadReqC[TokenResponse](resp_const.TokenDontMatch), resp_const.TokenDontMatchError
+		return dtos.BadReqC[TokenResponse](errors.TokenDontMatch), errors.TokenDontMatchError
 	}
 
 	// 5. recreate session tokens
@@ -258,17 +257,17 @@ func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[
 	// 1. the jwt token
 	claims, err := jwttoken.ValidateToken(refreshToken, aus.Config.RefreshSecret)
 	if err != nil {
-		return dtos.BadReqC[bool](resp_const.InvalidToken), resp_const.InvalidTokenError
+		return dtos.BadReqC[bool](errors.InvalidToken), errors.InvalidTokenError
 	}
 
 	session, err := aus.sessionRepo.GetSessionBySessionID(ctx, claims.SessionID)
 	if err != nil || session == nil {
-		return dtos.BadReqC[bool](resp_const.DataNotFound), resp_const.UserNotFoundError
+		return dtos.BadReqC[bool](errors.DataNotFound), errors.UserNotFoundError
 	}
 
 	valid := hasher.ArgonPasswordsMatch(refreshToken, session.HashedToken)
 	if !valid {
-		return dtos.BadReqC[bool](resp_const.TokenDontMatch), resp_const.TokenDontMatchError
+		return dtos.BadReqC[bool](errors.TokenDontMatch), errors.TokenDontMatchError
 	}
 
 	if err := aus.SesSvc.DeleteSession(ctx, session.SessionId); err != nil {
@@ -296,7 +295,7 @@ func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GRes
 
 	usr, err := aus.userRepo.GetUserByEmail(ctx, input.Info)
 	if err != nil || usr == nil {
-		return dtos.BadReqC[bool](resp_const.InfoOrCode), resp_const.InfoOrCodeErr
+		return dtos.BadReqC[bool](errors.InfoOrCode), errors.InfoOrCodeErr
 	}
 	// Fetch sessions first so we don't lose their SessionId values upon deletion
 	// sessions, fetchErr := generic.DbFetchManyWithOffset[models.Session](aus.Provider.GormConn, ctx, models.Session{UserID: usr.Body.ID}, dtos.PaginationInput{Limit: 10000}, nil)
@@ -305,7 +304,7 @@ func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GRes
 		// 1. Validate the code
 		_, err = aus.VSvc.VerifyCode(txCtx, input.Info, models.PurposePasswordReset, input.Code)
 		if err != nil {
-			return resp_const.InfoOrCodeErr
+			return errors.InfoOrCodeErr
 		}
 
 		// 2. Update user's password

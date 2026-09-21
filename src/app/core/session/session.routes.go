@@ -3,7 +3,7 @@ package session
 import (
 	"net/http"
 
-	"github.com/birukbelay/gocmn/src/consts"
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/better-go-auth/goauth/src/config"

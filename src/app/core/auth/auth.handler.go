@@ -5,7 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/birukbelay/gocmn/src/dtos"
+	"github.com/better-go-auth/goauth/src/common/dtos"
+	humatypes "github.com/better-go-auth/goauth/src/common/types"
 
 	"github.com/danielgtaylor/huma/v2"
 
@@ -27,7 +28,7 @@ func CreateCookie(Name, Value string, minutes int) http.Cookie {
 	}
 }
 
-func (ah *GinAuthHandler) Register(ctx context.Context, inputs *dtos.HumaReqBody[models.RegisterClientInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.SignUpResponse]], error) {
+func (ah *GinAuthHandler) Register(ctx context.Context, inputs *humatypes.HumaReqBody[models.RegisterClientInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignUpResponse]], error) {
 	usr, err := ah.AdminAuthServ.RegisterWithEmail(ctx, inputs.Body)
 	if err != nil {
 		return nil, huma.NewError(http.StatusBadRequest, err.Error())
@@ -36,10 +37,11 @@ func (ah *GinAuthHandler) Register(ctx context.Context, inputs *dtos.HumaReqBody
 		User:  authDtos.UserToResponse(&usr.Body),
 		Token: nil,
 	}
-	return dtos.HumaReturnG(dtos.SuccessCreated(resp, usr.RowsAffected), nil)
+	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
+	return humatypes.MakeResPtr(&gresp, 200), nil
 }
 
-func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *dtos.HumaReqBody[VerificationInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
+func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *humatypes.HumaReqBody[VerificationInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
 	usr, err := ah.AdminAuthServ.VerifyRegisteredUser(ctx, inputs.Body)
 	if err != nil {
 		return nil, huma.NewError(http.StatusBadRequest, err.Error())
@@ -48,10 +50,11 @@ func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *d
 		User:   authDtos.UserToResponse(&usr.Body),
 		Status: true,
 	}
-	return dtos.HumaReturnG(dtos.SuccessCreated(resp, usr.RowsAffected), nil)
+	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
+	return humatypes.MakeRes(gresp, 200), nil
 }
 
-func (ah *GinAuthHandler) Login(ctx context.Context, inputs *dtos.HumaReqBody[LoginData]) (*dtos.HumaResponse[dtos.GResp[authDtos.SignInResponse]], error) {
+func (ah *GinAuthHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBody[LoginData]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
 	tkn, err := ah.AdminAuthServ.Login(ctx, inputs.Body)
 	if err != nil {
 		return nil, huma.NewError(http.StatusUnauthorized, err.Error())
@@ -72,10 +75,10 @@ func (ah *GinAuthHandler) Login(ctx context.Context, inputs *dtos.HumaReqBody[Lo
 		Redirect:   false,
 		AuthTokens: tkn.Body.AuthTokens,
 	}
-	return dtos.HumaReturnGWithCookie(dtos.SuccessCreated(resp, tkn.RowsAffected), nil, cookies)
+	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201, cookies...), nil
 }
 
-func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *dtos.HumaReqBody[RefreshTokenInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.SignInResponse]], error) {
+func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *humatypes.HumaReqBody[RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
 	tkn, err := ah.AdminAuthServ.ResetToken(ctx, inputs.Body.Token)
 	if err != nil {
 		return nil, huma.NewError(http.StatusUnauthorized, err.Error())
@@ -96,10 +99,10 @@ func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *dtos.HumaReq
 		Redirect:   false,
 		AuthTokens: tkn.Body.AuthTokens,
 	}
-	return dtos.HumaReturnGWithCookie(dtos.SuccessCreated(resp, tkn.RowsAffected), nil, cookies)
+	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201, cookies...), nil
 }
 
-func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *dtos.HumaReqBody[RefreshTokenInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.SuccessResponse]], error) {
+func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqBody[RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SuccessResponse]], error) {
 	tkn, err := ah.AdminAuthServ.Logout(ctx, inputs.Body.Token)
 	if err != nil {
 		return nil, huma.NewError(http.StatusBadRequest, err.Error())
@@ -107,10 +110,10 @@ func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *dtos.HumaReqBody[R
 	resp := authDtos.SuccessResponse{
 		Success: tkn.Body,
 	}
-	return dtos.HumaReturnG(dtos.SuccessCreated(resp, tkn.RowsAffected), nil)
+	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
 }
 
-func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *dtos.HumaReqBody[VerifyReqInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.StatusResponse]], error) {
+func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaReqBody[VerifyReqInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
 	tkn, err := ah.AdminAuthServ.ForgotPwd(ctx, inputs.Body)
 	if err != nil {
 		return nil, huma.NewError(http.StatusBadRequest, err.Error())
@@ -119,10 +122,10 @@ func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *dtos.HumaReqBod
 		Status:  tkn.Body,
 		Message: "Password reset verification code sent",
 	}
-	return dtos.HumaReturnG(dtos.SuccessCreated(resp, tkn.RowsAffected), nil)
+	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
 }
 
-func (ah *GinAuthHandler) ResetPwd(ctx context.Context, inputs *dtos.HumaReqBody[PwdResetInput]) (*dtos.HumaResponse[dtos.GResp[authDtos.StatusResponse]], error) {
+func (ah *GinAuthHandler) ResetPwd(ctx context.Context, inputs *humatypes.HumaReqBody[PwdResetInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
 	tkn, err := ah.AdminAuthServ.ResetPwd(ctx, inputs.Body)
 	if err != nil {
 		return nil, huma.NewError(http.StatusBadRequest, err.Error())
@@ -131,7 +134,7 @@ func (ah *GinAuthHandler) ResetPwd(ctx context.Context, inputs *dtos.HumaReqBody
 		Status:  tkn.Body,
 		Message: "Password reset successfully",
 	}
-	return dtos.HumaReturnG(dtos.SuccessCreated(resp, tkn.RowsAffected), nil)
+	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
 }
 
 // func (ah *GinAuthHandler[T]) ChangeActiveCompany(ctx context.Context, inputs *dtos.HumaReqBody[ChangeActiveCompanyInput]) (*dtos.HumaResponse[dtos.GResp[TokenResponse]], error) {

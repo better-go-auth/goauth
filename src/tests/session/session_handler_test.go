@@ -5,11 +5,12 @@ import (
 	"testing"
 
 	"github.com/better-go-auth/goauth/src/app/core/auth"
+	"github.com/better-go-auth/goauth/src/common/dtos"
+	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/birukbelay/gocmn/src/dtos"
 )
 
 // TestSessionHandler_GetAndDelete invokes the Session handlers directly in-process
@@ -27,7 +28,7 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 	var targetSessionID string
 
 	t.Run("01 Sign Up and Verify Email", func(t *testing.T) {
-		_, err := env.AuthHandler.Register(ctx, &dtos.HumaReqBody[models.RegisterClientInput]{
+		_, err := env.AuthHandler.Register(ctx, &humatypes.HumaReqBody[models.RegisterClientInput]{
 			Body: models.RegisterClientInput{
 				FirstName: "Session",
 				LastName:  "User",
@@ -44,7 +45,7 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 			t.Fatalf("Expected verification token for %s", email)
 		}
 
-		_, err = env.AuthHandler.VerifyRegisteredAccount(ctx, &dtos.HumaReqBody[auth.VerificationInput]{
+		_, err = env.AuthHandler.VerifyRegisteredAccount(ctx, &humatypes.HumaReqBody[auth.VerificationInput]{
 			Body: auth.VerificationInput{
 				Info: email,
 				Code: token,
@@ -56,7 +57,7 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 	})
 
 	t.Run("02 User Login", func(t *testing.T) {
-		loginResp, err := env.AuthHandler.Login(ctx, &dtos.HumaReqBody[auth.LoginData]{
+		loginResp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
 			Body: auth.LoginData{
 				LoginInfo: email,
 				Password:  password,
@@ -95,7 +96,7 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 	})
 
 	t.Run("04 Delete Session by ID", func(t *testing.T) {
-		delResp, err := env.SessionHandler.DelteMySession(authCtx, &dtos.HumaInputId{
+		delResp, err := env.SessionHandler.DelteMySession(authCtx, &humatypes.HumaReqId{
 			ID: targetSessionID,
 		})
 		if err != nil {

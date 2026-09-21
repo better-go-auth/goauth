@@ -10,7 +10,7 @@ import (
 	loc_errors "github.com/better-go-auth/goauth/src/common/error"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/birukbelay/gocmn/src/dtos"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 	"gorm.io/gorm"
 )
 

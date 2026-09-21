@@ -23,13 +23,13 @@ func (h *OrgHandler) GetMember(ctx context.Context, input *GetMemberInput) (*hum
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return humatypes.Ptr(humatypes.MakeRes(*orgdtos.MemberToResponse(member), http.StatusOK)), nil
+	return humatypes.MakeResPtr(orgdtos.MemberToResponse(member), http.StatusOK), nil
 }
-
-func (h *OrgHandler) ListMembers(ctx context.Context, input *ListMembersInput) (*humatypes.HumaRes[struct {
+type MemberResp struct {
 	Members []orgdtos.MemberResponse `json:"members"`
 	Total   int64                    `json:"total"`
-}], error) {
+}
+func (h *OrgHandler) ListMembers(ctx context.Context, input *ListMembersInput) (*humatypes.HumaRes[MemberResp], error) {
 	if _, err := h.Authenticate(ctx, input.AuthHeaders); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -41,10 +41,7 @@ func (h *OrgHandler) ListMembers(ctx context.Context, input *ListMembersInput) (
 	for i := range members {
 		resps = append(resps, *orgdtos.MemberToResponse(&members[i]))
 	}
-	return humatypes.Ptr(humatypes.MakeRes(struct {
-		Members []orgdtos.MemberResponse `json:"members"`
-		Total   int64                    `json:"total"`
-	}{Members: resps, Total: total}, http.StatusOK)), nil
+	return humatypes.MakeRes(MemberResp{Members: resps, Total: total}, http.StatusOK), nil
 }
 
 func (h *OrgHandler) UpdateMemberRole(ctx context.Context, input *UpdateMemberRoleInput) (*humatypes.HumaRes[orgdtos.MemberResponse], error) {
@@ -59,7 +56,7 @@ func (h *OrgHandler) UpdateMemberRole(ctx context.Context, input *UpdateMemberRo
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return humatypes.Ptr(humatypes.MakeRes(*orgdtos.MemberToResponse(member), http.StatusOK)), nil
+	return humatypes.MakeResPtr(orgdtos.MemberToResponse(member), http.StatusOK), nil
 }
 
 func (h *OrgHandler) RemoveMember(ctx context.Context, input *RemoveMemberInput) (*humatypes.SuccessOutput, error) {
@@ -73,5 +70,5 @@ func (h *OrgHandler) RemoveMember(ctx context.Context, input *RemoveMemberInput)
 	if err := h.Org.RemoveMember(ctx, input.Body, session.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return &humatypes.SuccessOutput{Body: humatypes.SuccessBody{Success: true}}, nil
+	return humatypes.SuccessRes(http.StatusOK), nil
 }

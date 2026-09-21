@@ -28,11 +28,9 @@ import (
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
+	"github.com/better-go-auth/goauth/src/common/consts"
+	redis_storage "github.com/better-go-auth/goauth/src/providers/sec-storage/redis"
 	"github.com/better-go-auth/goauth/src/providers/token"
-	"github.com/birukbelay/gocmn/src/config"
-	cmnConf "github.com/birukbelay/gocmn/src/config"
-	"github.com/birukbelay/gocmn/src/consts"
-	gocmn_redis "github.com/birukbelay/gocmn/src/provider/db/redis"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/google/uuid"
@@ -84,7 +82,6 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	ctx := context.Background()
 	var gormDB *gorm.DB
 	var secStorage sec_storage.SecondaryStorage
-	// var redisClient *gocmn_redis.RedisService
 	teardown := func() {}
 
 	if useContainers {
@@ -140,12 +137,9 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		}
 
 		// Establish Redis Connection to Redis Container
-		redisClient, err := gocmn_redis.NewRedis(&cmnConf.KeyValConfig{
-			KVHost:     redisHost,
-			KVPort:     redisPort.Port(),
-			KVPassword: "",
-			KVUsername: "",
-			KVDbName:   0,
+		redisClient, err := redis_storage.NewRedisStorage(&redis_storage.Config{
+			Host: redisHost,
+			Port: redisPort.Port(),
 		})
 		if err != nil {
 			panic("testcommon.Setup: failed to connect to redis test container: " + err.Error())
@@ -172,7 +166,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			log.Fatalf("failed to create in-memory secondary storage: %v", err)
 		}
 	}
-	jwt := config.JwtVar{
+	jwt := loc_conf.JwtVar{
 		AccessSecret:     TestAccessSecret,
 		RefreshSecret:    TestRefreshSecret,
 		AccessExpireMin:  60,

@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	Imdl "github.com/birukbelay/gocmn/src/dtos"
+	Imdl "github.com/better-go-auth/goauth/src/common/dtos"
 
 	"github.com/better-go-auth/goauth/src/models/enums"
 )

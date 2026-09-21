@@ -16,7 +16,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/birukbelay/gocmn/src/dtos"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/stretchr/testify/assert"

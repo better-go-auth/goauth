@@ -4,7 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/birukbelay/gocmn/src/dtos"
+	"github.com/better-go-auth/goauth/src/common/dtos"
+	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/better-go-auth/goauth/src/models"
@@ -12,7 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 )
 
-func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *dtos.HumaInputId) (*dtos.HumaResponse[dtos.GResp[authDtos.StatusResponse]], error) {
+func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *humatypes.HumaReqId) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
@@ -33,10 +34,10 @@ func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *dtos.Huma
 	if err != nil {
 		return nil, huma.NewError(http.StatusInternalServerError, err.Error())
 	}
-	return dtos.HumaReturnG(dtos.SuccessCreated(authDtos.StatusResponse{Status: true}, 1), nil)
+	return humatypes.MakeRes(dtos.SuccessCreated(authDtos.StatusResponse{Status: true}, 1), 200), nil
 }
 
-func (uh *HumaSessionHandler) GetMySession(ctx context.Context, q *models.SessionQuery) (*dtos.HumaResponse[dtos.PResp[[]authDtos.SessionData]], error) {
+func (uh *HumaSessionHandler) GetMySession(ctx context.Context, q *models.SessionQuery) (*humatypes.HumaRes[dtos.PResp[[]authDtos.SessionData]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
@@ -47,13 +48,13 @@ func (uh *HumaSessionHandler) GetMySession(ctx context.Context, q *models.Sessio
 
 	sessions, total, err := uh.Service.SessionRepo.ListSessions(ctx, models.SessionFilter{UserId: v.Session.UserID}, q.PaginationInput)
 	if err != nil {
-		return dtos.PHumaReturn(dtos.PResp[[]authDtos.SessionData]{}, err)
+		return humatypes.MakeRes(dtos.PResp[[]authDtos.SessionData]{}, http.StatusInternalServerError), err
 	}
 	data := authDtos.SessionsToData(sessions)
-	return dtos.PHumaReturn(dtos.PResp[[]authDtos.SessionData]{
+	return humatypes.MakeRes(dtos.PResp[[]authDtos.SessionData]{
 		Body:         data,
 		Status:       http.StatusOK,
 		RowsAffected: int64(len(data)),
 		Count:        total,
-	}, nil)
+	}, 200), nil
 }

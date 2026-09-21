@@ -4,14 +4,15 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/birukbelay/gocmn/src/dtos"
+	"github.com/better-go-auth/goauth/src/common/dtos"
+	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 )
 
-func (uh *HProfileHandler) GetMyProfile(ctx context.Context, _ *dtos.AuthParam) (*dtos.HumaResponse[dtos.GResp[models.User]], error) {
+func (uh *HProfileHandler) GetMyProfile(ctx context.Context, _ *humatypes.HumaReqEmpty) (*humatypes.HumaRes[dtos.GResp[models.User]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
@@ -21,10 +22,10 @@ func (uh *HProfileHandler) GetMyProfile(ctx context.Context, _ *dtos.AuthParam) 
 	if err != nil || user == nil {
 		return nil, huma.NewError(http.StatusNotFound, "user not found")
 	}
-	return dtos.HumaReturnG(dtos.SuccessCreated(*user, 1), nil)
+	return humatypes.MakeRes(dtos.SuccessCreated(*user, 1), 200), nil
 }
 
-func (uh *HProfileHandler) UpdateMyProfile(ctx context.Context, filter *dtos.HumaReqBody[models.ProfileUpdateDto]) (*dtos.HumaResponse[dtos.GResp[models.User]], error) {
+func (uh *HProfileHandler) UpdateMyProfile(ctx context.Context, filter *humatypes.HumaReqBody[models.ProfileUpdateDto]) (*humatypes.HumaRes[dtos.GResp[models.User]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
@@ -33,34 +34,46 @@ func (uh *HProfileHandler) UpdateMyProfile(ctx context.Context, filter *dtos.Hum
 	if err != nil || user == nil {
 		return nil, huma.NewError(http.StatusInternalServerError, "failed to update profile")
 	}
-	return dtos.HumaReturnG(dtos.SuccessCreated(*user, 1), nil)
+	return humatypes.MakeRes(dtos.SuccessCreated(*user, 1), 201), nil
 }
 
-func (uh *HProfileHandler) UpdateMyPassword(ctx context.Context, input *dtos.HumaReqBody[models.PasswordUpdateDto]) (*dtos.HumaResponse[dtos.GResp[models.User]], error) {
+func (uh *HProfileHandler) UpdateMyPassword(ctx context.Context, input *humatypes.HumaReqBody[models.PasswordUpdateDto]) (*humatypes.HumaRes[dtos.GResp[models.User]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
 	}
 	resp, err := uh.Service.ChangePassword(ctx, v.User.ID, v.Session.ID, input.Body)
-	return dtos.HumaReturnG(resp, err)
+	if err != nil {
+		// todo make a func that returns huma error with the error message
+		return nil, huma.NewError(http.StatusInternalServerError, err.Error())
+	}
+	return humatypes.MakeRes(resp, 200), nil
 }
 
-func (uh *HProfileHandler) UpdateMyEmailReq(ctx context.Context, input *dtos.HumaReqBody[models.ChangeEmailReqDto]) (*dtos.HumaResponse[dtos.GResp[bool]], error) {
+func (uh *HProfileHandler) UpdateMyEmailReq(ctx context.Context, input *humatypes.HumaReqBody[models.ChangeEmailReqDto]) (*humatypes.HumaRes[dtos.GResp[bool]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
 	}
 	resp, err := uh.Service.SendChangeEmail(ctx, v.User.ID, input.Body)
-	return dtos.HumaReturnG(resp, err)
+	if err != nil {
+		// todo make a func that returns huma error with the error message
+		return nil, huma.NewError(http.StatusInternalServerError, err.Error())
+	}
+	return humatypes.MakeRes(resp, 200), nil
 }
 
-func (uh *HProfileHandler) VerifyMyChangeEmailReq(ctx context.Context, input *dtos.HumaReqBody[models.VerifyEmailDto]) (*dtos.HumaResponse[dtos.GResp[bool]], error) {
+func (uh *HProfileHandler) VerifyMyChangeEmailReq(ctx context.Context, input *humatypes.HumaReqBody[models.VerifyEmailDto]) (*humatypes.HumaRes[dtos.GResp[bool]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
 	}
 	resp, err := uh.Service.VerifyChangeEmail(ctx, v.User.ID, input.Body)
-	return dtos.HumaReturnG(resp, err)
+	if err != nil {
+		// todo make a func that returns huma error with the error message
+		return nil, huma.NewError(http.StatusInternalServerError, err.Error())
+	}
+	return humatypes.MakeRes(resp, 200), nil
 }
 
 // func (uh *HProfileHandler) DeleteMyProfile(ctx context.Context, _ *dtos.AuthParam) (*dtos.HumaResponse[dtos.GResp[models.User]], error) {

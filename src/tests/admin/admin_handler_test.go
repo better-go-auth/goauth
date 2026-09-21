@@ -6,7 +6,6 @@ import (
 
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/oklog/ulid/v2"
@@ -31,7 +30,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 			Name:     "Handler Managed User",
 			Role:     enums.User,
 		}
-		resp, err := env.AdminHandler.CreateUser(ctx, &humaadmin.CreateUserInput{
+		resp, err := env.AdminHandler.CreateUser(ctx, &humatypes.HumaReqBody[admindtos.AdminCreateUserInput]{
 			AuthHeaders: authHeaders,
 			Body:        createInput,
 		})
@@ -51,7 +50,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 		listInput := admindtos.AdminListUsersInput{
 			Limit: ptr(10),
 		}
-		resp, err := env.AdminHandler.ListUsers(ctx, &humaadmin.ListUsersInput{
+		resp, err := env.AdminHandler.ListUsers(ctx, &humatypes.HumaReqBody[admindtos.AdminListUsersInput]{
 			AuthHeaders: authHeaders,
 			Body:        listInput,
 		})
@@ -68,7 +67,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 			UserID: managedUserID,
 			Role:   enums.Admin,
 		}
-		resp, err := env.AdminHandler.SetUserRole(ctx, &humaadmin.SetUserRoleInput{
+		resp, err := env.AdminHandler.SetUserRole(ctx, &humatypes.HumaReqBody[admindtos.AdminSetUserRoleInput]{
 			AuthHeaders: authHeaders,
 			Body:        setRoleInput,
 		})
@@ -85,7 +84,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 			UserID:      managedUserID,
 			NewPassword: "AdminAssignedPassword789!",
 		}
-		resp, err := env.AdminHandler.SetUserPassword(ctx, &humaadmin.SetUserPasswordInput{
+		resp, err := env.AdminHandler.SetUserPassword(ctx, &humatypes.HumaReqBody[admindtos.AdminSetUserPasswordInput]{
 			AuthHeaders: authHeaders,
 			Body:        setPwdInput,
 		})
@@ -102,7 +101,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 			UserID:    managedUserID,
 			BanReason: ptr("Policy violation"),
 		}
-		resp, err := env.AdminHandler.BanUser(ctx, &humaadmin.BanUserInput{
+		resp, err := env.AdminHandler.BanUser(ctx, &humatypes.HumaReqBody[admindtos.AdminBanUserInput]{
 			AuthHeaders: authHeaders,
 			Body:        banInput,
 		})
@@ -118,7 +117,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 		unbanInput := admindtos.AdminUnbanUserInput{
 			UserID: managedUserID,
 		}
-		resp, err := env.AdminHandler.UnbanUser(ctx, &humaadmin.UnbanUserInput{
+		resp, err := env.AdminHandler.UnbanUser(ctx, &humatypes.HumaReqBody[admindtos.AdminUnbanUserInput]{
 			AuthHeaders: authHeaders,
 			Body:        unbanInput,
 		})
@@ -140,7 +139,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 		listSessionsInput := admindtos.AdminListUserSessionsInput{
 			UserID: managedUserID,
 		}
-		resp, err := env.AdminHandler.ListUserSessions(ctx, &humaadmin.ListUserSessionsInput{
+		resp, err := env.AdminHandler.ListUserSessions(ctx, &humatypes.HumaReqBody[admindtos.AdminListUserSessionsInput]{
 			AuthHeaders: authHeaders,
 			Body:        listSessionsInput,
 		})
@@ -156,7 +155,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 		revokeSingleInput := admindtos.AdminRevokeUserSessionInput{
 			SessionToken: ptr(userSessionID),
 		}
-		resp, err := env.AdminHandler.RevokeUserSession(ctx, &humaadmin.RevokeUserSessionInput{
+		resp, err := env.AdminHandler.RevokeUserSession(ctx, &humatypes.HumaReqBody[admindtos.AdminRevokeUserSessionInput]{
 			AuthHeaders: authHeaders,
 			Body:        revokeSingleInput,
 		})
@@ -175,7 +174,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 		revokeAllInput := admindtos.AdminRevokeUserSessionsInput{
 			UserID: managedUserID,
 		}
-		resp, err := env.AdminHandler.RevokeUserSessions(ctx, &humaadmin.RevokeUserSessionsInput{
+		resp, err := env.AdminHandler.RevokeUserSessions(ctx, &humatypes.HumaReqBody[admindtos.AdminRevokeUserSessionsInput]{
 			AuthHeaders: authHeaders,
 			Body:        revokeAllInput,
 		})
@@ -191,7 +190,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 		impersonateInput := admindtos.AdminImpersonateUserInput{
 			UserID: managedUserID,
 		}
-		resp, err := env.AdminHandler.ImpersonateUser(ctx, &humaadmin.ImpersonateUserInput{
+		resp, err := env.AdminHandler.ImpersonateUser(ctx, &humatypes.HumaReqBody[admindtos.AdminImpersonateUserInput]{
 			AuthHeaders: authHeaders,
 			Body:        impersonateInput,
 		})
@@ -209,7 +208,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 
 	t.Run("11 Stop Impersonating", func(t *testing.T) {
 		stopInput := admindtos.AdminStopImpersonatingInput{}
-		resp, err := env.AdminHandler.StopImpersonating(ctx, &humaadmin.StopImpersonatingInput{
+		resp, err := env.AdminHandler.StopImpersonating(ctx, &humatypes.HumaReqBody[admindtos.AdminStopImpersonatingInput]{
 			AuthHeaders: humatypes.AuthHeaders{Authorization: "Bearer " + impersonatedToken},
 			Body:        stopInput,
 		})
@@ -225,7 +224,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 		removeInput := admindtos.AdminRemoveUserInput{
 			UserID: managedUserID,
 		}
-		resp, err := env.AdminHandler.RemoveUser(ctx, &humaadmin.RemoveUserInput{
+		resp, err := env.AdminHandler.RemoveUser(ctx, &humatypes.HumaReqBody[admindtos.AdminRemoveUserInput]{
 			AuthHeaders: authHeaders,
 			Body:        removeInput,
 		})

@@ -5,7 +5,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/models"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
-	"github.com/birukbelay/gocmn/src/consts"
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/danielgtaylor/huma/v2"
 )
 

@@ -22,7 +22,7 @@ func (h *OrgHandler) InviteMember(ctx context.Context, input *InviteMemberInput)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return new(humatypes.MakeRes(*orgdtos.InvitationToResponse(inv), http.StatusCreated)), nil
+	return humatypes.MakeRes(*orgdtos.InvitationToResponse(inv), http.StatusCreated), nil
 }
 
 func (h *OrgHandler) GetInvitation(ctx context.Context, input *GetInvitationInput) (*humatypes.HumaRes[orgdtos.InvitationResponse], error) {
@@ -33,7 +33,7 @@ func (h *OrgHandler) GetInvitation(ctx context.Context, input *GetInvitationInpu
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return new(humatypes.MakeRes(*orgdtos.InvitationToResponse(inv), http.StatusOK)), nil
+	return humatypes.MakeRes(*orgdtos.InvitationToResponse(inv), http.StatusOK), nil
 }
 
 func (h *OrgHandler) AcceptInvitation(ctx context.Context, input *AcceptInvitationInput) (*humatypes.SuccessOutput, error) {
@@ -44,7 +44,7 @@ func (h *OrgHandler) AcceptInvitation(ctx context.Context, input *AcceptInvitati
 	if err := h.Org.AcceptInvitation(ctx, input.Body.InvitationID, session.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return &humatypes.SuccessOutput{Body: humatypes.SuccessBody{Success: true}}, nil
+	return humatypes.SuccessRes(http.StatusOK), nil
 }
 
 func (h *OrgHandler) RejectInvitation(ctx context.Context, input *RejectInvitationInput) (*humatypes.SuccessOutput, error) {
@@ -55,7 +55,7 @@ func (h *OrgHandler) RejectInvitation(ctx context.Context, input *RejectInvitati
 	if err := h.Org.RejectInvitation(ctx, input.Body.InvitationID, session.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return &humatypes.SuccessOutput{Body: humatypes.SuccessBody{Success: true}}, nil
+	return humatypes.SuccessRes(http.StatusOK), nil
 }
 
 func (h *OrgHandler) CancelInvitation(ctx context.Context, input *CancelInvitationInput) (*humatypes.SuccessOutput, error) {
@@ -66,12 +66,13 @@ func (h *OrgHandler) CancelInvitation(ctx context.Context, input *CancelInvitati
 	if err := h.Org.CancelInvitation(ctx, input.Body.InvitationID, session.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return &humatypes.SuccessOutput{Body: humatypes.SuccessBody{Success: true}}, nil
+	return humatypes.SuccessRes(http.StatusOK), nil
+}
+type InvitationResp struct {
+	Invitations []orgdtos.InvitationResponse `json:"invitations"`
 }
 
-func (h *OrgHandler) ListInvitations(ctx context.Context, input *ListInvitationsInput) (*humatypes.HumaRes[struct {
-	Invitations []orgdtos.InvitationResponse `json:"invitations"`
-}], error) {
+func (h *OrgHandler) ListInvitations(ctx context.Context, input *ListInvitationsInput) (*humatypes.HumaRes[InvitationResp], error) {
 	if _, err := h.Authenticate(ctx, input.AuthHeaders); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -83,7 +84,5 @@ func (h *OrgHandler) ListInvitations(ctx context.Context, input *ListInvitations
 	for i := range invs {
 		resps = append(resps, *orgdtos.InvitationToResponse(&invs[i]))
 	}
-	return new(humatypes.MakeRes(struct {
-		Invitations []orgdtos.InvitationResponse `json:"invitations"`
-	}{Invitations: resps}, http.StatusOK)), nil
+	return humatypes.MakeRes(InvitationResp{Invitations: resps}, http.StatusOK), nil
 }

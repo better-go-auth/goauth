@@ -8,21 +8,20 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/common/dtos"
+	"github.com/better-go-auth/goauth/src/common/logger"
+	"github.com/better-go-auth/goauth/src/common/util"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers/hasher"
-	"github.com/birukbelay/gocmn/src/dtos"
-	"github.com/birukbelay/gocmn/src/logger"
-	"github.com/birukbelay/gocmn/src/provider/email"
-	"github.com/birukbelay/gocmn/src/util"
 	"gorm.io/gorm"
 )
 
 type Service struct {
-	VerificationCodeSender email.VerificationSender
-	Repo                   repo_interfaces.IVerificationRepo
-	GormDB                 *gorm.DB
-	Config                 config.EmailVerification
+	// VerificationCodeSender email.VerificationSender
+	Repo   repo_interfaces.IVerificationRepo
+	GormDB *gorm.DB
+	Config config.EmailVerification
 }
 
 // NewVerificationService creates a VerificationService backed by a *gorm.DB (backward compatibility).
@@ -32,24 +31,24 @@ func NewVerificationService(dg *gorm.DB, config config.EmailVerification) serv_i
 		repo = gormauth.NewVerificationRepo(dg)
 	}
 	return &Service{
-		GormDB:                 dg,
-		Repo:                   repo,
-		VerificationCodeSender: config.VerificationCodeSender,
-		Config:                 config,
+		GormDB: dg,
+		Repo:   repo,
+		// VerificationCodeSender: config.VerificationCodeSender,
+		Config: config,
 	}
 }
 
 // NewVerificationServiceWithRepo creates a VerificationService backed by any IVerificationRepo implementation.
 func NewVerificationServiceWithRepo(repo repo_interfaces.IVerificationRepo, config config.EmailVerification) serv_interfaces.IVerificationService {
 	return &Service{
-		Repo:                   repo,
-		VerificationCodeSender: config.VerificationCodeSender,
-		Config:                 config,
+		Repo: repo,
+		// VerificationCodeSender: config.VerificationCodeSender,
+		Config: config,
 	}
 }
 
 func (vSvc Service) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *serv_interfaces.VerOpt) (dtos.GResp[bool], error) {
-	if vSvc.VerificationCodeSender == nil {
+	if vSvc.Config.VerificationCodeSender == nil {
 		return dtos.InternalErrMS[bool]("no verification code sender configured"), errors.New("no verification code sender configured")
 	}
 	if vSvc.Repo == nil {
@@ -66,7 +65,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 	if err != nil {
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
-	emailerr := vSvc.VerificationCodeSender.SendVerificationCode(identifier, verificationCode)
+	emailerr := vSvc.Config.VerificationCodeSender.SendVerificationCode(identifier, verificationCode)
 	if emailerr != nil {
 		return dtos.InternalErrMS[bool]("Queueing Email error"), emailerr
 	}

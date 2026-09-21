@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/birukbelay/gocmn/src/dtos"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 )
 
 // Session will be put on redis,

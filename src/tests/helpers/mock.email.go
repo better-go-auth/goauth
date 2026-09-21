@@ -5,10 +5,10 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/birukbelay/gocmn/src/provider/email"
+	"github.com/better-go-auth/goauth/src/config"
 )
 
-var _ email.VerificationSender = (*MockEmailSender)(nil)
+var _ config.VerificationSender = (*MockEmailSender)(nil)
 
 type MockEmailSender struct {
 	VerificationURLs  chan string

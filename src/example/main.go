@@ -15,7 +15,6 @@ import (
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
-	"github.com/birukbelay/gocmn/src/config"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"gorm.io/driver/sqlite"
@@ -56,7 +55,7 @@ func main() {
 	mux := http.NewServeMux()
 	apiConfig := huma.DefaultConfig("Better Go Auth Example Server", "1.0.0")
 	api := humago.New(mux, apiConfig)
-	jwt := config.JwtVar{
+	jwt := loc_conf.JwtVar{
 		AccessSecret:     accessSecret,
 		RefreshSecret:    refreshSecret,
 		AccessExpireMin:  60,

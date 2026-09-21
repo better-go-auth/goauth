@@ -3,7 +3,7 @@ package providers
 import (
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
-	"github.com/birukbelay/gocmn/src/server/middleware"
+	"github.com/better-go-auth/goauth/src/common/middleware"
 	"gorm.io/gorm"
 )
 

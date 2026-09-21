@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
-	"github.com/birukbelay/gocmn/src/server/middleware"
+	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/danielgtaylor/huma/v2"
 
 	autherr "github.com/better-go-auth/goauth/src/common/error"

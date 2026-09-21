@@ -20,7 +20,7 @@ func (h *OrgHandler) CreateOrg(ctx context.Context, input *CreateOrgInput) (*hum
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return new(humatypes.MakeRes(*orgdtos.OrgToResponse(org), http.StatusCreated)), nil
+	return humatypes.MakeRes(*orgdtos.OrgToResponse(org), http.StatusCreated), nil
 }
 
 func (h *OrgHandler) GetOrg(ctx context.Context, input *GetOrgInput) (*humatypes.HumaRes[orgdtos.OrgResponse], error) {
@@ -31,7 +31,7 @@ func (h *OrgHandler) GetOrg(ctx context.Context, input *GetOrgInput) (*humatypes
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return new(humatypes.MakeRes(*orgdtos.OrgToResponse(org), http.StatusOK)), nil
+	return humatypes.MakeRes(*orgdtos.OrgToResponse(org), http.StatusOK), nil
 }
 
 func (h *OrgHandler) UpdateOrg(ctx context.Context, input *UpdateOrgInput) (*humatypes.HumaRes[orgdtos.OrgResponse], error) {
@@ -42,7 +42,7 @@ func (h *OrgHandler) UpdateOrg(ctx context.Context, input *UpdateOrgInput) (*hum
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return new(humatypes.MakeRes(*orgdtos.OrgToResponse(org), http.StatusOK)), nil
+	return humatypes.MakeRes(*orgdtos.OrgToResponse(org), http.StatusOK), nil
 }
 
 func (h *OrgHandler) DeleteOrg(ctx context.Context, input *DeleteOrgInput) (*humatypes.SuccessOutput, error) {
@@ -71,9 +71,9 @@ func (h *OrgHandler) ListOrgs(ctx context.Context, input *ListOrgsInput) (*humat
 	for i := range orgs {
 		resps = append(resps, *orgdtos.OrgToResponse(&orgs[i]))
 	}
-	return new(humatypes.MakeRes(struct {
+	return humatypes.MakeRes(struct {
 		Organizations []orgdtos.OrgResponse `json:"organizations"`
-	}{Organizations: resps}, http.StatusOK)), nil
+	}{Organizations: resps}, http.StatusOK), nil
 }
 
 func (h *OrgHandler) SetActiveOrg(ctx context.Context, input *SetActiveOrgInput) (*humatypes.HumaRes[*models.AuthTokens], error) {
@@ -85,5 +85,5 @@ func (h *OrgHandler) SetActiveOrg(ctx context.Context, input *SetActiveOrgInput)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return new(humatypes.MakeRes(resp, http.StatusOK)), nil
+	return humatypes.MakeRes(resp, http.StatusOK), nil
 }

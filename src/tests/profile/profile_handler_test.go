@@ -5,11 +5,11 @@ import (
 	"testing"
 
 	"github.com/better-go-auth/goauth/src/app/core/auth"
+	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/birukbelay/gocmn/src/dtos"
 )
 
 // TestProfileHandler_FullFlow invokes the Profile handlers directly in-process
@@ -30,7 +30,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 	var changeCode string
 
 	t.Run("01 Sign Up and Verify Email", func(t *testing.T) {
-		regResp, err := env.AuthHandler.Register(ctx, &dtos.HumaReqBody[models.RegisterClientInput]{
+		regResp, err := env.AuthHandler.Register(ctx, &humatypes.HumaReqBody[models.RegisterClientInput]{
 			Body: models.RegisterClientInput{
 				FirstName: "Jane",
 				LastName:  "Doe",
@@ -48,7 +48,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 			t.Fatalf("Expected verification token for %s", email)
 		}
 
-		_, err = env.AuthHandler.VerifyRegisteredAccount(ctx, &dtos.HumaReqBody[auth.VerificationInput]{
+		_, err = env.AuthHandler.VerifyRegisteredAccount(ctx, &humatypes.HumaReqBody[auth.VerificationInput]{
 			Body: auth.VerificationInput{
 				Info: email,
 				Code: token,
@@ -60,7 +60,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("02 User Login", func(t *testing.T) {
-		loginResp, err := env.AuthHandler.Login(ctx, &dtos.HumaReqBody[auth.LoginData]{
+		loginResp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
 			Body: auth.LoginData{
 				LoginInfo: email,
 				Password:  password,
@@ -97,7 +97,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 			FirstName: "Janet",
 			LastName:  "Smith",
 		}
-		resp, err := env.ProfileHandler.UpdateMyProfile(authCtx, &dtos.HumaReqBody[models.ProfileUpdateDto]{
+		resp, err := env.ProfileHandler.UpdateMyProfile(authCtx, &humatypes.HumaReqBody[models.ProfileUpdateDto]{
 			Body: updateInput,
 		})
 		if err != nil {
@@ -113,7 +113,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 			OldPassword: password,
 			NewPassword: newPassword,
 		}
-		_, err := env.ProfileHandler.UpdateMyPassword(authCtx, &dtos.HumaReqBody[models.PasswordUpdateDto]{
+		_, err := env.ProfileHandler.UpdateMyPassword(authCtx, &humatypes.HumaReqBody[models.PasswordUpdateDto]{
 			Body: changePwdInput,
 		})
 		if err != nil {
@@ -121,7 +121,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 		}
 
 		// Verify old password fails
-		_, err = env.AuthHandler.Login(ctx, &dtos.HumaReqBody[auth.LoginData]{
+		_, err = env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
 			Body: auth.LoginData{
 				LoginInfo: email,
 				Password:  password,
@@ -132,7 +132,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 		}
 
 		// Verify new password succeeds
-		reLoginResp, err := env.AuthHandler.Login(ctx, &dtos.HumaReqBody[auth.LoginData]{
+		reLoginResp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
 			Body: auth.LoginData{
 				LoginInfo: email,
 				Password:  newPassword,
@@ -154,7 +154,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 			Password: newPassword,
 			NewEmail: newEmail,
 		}
-		resp, err := env.ProfileHandler.UpdateMyEmailReq(reAuthCtx, &dtos.HumaReqBody[models.ChangeEmailReqDto]{
+		resp, err := env.ProfileHandler.UpdateMyEmailReq(reAuthCtx, &humatypes.HumaReqBody[models.ChangeEmailReqDto]{
 			Body: changeEmailReq,
 		})
 		if err != nil {
@@ -176,7 +176,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 			Code:     changeCode,
 			NewEmail: newEmail,
 		}
-		resp, err := env.ProfileHandler.VerifyMyChangeEmailReq(reAuthCtx, &dtos.HumaReqBody[models.VerifyEmailDto]{
+		resp, err := env.ProfileHandler.VerifyMyChangeEmailReq(reAuthCtx, &humatypes.HumaReqBody[models.VerifyEmailDto]{
 			Body: verifyChangeEmailReq,
 		})
 		if err != nil {
@@ -188,7 +188,7 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("08 Login with New Email", func(t *testing.T) {
-		resp, err := env.AuthHandler.Login(ctx, &dtos.HumaReqBody[auth.LoginData]{
+		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
 			Body: auth.LoginData{
 				LoginInfo: newEmail,
 				Password:  newPassword,

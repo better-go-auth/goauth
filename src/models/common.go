@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/birukbelay/gocmn/src/consts"
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 	"github.com/oklog/ulid/v2"

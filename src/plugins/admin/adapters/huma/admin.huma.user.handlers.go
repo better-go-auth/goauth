@@ -4,11 +4,12 @@ import (
 	"context"
 
 	humaauth "github.com/better-go-auth/goauth/src/common/types"
+	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 )
 
 // ListUsers handles POST /api/auth/admin/list-users.
-func (h *AdminHandler) ListUsers(ctx context.Context, input *ListUsersInput) (*ListUsersOutput, error) {
+func (h *AdminHandler) ListUsers(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminListUsersInput]) (*humatypes.HumaRes[admindtos.AdminListUsersResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -18,11 +19,11 @@ func (h *AdminHandler) ListUsers(ctx context.Context, input *ListUsersInput) (*L
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &ListUsersOutput{Body: *res}, nil
+	return humatypes.MakeResPtr(res, 200), nil
 }
 
 // CreateUser handles POST /api/auth/admin/create-user.
-func (h *AdminHandler) CreateUser(ctx context.Context, input *CreateUserInput) (*CreateUserOutput, error) {
+func (h *AdminHandler) CreateUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminCreateUserInput]) (*humatypes.HumaRes[admindtos.AdminUserWrapperResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -32,13 +33,11 @@ func (h *AdminHandler) CreateUser(ctx context.Context, input *CreateUserInput) (
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &CreateUserOutput{
-		Body: admindtos.AdminUserWrapperResponse{User: user},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminUserWrapperResponse{User: user}, 200), nil
 }
 
 // SetUserRole handles POST /api/auth/admin/set-user-role.
-func (h *AdminHandler) SetUserRole(ctx context.Context, input *SetUserRoleInput) (*SetUserRoleOutput, error) {
+func (h *AdminHandler) SetUserRole(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminSetUserRoleInput]) (*humatypes.HumaRes[admindtos.AdminSetUserRoleResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -48,13 +47,11 @@ func (h *AdminHandler) SetUserRole(ctx context.Context, input *SetUserRoleInput)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &SetUserRoleOutput{
-		Body: admindtos.AdminSetUserRoleResponse{User: user, Status: true},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminSetUserRoleResponse{User: user, Status: true}, 200), nil
 }
 
 // SetUserPassword handles POST /api/auth/admin/set-user-password.
-func (h *AdminHandler) SetUserPassword(ctx context.Context, input *SetUserPasswordInput) (*SetUserPasswordOutput, error) {
+func (h *AdminHandler) SetUserPassword(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminSetUserPasswordInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -63,13 +60,11 @@ func (h *AdminHandler) SetUserPassword(ctx context.Context, input *SetUserPasswo
 	if err := h.Admin.SetUserPassword(ctx, input.Body, session.User.ID); err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &SetUserPasswordOutput{
-		Body: admindtos.AdminStatusResponse{Status: true},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminStatusResponse{Status: true}, 200), nil
 }
 
 // RemoveUser handles POST /api/auth/admin/remove-user.
-func (h *AdminHandler) RemoveUser(ctx context.Context, input *RemoveUserInput) (*RemoveUserOutput, error) {
+func (h *AdminHandler) RemoveUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminRemoveUserInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -78,13 +73,11 @@ func (h *AdminHandler) RemoveUser(ctx context.Context, input *RemoveUserInput) (
 	if err := h.Admin.RemoveUser(ctx, input.Body, session.User.ID); err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &RemoveUserOutput{
-		Body: admindtos.AdminStatusResponse{Status: true},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminStatusResponse{Status: true}, 200), nil
 }
 
 // BanUser handles POST /api/auth/admin/ban-user.
-func (h *AdminHandler) BanUser(ctx context.Context, input *BanUserInput) (*BanUserOutput, error) {
+func (h *AdminHandler) BanUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminBanUserInput]) (*humatypes.HumaRes[admindtos.AdminBanUserResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -94,13 +87,11 @@ func (h *AdminHandler) BanUser(ctx context.Context, input *BanUserInput) (*BanUs
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &BanUserOutput{
-		Body: admindtos.AdminBanUserResponse{User: user, Status: true},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminBanUserResponse{User: user, Status: true}, 200), nil
 }
 
 // UnbanUser handles POST /api/auth/admin/unban-user.
-func (h *AdminHandler) UnbanUser(ctx context.Context, input *UnbanUserInput) (*UnbanUserOutput, error) {
+func (h *AdminHandler) UnbanUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminUnbanUserInput]) (*humatypes.HumaRes[admindtos.AdminUnbanUserResponse], error) {
 	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
@@ -110,7 +101,5 @@ func (h *AdminHandler) UnbanUser(ctx context.Context, input *UnbanUserInput) (*U
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
-	return &UnbanUserOutput{
-		Body: admindtos.AdminUnbanUserResponse{User: user, Status: true},
-	}, nil
+	return humatypes.MakeResPtr(&admindtos.AdminUnbanUserResponse{User: user, Status: true}, 200), nil
 }

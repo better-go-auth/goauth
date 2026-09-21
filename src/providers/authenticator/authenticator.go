@@ -11,7 +11,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
-	"github.com/birukbelay/gocmn/src/consts"
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"gorm.io/gorm"
 )
 

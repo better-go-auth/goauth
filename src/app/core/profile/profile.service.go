@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/birukbelay/gocmn/src/dtos"
-	ICnst "github.com/birukbelay/gocmn/src/resp_const"
+	"github.com/better-go-auth/goauth/src/common/dtos"
+	ICnst "github.com/better-go-auth/goauth/src/common/error"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"

@@ -13,7 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
-	"github.com/birukbelay/gocmn/src/server/middleware"
+	"github.com/better-go-auth/goauth/src/common/middleware"
 )
 
 // AdminHandler holds admin-domain services and embeds AuthHandler for authentication.

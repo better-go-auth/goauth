@@ -3,7 +3,7 @@ package auth
 import (
 	"net/http"
 
-	constant "github.com/birukbelay/gocmn/src/consts"
+	constant "github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/better-go-auth/goauth/src/config"

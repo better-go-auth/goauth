@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/birukbelay/gocmn/src/dtos"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 )
 
 // IVerificationRepo defines the repository interface for verification codes and tokens.

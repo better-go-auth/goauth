@@ -5,9 +5,9 @@ import (
 	"testing"
 
 	"github.com/better-go-auth/goauth/src/app/core/auth"
+	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/birukbelay/gocmn/src/dtos"
 )
 
 // TestAuthHandler_FullFlow invokes the Auth handlers directly in-process
@@ -33,7 +33,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 			Email:     email,
 			Password:  initialPassword,
 		}
-		resp, err := env.AuthHandler.Register(ctx, &dtos.HumaReqBody[models.RegisterClientInput]{
+		resp, err := env.AuthHandler.Register(ctx, &humatypes.HumaReqBody[models.RegisterClientInput]{
 			Body: signUpInput,
 		})
 		if err != nil {
@@ -55,7 +55,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 			Info: email,
 			Code: token,
 		}
-		resp, err := env.AuthHandler.VerifyRegisteredAccount(ctx, &dtos.HumaReqBody[auth.VerificationInput]{
+		resp, err := env.AuthHandler.VerifyRegisteredAccount(ctx, &humatypes.HumaReqBody[auth.VerificationInput]{
 			Body: verifyInput,
 		})
 		if err != nil {
@@ -71,7 +71,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 			LoginInfo: email,
 			Password:  initialPassword,
 		}
-		resp, err := env.AuthHandler.Login(ctx, &dtos.HumaReqBody[auth.LoginData]{
+		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
 			Body: loginInput,
 		})
 		if err != nil {
@@ -92,7 +92,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 		refreshInput := auth.RefreshTokenInput{
 			Token: refreshToken,
 		}
-		resp, err := env.AuthHandler.RefreshToken(ctx, &dtos.HumaReqBody[auth.RefreshTokenInput]{
+		resp, err := env.AuthHandler.RefreshToken(ctx, &humatypes.HumaReqBody[auth.RefreshTokenInput]{
 			Body: refreshInput,
 		})
 		if err != nil {
@@ -107,7 +107,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 		forgotInput := auth.VerifyReqInput{
 			Email: email,
 		}
-		resp, err := env.AuthHandler.ForgotPwd(ctx, &dtos.HumaReqBody[auth.VerifyReqInput]{
+		resp, err := env.AuthHandler.ForgotPwd(ctx, &humatypes.HumaReqBody[auth.VerifyReqInput]{
 			Body: forgotInput,
 		})
 		if err != nil {
@@ -130,7 +130,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 			Code:        resetCode,
 			NewPassword: newPassword,
 		}
-		resp, err := env.AuthHandler.ResetPwd(ctx, &dtos.HumaReqBody[auth.PwdResetInput]{
+		resp, err := env.AuthHandler.ResetPwd(ctx, &humatypes.HumaReqBody[auth.PwdResetInput]{
 			Body: resetInput,
 		})
 		if err != nil {
@@ -142,7 +142,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("07 Verify Old Password Fails", func(t *testing.T) {
-		_, err := env.AuthHandler.Login(ctx, &dtos.HumaReqBody[auth.LoginData]{
+		_, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
 			Body: auth.LoginData{
 				LoginInfo: email,
 				Password:  initialPassword,
@@ -154,7 +154,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("08 Verify New Password Login", func(t *testing.T) {
-		resp, err := env.AuthHandler.Login(ctx, &dtos.HumaReqBody[auth.LoginData]{
+		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
 			Body: auth.LoginData{
 				LoginInfo: email,
 				Password:  newPassword,
@@ -170,7 +170,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("09 Logout", func(t *testing.T) {
-		resp, err := env.AuthHandler.Logout(ctx, &dtos.HumaReqBody[auth.RefreshTokenInput]{
+		resp, err := env.AuthHandler.Logout(ctx, &humatypes.HumaReqBody[auth.RefreshTokenInput]{
 			Body: auth.RefreshTokenInput{
 				Token: activeRefreshToken,
 			},

@@ -2,12 +2,17 @@ package config
 
 import (
 	"time"
-
-	conf "github.com/birukbelay/gocmn/src/config"
 )
 
+type JwtVar struct {
+	AccessSecret     string `koanf:"ACCESS_SECRET"`
+	RefreshSecret    string `koanf:"REFRESH_SECRET"`
+	AccessExpireMin  int    `koanf:"ACCESS_SECRET_EXPIRE_MIN"`
+	RefreshExpireMin int    `koanf:"REFRESH_SECRET_EXPIRES_MIN"`
+}
+
 type SessionConfig struct {
-	conf.JwtVar
+	JwtVar
 	CheckRevocationInDb bool
 	BlacklistPrefix     string
 	RevocationPrefix    string

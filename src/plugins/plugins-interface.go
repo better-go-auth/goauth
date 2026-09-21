@@ -12,7 +12,7 @@ import (
 
 	// "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
-	"github.com/birukbelay/gocmn/src/server/middleware"
+	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/danielgtaylor/huma/v2"
 )
 
