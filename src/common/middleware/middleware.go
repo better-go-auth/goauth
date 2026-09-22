@@ -15,15 +15,13 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
+//============================ Functions Used By Middlewares ================================|
+//
+//========================================================================================|
+
 // TokenVerifier handles cryptographic token verification
 type TokenVerifier interface {
 	VerifyToken(tokenStr string) (token.CustomClaims, error)
-}
-
-type AuthMiddleware struct {
-	verifier   TokenVerifier
-	revocation RevocationStore     // Optional
-	roles      DynamicRoleResolver // Optional
 }
 
 // RevocationStore checks if a session or token has been invalidated
@@ -33,9 +31,16 @@ type RevocationStore interface {
 }
 
 // DynamicRoleResolver checks database/cache for up-to-date roles & permissions
+// Dynamic Resolver should exist only on the dynamic role plugin
 type DynamicRoleResolver interface {
 	GetUserRoles(ctx context.Context, companyID, userID string) ([]string, error)
-	HasPermission(ctx context.Context, companyID, userID string, operationID consts.OperationId) (bool, error)
+	HasPermission(ctx context.Context, companyID, userID string, operationID string) (bool, error)
+}
+
+type AuthMiddleware struct {
+	verifier   TokenVerifier
+	revocation RevocationStore     // Optional
+	roles      DynamicRoleResolver // Optional
 }
 
 func NewAuthMiddleware(verifier TokenVerifier, revocation RevocationStore, roles DynamicRoleResolver) *AuthMiddleware {
@@ -44,6 +49,25 @@ func NewAuthMiddleware(verifier TokenVerifier, revocation RevocationStore, roles
 		revocation: revocation,
 		roles:      roles,
 	}
+}
+
+type ICoreMiddleWareFunc interface {
+	TokenVerifier
+	RevocationStore
+}
+
+//============================ Actual Middlewares ================================|
+//
+//========================================================================================|
+
+type IOrgMiddleware interface {
+	AuthorizeOrg(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context))
+}
+
+type IAuthMiddleware interface {
+	Trace(operationID string) func(huma.Context, func(huma.Context))
+	Authenticate() func(huma.Context, func(huma.Context))
+	Authorize(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context))
 }
 
 type JWTTokenVerifier struct {
@@ -63,11 +87,11 @@ func (v *JWTTokenVerifier) VerifyToken(tokenStr string) (token.CustomClaims, err
 }
 
 // Trace Middleware adds telemetry span attributes
-func (m *AuthMiddleware) Trace(operationID consts.OperationId) func(huma.Context, func(huma.Context)) {
+func (m *AuthMiddleware) Trace(operationID string) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		span := trace.SpanFromContext(ctx.Context())
 		if span != nil && span.IsRecording() && operationID != "" {
-			span.SetAttributes(attribute.String("http.operation_id", operationID.Str()))
+			span.SetAttributes(attribute.String("http.operation_id", operationID))
 		}
 		next(ctx)
 	}
@@ -129,7 +153,7 @@ func (m *AuthMiddleware) Authorize(operationID consts.OperationId, allowedRoles 
 
 		// If dynamic DB role checking is enabled:
 		if m.roles != nil {
-			allowed, err := m.roles.HasPermission(ctx.Context(), claims.ActiveOrgId, claims.UserID, operationID)
+			allowed, err := m.roles.HasPermission(ctx.Context(), claims.ActiveOrgId, claims.UserID, operationID.Str())
 			if err != nil || !allowed {
 				ctx.SetStatus(http.StatusUnauthorized)
 				_, _ = ctx.BodyWriter().Write([]byte("Not Authorized"))

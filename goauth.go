@@ -20,8 +20,8 @@ import (
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"gorm.io/gorm"
 
-	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/better-go-auth/goauth/src/common/middleware"
+	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -31,6 +31,7 @@ type GoAuth struct {
 	Hooks              plugin.HookRegistry
 	IAuthServices      serv_interfaces.IAuthServices
 	MiddleWare         middleware.AuthMiddleware
+	MiddlewareInt      middleware.IAuthMiddleware
 	RevocationStore    middleware.RevocationStore
 	TransactionManager interfaces.ITransactionManager
 
@@ -182,5 +183,6 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		TransactionManager: txManager,
 		Provider:           providerService,
 		Repositories:       repos,
+		MiddlewareInt:      mdlWare,
 	}, nil
 }

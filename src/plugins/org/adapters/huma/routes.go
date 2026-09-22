@@ -3,9 +3,9 @@ package humaorg
 import (
 	"net/http"
 
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/models"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
-	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/danielgtaylor/huma/v2"
 )
 
