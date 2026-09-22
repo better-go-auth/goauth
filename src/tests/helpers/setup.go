@@ -178,7 +178,11 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Better Go Auth Test API", "1.0.0"))
 
-	adminPlugin := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
+	adminPlugin, err := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
+	if err != nil {
+		log.Fatalf("failed to initialize admin plugin: %v", err)
+	}
+
 	orgPlugin, err := org.NewWithGorm(gormDB, orgconfig.OrgConfig{})
 	if err != nil {
 		log.Fatalf("failed to initialize org plugin: %v", err)
