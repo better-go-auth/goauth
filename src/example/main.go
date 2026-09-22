@@ -14,6 +14,8 @@ import (
 	loc_conf "github.com/better-go-auth/goauth/src/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	"github.com/better-go-auth/goauth/src/plugins/org"
+	"github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -63,7 +65,23 @@ func main() {
 	}
 
 	emailSender := &ConsoleEmailSender{}
-	adminPlugin := admin.NewWithGorm(db, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
+	adminPlugin, err := admin.NewWithGorm(db, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
+	if err != nil {
+		log.Fatalf("failed to create admin plugin: %v", err)
+	}
+
+	orgPlugin, err := org.NewWithGorm(db, config.OrgConfig{
+		OrgNeedsApproval: true,
+		InvitaionConfig: config.InvitaionConfig{
+			SendOrgInvitation: func(ctx context.Context, to, inviterName, orgName, inviteURL string) error {
+				log.Printf("[EMAIL] inviter %s invites %s to org %s with link %s", inviterName, to, orgName, inviteURL)
+				return nil
+			},
+		},
+	})
+	if err != nil {
+		log.Fatalf("failed to create org plugin: %v", err)
+	}
 
 	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn: db,
@@ -78,6 +96,7 @@ func main() {
 		},
 		Plugins: []plugin.Plugin{
 			adminPlugin,
+			orgPlugin,
 		},
 	})
 	if err != nil {

@@ -72,8 +72,14 @@ func WithBasePath(basePath string) Option {
 	}
 }
 
+// NewWithGorm creates a new Admin plugin directly backed by GORM.
+func NewWithGorm(db *gorm.DB, opts ...Option) (*Plugin, error) {
+	repos := gormadmin.NewAdminGormRepos(db)
+	return New(repos, opts...)
+}
+
 // New creates a new Admin plugin with the provided repository bundle and options.
-func New(repos repository.AdminRepositories, opts ...Option) *Plugin {
+func New(repos repository.AdminRepositories, opts ...Option) (*Plugin, error) {
 	p := &Plugin{
 		adminRepos: repos,
 		config:     config1.DefaultAdminConfig(),
@@ -81,13 +87,11 @@ func New(repos repository.AdminRepositories, opts ...Option) *Plugin {
 	for _, opt := range opts {
 		opt(p)
 	}
-	return p
-}
-
-// NewWithGorm creates a new Admin plugin directly backed by GORM.
-func NewWithGorm(db *gorm.DB, opts ...Option) *Plugin {
-	repos := gormadmin.NewAdminGormRepos(db)
-	return New(repos, opts...)
+	if p.adminRepos.AdminRepo == nil || p.adminRepos.Migrator == nil {
+		return nil, fmt.Errorf("admin plugin: AdminRepo and Migrator are required")
+	}
+	p.migrator = p.adminRepos.Migrator
+	return p, nil
 }
 
 func (p *Plugin) ID() string {
@@ -98,8 +102,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	if p.adminRepos.AdminRepo == nil {
 		return fmt.Errorf("admin plugin: AdminRepo is required")
 	}
-
-	p.migrator = p.adminRepos.Migrator
 
 	p.service = adminsvc.NewAdminService(
 		p.adminRepos.AdminRepo,
