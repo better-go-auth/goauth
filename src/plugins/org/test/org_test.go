@@ -110,6 +110,18 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("03 Update Organization", func(t *testing.T) {
+		// First set active org so RequireOrgRoles succeeds for update
+		setInput := orgdtos.SetActiveOrgInput{
+			OrganizationID: ptr(orgID),
+		}
+		setResp, setBody := env.PostJSON("/api/auth/organization/set-active", setInput, ownerAuthHeader)
+		if isSuccess(setResp.StatusCode) {
+			var tokenResp models.AuthTokens
+			if err := json.Unmarshal([]byte(setBody), &tokenResp); err == nil && tokenResp.AccessToken != "" {
+				ownerAuthHeader = map[string]string{"Authorization": "Bearer " + tokenResp.AccessToken}
+			}
+		}
+
 		updateInput := orgdtos.UpdateOrgInput{
 			OrganizationID: orgID,
 			Name:           ptr("Acme International"),

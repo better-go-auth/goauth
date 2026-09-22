@@ -53,7 +53,7 @@ func (h *OrgHandler) DeleteOrg(ctx context.Context, input *DeleteOrgInput) (*hum
 	if err := h.Org.DeleteOrganization(ctx, input.Body.OrganizationID, session.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	return &humatypes.SuccessOutput{Body: humatypes.SuccessBody{Success: true}}, nil
+	return humatypes.SuccessRes(http.StatusOK), nil
 }
 
 func (h *OrgHandler) ListOrgs(ctx context.Context, input *ListOrgsInput) (*humatypes.HumaRes[struct {

@@ -1,16 +1,19 @@
 package models
 
 import (
+	"fmt"
 	"time"
 
 	Imdl "github.com/better-go-auth/goauth/src/common/dtos"
 
 	"github.com/better-go-auth/goauth/src/models/enums"
+	"gorm.io/gorm"
 )
 
 type User struct {
-	Base    `mapstructure:",squash" `
-	UserDto `mapstructure:",squash" `
+	Base      `mapstructure:",squash" `
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	UserDto   `mapstructure:",squash" `
 
 	LastSeen *time.Time `json:"last_seen,omitempty" doc:"last time user is seen"`
 
@@ -63,6 +66,21 @@ func (u *User) GetEmail() string {
 		return *u.Email
 	}
 	return ""
+}
+
+// AnonymizeEmail generates a unique, non-colliding placeholder email for soft-deleted users.
+func AnonymizeEmail(userID string, t time.Time) string {
+	return fmt.Sprintf("deleted_%s_%d@deleted.local", userID, t.Unix())
+}
+
+// BeforeDelete hook ensures the user's email is anonymized on deletion to prevent unique index conflicts.
+func (u *User) BeforeDelete(tx *gorm.DB) error {
+	if u.ID != "" {
+		now := time.Now().UTC()
+		tombstone := AnonymizeEmail(u.ID, now)
+		tx.Statement.SetColumn("email", tombstone)
+	}
+	return nil
 }
 
 type UserFilter struct {

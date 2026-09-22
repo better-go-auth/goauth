@@ -78,10 +78,14 @@ func (r *UserRepo) UpdateUser(ctx context.Context, id string, data map[string]in
 
 func (r *UserRepo) DeleteUser(ctx context.Context, id string) error {
 	now := models.TimeNow()
+	tombstoneEmail := models.AnonymizeEmail(id, now)
 	result := gormutil.GetDB(ctx, r.db).
 		Model(&models.User{}).
 		Where("id = ?", id).
-		Update("deleted_at", now)
+		Updates(map[string]interface{}{
+			"deleted_at": now,
+			"email":      tombstoneEmail,
+		})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/user: delete: %w", result.Error)
 	}

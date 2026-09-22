@@ -91,13 +91,14 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrUpdateOrg, OrgPermissionsMap[OrUpdateOrg].AllowedRoles)},
 	}, h.UpdateOrg)
 	huma.Register(api, huma.Operation{
-		OperationID: OrDeleteOrg.Str(),
-		Method:      http.MethodDelete,
-		Path:        path + "/organization/delete",
-		Summary:     "Delete Organization",
-		Description: "Deletes an organization and all its memberships.",
-		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrDeleteOrg, OrgPermissionsMap[OrDeleteOrg].AllowedRoles)},
+		OperationID:   OrDeleteOrg.Str(),
+		Method:        http.MethodDelete,
+		Path:          path + "/organization/delete",
+		Summary:       "Delete Organization",
+		Description:   "Deletes an organization and all its memberships.",
+		Tags:          orgTags,
+		DefaultStatus: http.StatusOK,
+		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrDeleteOrg, OrgPermissionsMap[OrDeleteOrg].AllowedRoles)},
 	}, h.DeleteOrg)
 	huma.Register(api, huma.Operation{
 		OperationID: OrListOrgs.Str(),

@@ -37,7 +37,7 @@ type Member struct {
 	coremodels.Base
 
 	OrganizationID string        `json:"organizationId" gorm:"not null;index;size:26"          bun:"organization_id,notnull"`
-	Organization   *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID" bun:"rel:belongs-to,join:organization_id=id"`
+	Organization   *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
 
 	UserID string           `json:"userId" gorm:"not null;index;size:26" bun:"user_id,notnull"`
 	User   *coremodels.User `json:"user,omitempty" gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
@@ -63,7 +63,7 @@ type Invitation struct {
 	coremodels.Base
 
 	OrganizationID string        `json:"organizationId" gorm:"not null;index;size:26"              bun:"organization_id,notnull"`
-	Organization   *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID"   bun:"rel:belongs-to,join:organization_id=id"`
+	Organization   *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE"   bun:"rel:belongs-to,join:organization_id=id"`
 
 	// Who sent the invite
 	InviterID string           `json:"inviterId" gorm:"not null;size:26;index"  bun:"inviter_id,notnull"`

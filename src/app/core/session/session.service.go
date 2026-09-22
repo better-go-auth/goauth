@@ -66,13 +66,15 @@ func (aus Service) GenerateTokens(user *token.CustomClaims) (*models.AuthTokens,
 func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error) {
 	//	3. Generate auth Token of password
 	claims := token.CustomClaims{Role: role, UserID: userId, SessionID: sessionId}
-	if opt != nil && opt.ActiveOrgID != nil {
-		claims.ActiveOrgId = *opt.ActiveOrgID
-		// depricated: used for backward compatability
-		// claims.CompanyId = *opt.ActiveOrgID
-	}
-	if opt != nil && opt.OrgRole != nil {
-		claims.ActiveOrgRole = *opt.OrgRole
+	if opt != nil {
+		if opt.ActiveOrgID != nil {
+			claims.ActiveOrgId = *opt.ActiveOrgID
+		}
+		if opt.OrgRole != nil {
+			claims.ActiveOrgRole = *opt.OrgRole
+		} else if opt.OrgRoleID != nil {
+			claims.ActiveOrgRole = *opt.OrgRoleID
+		}
 	}
 	tokens, err := aus.GenerateTokens(&claims)
 	if err != nil {

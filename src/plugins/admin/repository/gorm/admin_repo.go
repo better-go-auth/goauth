@@ -293,6 +293,8 @@ func (r *AdminRepo) UnbanUser(ctx context.Context, userID string) (*models.User,
 // RemoveUser deletes a user, their linked accounts, and their active sessions.
 func (r *AdminRepo) RemoveUser(ctx context.Context, userID string) error {
 	db := getDB(ctx, r.db)
+	now := time.Now().UTC()
+	tombstoneEmail := models.AnonymizeEmail(userID, now)
 	return db.Transaction(func(tx *gorm.DB) error {
 		// Delete sessions
 		if err := tx.Where("user_id = ?", userID).Delete(&models.Session{}).Error; err != nil {
@@ -302,8 +304,11 @@ func (r *AdminRepo) RemoveUser(ctx context.Context, userID string) error {
 		if err := tx.Where("user_id = ?", userID).Delete(&models.Account{}).Error; err != nil {
 			return fmt.Errorf("delete accounts: %w", err)
 		}
-		// Delete user
-		if err := tx.Where("id = ?", userID).Delete(&models.User{}).Error; err != nil {
+		// Anonymize email and soft-delete user
+		if err := tx.Model(&models.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
+			"deleted_at": now,
+			"email":      tombstoneEmail,
+		}).Error; err != nil {
 			return fmt.Errorf("delete user: %w", err)
 		}
 		return nil

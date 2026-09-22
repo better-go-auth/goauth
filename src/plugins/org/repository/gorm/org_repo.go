@@ -69,10 +69,22 @@ func (r *OrgRepo) UpdateOrg(ctx context.Context, id string, data map[string]inte
 }
 
 func (r *OrgRepo) DeleteOrg(ctx context.Context, id string) error {
-	if err := getDB(ctx, r.db).Where("id = ?", id).Delete(&models.Organization{}).Error; err != nil {
-		return fmt.Errorf("gorm/org: delete: %w", err)
-	}
-	return nil
+	db := getDB(ctx, r.db)
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("organization_id = ?", id).Delete(&models.Member{}).Error; err != nil {
+			return fmt.Errorf("gorm/org: delete members: %w", err)
+		}
+		if err := tx.Where("organization_id = ?", id).Delete(&models.Invitation{}).Error; err != nil {
+			return fmt.Errorf("gorm/org: delete invitations: %w", err)
+		}
+		if err := tx.Where("organization_id = ?", id).Delete(&models.OrgPermission{}).Error; err != nil {
+			return fmt.Errorf("gorm/org: delete permissions: %w", err)
+		}
+		if err := tx.Where("id = ?", id).Delete(&models.Organization{}).Error; err != nil {
+			return fmt.Errorf("gorm/org: delete: %w", err)
+		}
+		return nil
+	})
 }
 
 func (r *OrgRepo) ListOrgsByUserID(ctx context.Context, userID string) ([]models.Organization, error) {

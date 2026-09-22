@@ -135,6 +135,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	initCtx := &plugin.InitContext{
 		Ctx:           context.Background(),
 		Api:           api,
+		Config:        opts.AuthConfig,
 		TxManager:     txManager,
 		IAuthServices: authSvc,
 		IAuthRepos:    repos,
