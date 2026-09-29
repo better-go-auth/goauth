@@ -94,6 +94,10 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 	if existing, err := s.orgRepo.GetOrgBySlug(ctx, slug); err == nil && existing != nil {
 		return nil, orgerrors.ErrSlugTaken
 	}
+	orgStatus := models.OrgStatusActive
+	if s.Config.OrgNeedsApproval {
+		orgStatus = models.OrgStatusPending
+	}
 
 	now := new(coremodels.TimeNow())
 	org := &models.Organization{
@@ -103,6 +107,7 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		Logo:      input.Logo,
 		Metadata:  input.Metadata,
 		CreatedBy: creatorUserID,
+		Status:    orgStatus,
 	}
 	var created *models.Organization
 	err := s.txManager.Transaction(ctx, func(txCtx context.Context) error {

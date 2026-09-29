@@ -9,11 +9,22 @@ import (
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
-	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
-	"github.com/better-go-auth/goauth/src/common/consts"
-	"gorm.io/gorm"
 )
+
+/*
+
+Have an authenticator options
+
+1. CtxOnlyLookup
+2. Secondary storage lookup:
+3. CheckDb
+-------------------------
+
+all authentication logic should happen on the middleware
+- so all Db calls, secondary storage and etc should end on the middlware:
+
+*/
 
 // AuthenticateFunc authenticates an incoming request and returns the active SessionResponse.
 type AuthenticateFunc func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error)
@@ -24,22 +35,9 @@ type SessionLookupRepo interface {
 	GetUserByID(ctx context.Context, id string) (*models.User, error)
 }
 
-// gormSessionLookup wraps a *gorm.DB to satisfy SessionLookupRepo for backward compatibility.
-type gormSessionLookup struct {
-	db *gorm.DB
-}
-
-func (g *gormSessionLookup) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
-	var sess models.Session
-	err := g.db.WithContext(ctx).Where("session_id = ? OR hashed_token = ?", token, token).First(&sess).Error
-	return &sess, err
-}
-
-func (g *gormSessionLookup) GetUserByID(ctx context.Context, id string) (*models.User, error) {
-	var user models.User
-	err := g.db.WithContext(ctx).Where("id = ?", id).First(&user).Error
-	return &user, err
-}
+// TODO: this is an unneeded function, it will be removed, because all authentication should happen on the middleware
+// may be we will provide this as a function, optional function for people to use outside the middleware
+// so this will be a repeat of the authentication happening on the middleware, may be the middleware can re use this function or stg like that
 
 // NewDefaultAuthenticator returns an AuthenticateFunc provided by the core to plugins.
 // It handles:
@@ -127,64 +125,6 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 				}
 			}
 		}
-
 		return nil, autherr.ErrUnauthorized
 	}
-}
-
-// NewDefaultAuthenticatorWithDB is a backward-compatible wrapper that takes a *gorm.DB.
-func NewDefaultAuthenticatorWithDB(accessSecret string, db *gorm.DB) AuthenticateFunc {
-	if db == nil {
-		return NewDefaultAuthenticator(accessSecret, nil)
-	}
-	return NewDefaultAuthenticator(accessSecret, &gormSessionLookup{db: db})
-}
-
-// SessionFromContext extracts the authenticated SessionResponse from context if claims were set by middleware.
-func SessionFromContext(ctx context.Context) (session *dtos.SessionResponse, valid bool) {
-	if v, ok := ctx.Value(consts.CtxClaims.Str()).(token.CustomClaims); ok && v.UserID != "" {
-		sess, err := sessionResponseFromClaims(&v, "")
-		return sess, err == nil
-	}
-	if vp, ok := ctx.Value(consts.CtxClaims.Str()).(*token.CustomClaims); ok && vp != nil && vp.UserID != "" {
-		sess, err := sessionResponseFromClaims(vp, "")
-		return sess, err == nil
-	}
-	return nil, false
-}
-
-// UserFromContext extracts the authenticated UserResponse from context if present.
-func UserFromContext(ctx context.Context) (*dtos.UserResponse, bool) {
-	sess, ok := SessionFromContext(ctx)
-	if !ok || sess == nil {
-		return nil, false
-	}
-	return sess.User, true
-}
-
-func sessionResponseFromClaims(claims *token.CustomClaims, token string) (*dtos.SessionResponse, error) {
-	var activeOrgID *string
-	var activeOrgRole *string
-
-	orgID := claims.ActiveOrgId
-	if orgID != "" {
-		activeOrgID = &orgID
-	}
-	if claims.ActiveOrgRole != "" {
-		activeOrgRole = &claims.ActiveOrgRole
-	}
-	return &dtos.SessionResponse{
-		User: &dtos.UserResponse{
-			ID:   claims.UserID,
-			Role: claims.Role,
-		},
-		Session: &dtos.SessionData{
-			ID:                   claims.SessionID,
-			UserID:               claims.UserID,
-			Token:                token,
-			ActiveOrganizationID: activeOrgID,
-			ActiveOrgRole:        activeOrgRole,
-			Role:                 claims.Role,
-		},
-	}, nil
 }

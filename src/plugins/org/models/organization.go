@@ -6,6 +6,15 @@ import (
 	coremodels "github.com/better-go-auth/goauth/src/models"
 )
 
+type OrgStatus string
+
+const (
+	OrgStatusActive   OrgStatus = "active"
+	OrgStatusInactive OrgStatus = "inactive"
+	OrgStatusSuspended OrgStatus = "suspended"
+	OrgStatusPending  OrgStatus = "pending"
+)
+
 // Organization represents a multi-tenant workspace (matching better-auth org plugin).
 type Organization struct {
 	coremodels.Base
@@ -14,6 +23,7 @@ type Organization struct {
 	Slug     string  `json:"slug"   gorm:"uniqueIndex;not null;size:100" bun:"slug,notnull,unique"`
 	Logo     *string `json:"logo"   gorm:"size:2048"            bun:"logo"`
 	Metadata *string `json:"metadata" gorm:"type:text"        bun:"metadata"` // JSON string
+	Status   OrgStatus `json:"status" gorm:"not null;size:50;default:active" bun:"status,notnull,default:active"`
 
 	// The user who created this organization (and is its initial owner).
 	CreatedBy string `json:"createdBy" gorm:"not null;size:26;index" bun:"created_by,notnull"`

@@ -11,8 +11,8 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 
 	// "github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/common/middleware"
+	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -28,7 +28,7 @@ type InitContext struct {
 	IAuthServices serv_interfaces.IAuthServices
 	IAuthRepos    repo_interfaces.IAuthRepos
 	MiddleWare    *middleware.AuthMiddleware
-	Authenticate  authenticator.AuthenticateFunc
+	Authenticator authenticator.AuthenticateFunc
 	Hooks         HookRegistry
 
 	// Extras allows plugins that need ORM-specific objects (e.g. *gorm.DB) to

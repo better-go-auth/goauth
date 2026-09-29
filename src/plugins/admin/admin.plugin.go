@@ -111,7 +111,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.hookService = adminsvc.NewAdminHookService(p.adminRepos.AdminRepo)
 
 	if ictx != nil {
-		p.authenticate = ictx.Authenticate
+		p.authenticate = ictx.Authenticator
 		if ictx.Hooks != nil {
 			ictx.Hooks.Register(p.hookService)
 			p.service.SetHooks(ictx.Hooks)

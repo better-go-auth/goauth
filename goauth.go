@@ -132,6 +132,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
+	//TODO: use the session function here
 	authenticate := authenticator.NewDefaultAuthenticator(opts.SessionConfig.AccessSecret, repos)
 	initCtx := &plugin.InitContext{
 		Ctx:           context.Background(),
@@ -141,7 +142,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		IAuthServices: authSvc,
 		IAuthRepos:    repos,
 		MiddleWare:    mdlWare,
-		Authenticate:  authenticate,
+		Authenticator: authenticate,
 		Hooks:         hooks,
 		Extras:        map[string]any{},
 	}

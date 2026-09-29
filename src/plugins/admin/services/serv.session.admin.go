@@ -104,9 +104,9 @@ func (s *AdminService) ImpersonateUser(ctx context.Context, input admindtos.Admi
 	if expiresIn <= 0 {
 		expiresIn = time.Duration(s.authConfig.SessionConfig.RefreshExpireMin)
 	}
-	if expiresIn <= 0 {
-		expiresIn = 7 * 24 * time.Hour
-	}
+	// if expiresIn <= 0 {
+	// 	expiresIn = 7 * 24 * time.Hour
+	// }
 	expiresAt := time.Now().UTC().Add(expiresIn)
 
 	session := &models.Session{

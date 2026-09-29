@@ -107,6 +107,7 @@ func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 			_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
 			return
 		}
+		//todo if the authorization header doesn't exists check the cookie header
 		claims, err := m.verifier.VerifyToken(parts[1])
 		if err != nil {
 			ctx.SetStatus(http.StatusForbidden)
@@ -122,6 +123,7 @@ func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 				return
 			}
 		}
+		//todo based on the config, check db and etc. and refresh the token
 		ctx = huma.WithValue(ctx, consts.CtxClaims.Str(), claims)
 		ctx = huma.WithValue(ctx, consts.CTXCompany_ID.Str(), claims.ActiveOrgId)
 		ctx = huma.WithValue(ctx, consts.CTXUser_ID.Str(), claims.UserID)

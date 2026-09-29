@@ -20,22 +20,22 @@ import (
 
 const PluginID = "org"
 
-// Plugin implements the plugins.Plugin interface for multi-tenancy / organizations.
-type Plugin struct {
+// OrgPlugin implements the plugins.OrgPlugin interface for multi-tenancy / organizations.
+type OrgPlugin struct {
 	Config     config.OrgConfig
 	authConfig authconf.AuthConfig
 	orgRepos   orgrepo.OrgRepositories
 	migrator   migration.IMigrator
 	// org related service
-	service      orgsvc.IOrgService
-	hookService  *orgsvc.OrgHookService
-	handler      *humaorg.OrgHandler
-	authenticate authenticator.AuthenticateFunc
+	service       orgsvc.IOrgService
+	hookService   *orgsvc.OrgHookService
+	handler       *humaorg.OrgHandler
+	authenticator authenticator.AuthenticateFunc
 }
-type Option func(*Plugin)
+type Option func(*OrgPlugin)
 
 // NewWithGorm creates a new Org plugin directly backed by GORM.
-func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) (*Plugin, error) {
+func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) (*OrgPlugin, error) {
 	repos := gormorg.NewOrgRepos(db)
 	orgOptions := OrgOptions{
 		repo:   repos,
@@ -50,8 +50,8 @@ type OrgOptions struct {
 }
 
 // New creates a new Org plugin instance with optional configuration.
-func New(options OrgOptions, opts ...Option) (*Plugin, error) {
-	p := &Plugin{orgRepos: options.repo, Config: options.config}
+func New(options OrgOptions, opts ...Option) (*OrgPlugin, error) {
+	p := &OrgPlugin{orgRepos: options.repo, Config: options.config}
 
 	for _, opt := range opts {
 		opt(p)
@@ -65,16 +65,16 @@ func New(options OrgOptions, opts ...Option) (*Plugin, error) {
 }
 
 func WithOrgConfig(orgConfig config.OrgConfig) Option {
-	return func(p *Plugin) {
+	return func(p *OrgPlugin) {
 		p.Config = orgConfig
 	}
 }
 
-func (p *Plugin) ID() string {
+func (p *OrgPlugin) ID() string {
 	return PluginID
 }
 
-func (p *Plugin) Init(ictx *plugin.InitContext) error {
+func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
 	// 2. Resolve Migrator
 	p.migrator = p.orgRepos.IMigrator
 
@@ -92,7 +92,7 @@ func (p *Plugin) Init(ictx *plugin.InitContext) error {
 
 	if ictx != nil {
 		p.authConfig = ictx.Config
-		p.authenticate = ictx.Authenticate
+		p.authenticator = ictx.Authenticator
 		if ictx.Hooks != nil {
 			ictx.Hooks.Register(p.hookService)
 		}
@@ -105,35 +105,35 @@ func (p *Plugin) Init(ictx *plugin.InitContext) error {
 	return nil
 }
 
-func (p *Plugin) Migrator() migration.IMigrator {
+func (p *OrgPlugin) Migrator() migration.IMigrator {
 	return p.migrator
 }
 
-func (p *Plugin) Services() map[string]any {
+func (p *OrgPlugin) Services() map[string]any {
 	return map[string]any{
 		"org": p.service,
 	}
 }
 
 // Hooks returns the HookService implemented by the org plugin.
-func (p *Plugin) Hooks() plugin.HookService {
+func (p *OrgPlugin) Hooks() plugin.HookService {
 	return p.hookService
 }
 
 // Routes returns nil for the org plugin. Routes are currently registered via
 // framework-specific helpers (e.g. SetupHumaRoutes, SetupGinRoutes).
 // Migrating to RouteDescriptors is tracked in _docs/plugins/authoring-guide.md.
-func (p *Plugin) Routes() []plugin.RouteDescriptor {
+func (p *OrgPlugin) Routes() []plugin.RouteDescriptor {
 	return nil
 }
 
 // Service returns the initialized IOrgService interface.
-func (p *Plugin) Service() orgsvc.IOrgService {
+func (p *OrgPlugin) Service() orgsvc.IOrgService {
 	return p.service
 }
 
 // Handler returns the initialized OrgHandler.
-func (p *Plugin) Handler() *humaorg.OrgHandler {
+func (p *OrgPlugin) Handler() *humaorg.OrgHandler {
 	return p.handler
 }
 
