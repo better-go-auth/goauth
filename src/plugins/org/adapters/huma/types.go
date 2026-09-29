@@ -59,3 +59,19 @@ type (
 	UpdateMemberRoleInput = humatypes.HumaReqBody[orgdtos.UpdateMemberRoleInput]
 	RemoveMemberInput     = humatypes.HumaReqBody[orgdtos.RemoveMemberInput]
 )
+
+// ─── Admin Inputs ─────────────────────────────────────────────────────────────
+
+type (
+	AdminApproveOrgInput = humatypes.HumaReqBody[orgdtos.AdminOrgIDInput]
+	AdminBlockOrgInput   = humatypes.HumaReqBody[orgdtos.AdminBlockOrgInput]
+	AdminUnblockOrgInput = humatypes.HumaReqBody[orgdtos.AdminOrgIDInput]
+)
+
+type AdminListOrgsInput struct {
+	humatypes.AuthHeaders
+	Status string `query:"status,omitempty" doc:"Filter by org status: active, pending, inactive, suspended"`
+	Limit  int    `query:"limit,omitempty" doc:"Page size (default 50)"`
+	Offset int    `query:"offset,omitempty" doc:"Page offset"`
+}
+

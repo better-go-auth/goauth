@@ -17,6 +17,8 @@ type IOrgRepo interface {
 	DeleteOrg(ctx context.Context, id string) error
 	// ListOrgsByUserID returns all organizations where the user is a member.
 	ListOrgsByUserID(ctx context.Context, userID string) ([]models.Organization, error)
+	// ListAllOrgs returns all organizations with optional status filter (admin use).
+	ListAllOrgs(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error)
 }
 
 // IMemberRepo defines the repository interface for Member persistence.

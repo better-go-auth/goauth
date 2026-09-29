@@ -98,3 +98,31 @@ func (r *OrgRepo) ListOrgsByUserID(ctx context.Context, userID string) ([]models
 	}
 	return orgs, nil
 }
+
+func (r *OrgRepo) ListAllOrgs(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error) {
+	var orgs []models.Organization
+	var total int64
+
+	q := getDB(ctx, r.db).Model(&models.Organization{})
+	if status != nil {
+		q = q.Where("status = ?", string(*status))
+	}
+	if err := q.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("gorm/org: list all count: %w", err)
+	}
+	sortDir := "DESC"
+	if pagi.SortDir == "asc" {
+		sortDir = "ASC"
+	}
+	sortBy := "created_at"
+	if pagi.SortBy != "" {
+		sortBy = pagi.SortBy
+	}
+	if err := q.Order(sortBy + " " + sortDir).
+		Limit(pagi.Limit).
+		Offset(pagi.Offset).
+		Find(&orgs).Error; err != nil {
+		return nil, 0, fmt.Errorf("gorm/org: list all: %w", err)
+	}
+	return orgs, total, nil
+}

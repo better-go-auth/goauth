@@ -22,6 +22,20 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 		return nil, autherr.ErrForbidden
 	}
 
+	// Ensure org is active — pending/suspended orgs cannot invite members
+	org, err := s.orgRepo.GetOrgByID(ctx, input.OrganizationID)
+	if err != nil || org == nil {
+		return nil, orgerrors.ErrOrgNotFound
+	}
+	switch org.Status {
+	case models.OrgStatusPending:
+		return nil, orgerrors.ErrOrgPending
+	case models.OrgStatusSuspended:
+		return nil, orgerrors.ErrOrgSuspended
+	case models.OrgStatusInactive:
+		return nil, orgerrors.ErrOrgNotActive
+	}
+
 	// Check if user is already a member
 	user, _ := s.userRepo.GetUserByEmail(ctx, strings.ToLower(input.Email))
 	if user != nil {
@@ -29,6 +43,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 			return nil, orgerrors.ErrAlreadyMember
 		}
 	}
+
 
 	// Cancel any existing pending invite and create new invite inside a transaction
 	var created *models.Invitation

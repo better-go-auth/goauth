@@ -31,6 +31,12 @@ const (
 	OrListMembers      = consts.OperationId("Or-14-ListMembers")
 	OrUpdateMemberRole = consts.OperationId("Or-15-UpdateMemberRole")
 	OrRemoveMember     = consts.OperationId("Or-16-RemoveMember")
+
+	// Admin
+	OrAdminApproveOrg = consts.OperationId("Or-Admin-1-ApproveOrg")
+	OrAdminBlockOrg   = consts.OperationId("Or-Admin-2-BlockOrg")
+	OrAdminUnblockOrg = consts.OperationId("Or-Admin-3-UnblockOrg")
+	OrAdminListOrgs   = consts.OperationId("Or-Admin-4-ListOrgs")
 )
 
 var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
@@ -55,6 +61,12 @@ var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	OrListMembers:      {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "List Organization Members"},
 	OrUpdateMemberRole: {AllowedRoles: []string{orgmodels.OrgRoleOwner.String()}, Description: "Update Member Role"},
 	OrRemoveMember:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Remove Member"},
+
+	// Admin (system-level Admin role required — enforced in handler, not middleware)
+	OrAdminApproveOrg: {AllowedRoles: []string{}, Description: "Approve Pending Organization"},
+	OrAdminBlockOrg:   {AllowedRoles: []string{}, Description: "Block/Suspend Organization"},
+	OrAdminUnblockOrg: {AllowedRoles: []string{}, Description: "Unblock/Re-activate Organization"},
+	OrAdminListOrgs:   {AllowedRoles: []string{}, Description: "Admin: List All Organizations"},
 }
 
 // SetupOrgRoutes registers all organization, invitation, and member endpoints.
@@ -214,4 +226,44 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Tags:        memberTags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrRemoveMember, OrgPermissionsMap[OrRemoveMember].AllowedRoles)},
 	}, h.RemoveMember)
+
+	adminTags := []string{"Admin-Orgs"}
+	// Admin Org Management
+	huma.Register(api, huma.Operation{
+		OperationID: OrAdminApproveOrg.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/admin/organization/approve",
+		Summary:     "[Admin] Approve Organization",
+		Description: "Approves a pending organization, setting its status to active. Requires system Admin role.",
+		Tags:        adminTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.AdminApproveOrg)
+	huma.Register(api, huma.Operation{
+		OperationID: OrAdminBlockOrg.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/admin/organization/block",
+		Summary:     "[Admin] Block Organization",
+		Description: "Suspends an organization. Requires system Admin role.",
+		Tags:        adminTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.AdminBlockOrg)
+	huma.Register(api, huma.Operation{
+		OperationID: OrAdminUnblockOrg.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/admin/organization/unblock",
+		Summary:     "[Admin] Unblock Organization",
+		Description: "Re-activates a suspended or inactive organization. Requires system Admin role.",
+		Tags:        adminTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.AdminUnblockOrg)
+	huma.Register(api, huma.Operation{
+		OperationID: OrAdminListOrgs.Str(),
+		Method:      http.MethodGet,
+		Path:        path + "/admin/organization/list",
+		Summary:     "[Admin] List All Organizations",
+		Description: "Returns all organizations with optional status filter. Requires system Admin role.",
+		Tags:        adminTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.AdminListOrgs)
 }
+

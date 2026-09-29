@@ -189,6 +189,20 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 	var member *models.Member
 	var err error
 	if orgID != nil {
+		// Verify org exists and is active before allowing it to be set
+		org, err := s.orgRepo.GetOrgByID(ctx, *orgID)
+		if err != nil || org == nil {
+			return nil, orgerrors.ErrOrgNotFound
+		}
+		switch org.Status {
+		case models.OrgStatusPending:
+			return nil, orgerrors.ErrOrgPending
+		case models.OrgStatusSuspended:
+			return nil, orgerrors.ErrOrgSuspended
+		case models.OrgStatusInactive:
+			return nil, orgerrors.ErrOrgNotActive
+		}
+
 		// users org role
 		member, err = s.memberRepo.GetMemberByOrgAndUser(ctx, *orgID, userId)
 		if err != nil {
@@ -202,7 +216,7 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 		OrgRole:     new(member.Role.String()),
 		ActiveOrgID: orgID,
 	}
-	// TODO make sure cached tokens and etc are updated and same sessin with old ord id is not used
+	// TODO make sure cached tokens and etc are updated and same session with old org id is not used
 	// use some sort of version mechanism and etc
 	resp, err := s.sessionServ.CreateSession(ctx, sessionID, role, userId, &sesOpt)
 	if err == nil && s.hooks != nil && orgID != nil {
@@ -210,3 +224,45 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 	}
 	return resp, err
 }
+
+// ─── Admin Org Management ─────────────────────────────────────────────────────
+
+// AdminApproveOrg approves a pending organization, setting its status to active.
+func (s *OrgService) AdminApproveOrg(ctx context.Context, orgID string) (*models.Organization, error) {
+	org, err := s.orgRepo.GetOrgByID(ctx, orgID)
+	if err != nil || org == nil {
+		return nil, orgerrors.ErrOrgNotFound
+	}
+	if org.Status != models.OrgStatusPending {
+		return nil, autherr.New("ORG_NOT_PENDING", "Organization is not pending approval", 400)
+	}
+	return s.orgRepo.UpdateOrg(ctx, orgID, map[string]interface{}{"status": string(models.OrgStatusActive)})
+}
+
+// AdminBlockOrg suspends an organization.
+func (s *OrgService) AdminBlockOrg(ctx context.Context, orgID, reason string) (*models.Organization, error) {
+	org, err := s.orgRepo.GetOrgByID(ctx, orgID)
+	if err != nil || org == nil {
+		return nil, orgerrors.ErrOrgNotFound
+	}
+	updates := map[string]interface{}{"status": string(models.OrgStatusSuspended)}
+	if reason != "" {
+		updates["metadata"] = reason
+	}
+	return s.orgRepo.UpdateOrg(ctx, orgID, updates)
+}
+
+// AdminUnblockOrg re-activates a suspended or inactive organization.
+func (s *OrgService) AdminUnblockOrg(ctx context.Context, orgID string) (*models.Organization, error) {
+	org, err := s.orgRepo.GetOrgByID(ctx, orgID)
+	if err != nil || org == nil {
+		return nil, orgerrors.ErrOrgNotFound
+	}
+	return s.orgRepo.UpdateOrg(ctx, orgID, map[string]interface{}{"status": string(models.OrgStatusActive)})
+}
+
+// AdminListOrganizations returns all organizations, optionally filtered by status.
+func (s *OrgService) AdminListOrganizations(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error) {
+	return s.orgRepo.ListAllOrgs(ctx, status, pagi)
+}
+

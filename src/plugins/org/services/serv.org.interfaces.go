@@ -19,7 +19,7 @@ type IOrgService interface {
 	ListOrganizations(ctx context.Context, userID string) ([]models.Organization, error)
 
 	// Active org
-	SetActiveOrganization(ctx context.Context, sessionID string, orgID *string, userId , role string) (*coremodels.AuthTokens,error)
+	SetActiveOrganization(ctx context.Context, sessionID string, orgID *string, userId, role string) (*coremodels.AuthTokens, error)
 
 	// Invitations
 	InviteMember(ctx context.Context, inviterUserID string, input dtos.InviteMemberInput) (*models.Invitation, error)
@@ -34,4 +34,11 @@ type IOrgService interface {
 	ListMembers(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Member, int64, error)
 	UpdateMemberRole(ctx context.Context, input dtos.UpdateMemberRoleInput, requestingUserID string) (*models.Member, error)
 	RemoveMember(ctx context.Context, input dtos.RemoveMemberInput, requestingUserID string) error
+
+	// Admin-only org management
+	AdminApproveOrg(ctx context.Context, orgID string) (*models.Organization, error)
+	AdminBlockOrg(ctx context.Context, orgID, reason string) (*models.Organization, error)
+	AdminUnblockOrg(ctx context.Context, orgID string) (*models.Organization, error)
+	AdminListOrganizations(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error)
 }
+

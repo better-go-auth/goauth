@@ -13,6 +13,9 @@ const (
 	InvitationExpired  = errors.RespCode("INVITATION_EXPIRED")
 	AlreadyMember      = errors.RespCode("ALREADY_A_MEMBER")
 	SlugTaken          = errors.RespCode("SLUG_TAKEN")
+	OrgNotActive       = errors.RespCode("ORGANIZATION_NOT_ACTIVE")
+	OrgPending         = errors.RespCode("ORGANIZATION_PENDING_APPROVAL")
+	OrgSuspended       = errors.RespCode("ORGANIZATION_SUSPENDED")
 )
 
 var (
@@ -23,4 +26,7 @@ var (
 	ErrAlreadyMember      = errors.New(AlreadyMember, "User is already a member of this organization", http.StatusBadRequest)
 	ErrInvitationExpired  = errors.New(InvitationExpired, "This invitation has expired", http.StatusBadRequest)
 	ErrSlugTaken          = errors.New(SlugTaken, "Organization slug is already taken", http.StatusUnprocessableEntity)
+	ErrOrgNotActive       = errors.New(OrgNotActive, "Organization is not active", http.StatusForbidden)
+	ErrOrgPending         = errors.New(OrgPending, "Organization is pending approval", http.StatusForbidden)
+	ErrOrgSuspended       = errors.New(OrgSuspended, "Organization is suspended", http.StatusForbidden)
 )

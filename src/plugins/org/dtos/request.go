@@ -55,3 +55,17 @@ type InvitationInput struct {
 type SetActiveOrgInput struct {
 	OrganizationID *string `json:"organizationId"` // nil to unset active org
 }
+
+// ─── Admin Request DTOs ──────────────────────────────────────────────────────
+
+// AdminOrgIDInput is used for admin actions that only need an org ID.
+type AdminOrgIDInput struct {
+	OrganizationID string `json:"organizationId" validate:"required"`
+}
+
+// AdminBlockOrgInput is used for blocking/suspending an organization.
+type AdminBlockOrgInput struct {
+	OrganizationID string `json:"organizationId" validate:"required"`
+	Reason         string `json:"reason"`
+}
+
