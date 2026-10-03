@@ -21,6 +21,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/better-go-auth/goauth/src/common/middleware"
+	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -80,6 +81,13 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("goauth: invalid options: %w", err)
 	}
+
+	types.InstallScopedErrorHandler()
+	if opts.Advanced.OverrideHumaErrors {
+		types.InstallGlobalErrorOverride()
+	}
+	// every route goauth and its plugins register is marked so its errors use the goauth format
+	api = types.WrapAPI(api)
 
 	if opts.Conn == nil && opts.Repositories == nil {
 		return nil, errors.New("goauth: either Conn (*gorm.DB) or Repositories (repo_interfaces.IAuthRepos) must be provided")

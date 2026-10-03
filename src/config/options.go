@@ -35,6 +35,9 @@ type Advanced struct {
 	// GenerateID overrides the default ID generator for new records.
 	GenerateID func() string
 	IPAddress  IPAddress
+	// OverrideHumaErrors formats every Huma error in the process (including host routes) as {"code","message"}.
+	// By default only goauth routes use that format.
+	OverrideHumaErrors bool
 }
 
 type CrossSubDomainCookies struct {

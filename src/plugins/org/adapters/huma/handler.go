@@ -5,9 +5,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/common/middleware"
-	"github.com/danielgtaylor/huma/v2"
+	"github.com/better-go-auth/goauth/src/providers/authenticator"
 
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
@@ -42,7 +41,7 @@ func (h *OrgHandler) RequireOrgRoles(ctx context.Context, auth humatypes.AuthHea
 		return "", err
 	}
 	if sessionResp.Session.ActiveOrganizationID == nil {
-		return "", huma.NewError(http.StatusForbidden, "No active organization set")
+		return "", humatypes.NewError(http.StatusForbidden, "No active organization set")
 	}
 	orgID := *sessionResp.Session.ActiveOrganizationID
 	member, err := h.Org.GetMember(ctx, orgID, sessionResp.User.ID)

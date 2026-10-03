@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 	loc_errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/better-go-auth/goauth/src/common/dtos"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -110,6 +111,15 @@ func (r *SessionRepo) DeleteSessionsByUserID(ctx context.Context, userID string)
 	result := gormutil.GetDB(ctx, r.db).Where("user_id = ?", userID).Delete(&models.Session{})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/session: delete by user: %w", result.Error)
+	}
+	return nil
+}
+func (r *SessionRepo) DeleteExpired(ctx context.Context) error {
+	result := gormutil.GetDB(ctx, r.db).
+		Where("expires_at < ?", time.Now().UTC()).
+		Delete(&models.Session{})
+	if result.Error != nil {
+		return fmt.Errorf("gorm/session: delete expired: %w", result.Error)
 	}
 	return nil
 }

@@ -8,8 +8,6 @@ import (
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 
-	"github.com/danielgtaylor/huma/v2"
-
 	Icnst "github.com/better-go-auth/goauth/src/common"
 	"github.com/better-go-auth/goauth/src/models"
 	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
@@ -64,7 +62,7 @@ func (ah *GinAuthHandler) tokenCookies(tokens *models.AuthTokens) []http.Cookie 
 func (ah *GinAuthHandler) Register(ctx context.Context, inputs *humatypes.HumaReqBody[models.RegisterClientInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignUpResponse]], error) {
 	usr, err := ah.AdminAuthServ.RegisterWithEmail(ctx, inputs.Body)
 	if err != nil {
-		return nil, huma.NewError(http.StatusBadRequest, err.Error())
+		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
 	resp := authDtos.SignUpResponse{
 		User:  authDtos.UserToResponse(&usr.Body),
@@ -77,7 +75,7 @@ func (ah *GinAuthHandler) Register(ctx context.Context, inputs *humatypes.HumaRe
 func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *humatypes.HumaReqBody[VerificationInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
 	usr, err := ah.AdminAuthServ.VerifyRegisteredUser(ctx, inputs.Body)
 	if err != nil {
-		return nil, huma.NewError(http.StatusBadRequest, err.Error())
+		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
 	resp := authDtos.VerifyEmailResponse{
 		User:   authDtos.UserToResponse(&usr.Body),
@@ -90,7 +88,7 @@ func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *h
 func (ah *GinAuthHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBody[LoginData]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
 	tkn, err := ah.AdminAuthServ.Login(ctx, inputs.Body)
 	if err != nil {
-		return nil, huma.NewError(http.StatusUnauthorized, err.Error())
+		return nil, humatypes.NewError(http.StatusUnauthorized, err.Error())
 	}
 	cookies := ah.tokenCookies(tkn.Body.AuthTokens)
 	token := ""
@@ -109,7 +107,7 @@ func (ah *GinAuthHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBo
 func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *humatypes.HumaReqBody[RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
 	tkn, err := ah.AdminAuthServ.ResetToken(ctx, inputs.Body.Token)
 	if err != nil {
-		return nil, huma.NewError(http.StatusUnauthorized, err.Error())
+		return nil, humatypes.NewError(http.StatusUnauthorized, err.Error())
 	}
 	cookies := ah.tokenCookies(tkn.Body.AuthTokens)
 	token := ""
@@ -128,7 +126,7 @@ func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *humatypes.Hu
 func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqBody[RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SuccessResponse]], error) {
 	tkn, err := ah.AdminAuthServ.Logout(ctx, inputs.Body.Token)
 	if err != nil {
-		return nil, huma.NewError(http.StatusBadRequest, err.Error())
+		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
 	resp := authDtos.SuccessResponse{
 		Success: tkn.Body,
@@ -143,7 +141,7 @@ func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqB
 func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaReqBody[VerifyReqInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
 	tkn, err := ah.AdminAuthServ.ForgotPwd(ctx, inputs.Body)
 	if err != nil {
-		return nil, huma.NewError(http.StatusBadRequest, err.Error())
+		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
 	resp := authDtos.StatusResponse{
 		Status:  tkn.Body,
@@ -155,7 +153,7 @@ func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaR
 func (ah *GinAuthHandler) ResetPwd(ctx context.Context, inputs *humatypes.HumaReqBody[PwdResetInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
 	tkn, err := ah.AdminAuthServ.ResetPwd(ctx, inputs.Body)
 	if err != nil {
-		return nil, huma.NewError(http.StatusBadRequest, err.Error())
+		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
 	resp := authDtos.StatusResponse{
 		Status:  tkn.Body,

@@ -6,7 +6,6 @@ import (
 
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/common/types"
-	"github.com/danielgtaylor/huma/v2"
 
 	"github.com/better-go-auth/goauth/src/models"
 	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
@@ -16,7 +15,7 @@ import (
 func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *types.HumaReqId) (*types.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
-		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
+		return nil, types.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
 	}
 	// if uh.Service.SessionRepo == nil {
 	// 	return nil, huma.NewError(http.StatusInternalServerError, "Session repository not configured")
@@ -27,12 +26,12 @@ func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *types.Hum
 		session, err = uh.Service.SessionRepo.GetSessionByID(ctx, dto.ID)
 	}
 	if err != nil || session == nil || session.UserID != v.User.ID {
-		return nil, huma.NewError(http.StatusNotFound, "Session Not Found")
+		return nil, types.NewError(http.StatusNotFound, "Session Not Found")
 	}
 
 	err = uh.Service.DeleteSession(ctx, session.SessionId)
 	if err != nil {
-		return nil, huma.NewError(http.StatusInternalServerError, err.Error())
+		return nil, types.NewError(http.StatusInternalServerError, err.Error())
 	}
 	return types.MakeRes(dtos.SuccessCreated(authDtos.StatusResponse{Status: true}, 1), 200), nil
 }
@@ -40,7 +39,7 @@ func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *types.Hum
 func (uh *HumaSessionHandler) GetMySession(ctx context.Context, q *models.SessionQuery) (*types.HumaRes[dtos.PResp[[]authDtos.SessionData]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)
 	if !valid {
-		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
+		return nil, types.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
 	}
 	// if uh.Service.SessionRepo == nil {
 	// 	return nil, huma.NewError(http.StatusInternalServerError, "Session repository not configured")

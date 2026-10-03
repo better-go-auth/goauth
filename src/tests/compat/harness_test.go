@@ -3,6 +3,7 @@ package compattest
 import (
 	"context"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/better-go-auth/goauth/src/config"
@@ -45,6 +46,29 @@ func TestMatchShape(t *testing.T) {
 				t.Fatalf("ok=%v, diffs=%v", tc.ok, diffs)
 			}
 		})
+	}
+}
+
+func TestErrorFormatIsScopedToGoauthRoutes(t *testing.T) {
+	s := NewServer(t)
+	type hostIn struct {
+		Body struct {
+			Name string `json:"name" minLength:"3"`
+		}
+	}
+	huma.Register(s.API, huma.Operation{Method: http.MethodPost, Path: "/host/things"},
+		func(ctx context.Context, _ *hostIn) (*struct{}, error) { return nil, nil })
+
+	r := s.Post(t, "/api/auth/login", []byte(`{"info": 1}`))
+	var body struct{ Code string }
+	r.JSON(t, &body)
+	if r.Status != http.StatusBadRequest || body.Code != "VALIDATION_ERROR" {
+		t.Fatalf("goauth route: status %d, body %s", r.Status, r.Body)
+	}
+
+	r = s.Post(t, "/host/things", map[string]any{"name": "x"})
+	if r.Status != http.StatusUnprocessableEntity || !strings.Contains(r.Header.Get("Content-Type"), "problem+json") {
+		t.Fatalf("host route must keep Huma's default errors: status %d, %s", r.Status, r.Body)
 	}
 }
 

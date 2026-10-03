@@ -3,9 +3,25 @@ package repo_interfaces
 import (
 	"context"
 
-	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/common/dtos"
+	"github.com/better-go-auth/goauth/src/models"
 )
+
+// IUserRepo defines the repository interface for User persistence.
+type IUserRepo interface {
+	// CreateUser inserts a new user and returns the created record.
+	CreateUser(ctx context.Context, user *models.User) (*models.User, error)
+	// GetUserByID fetches a user by their ULID.
+	GetUserByID(ctx context.Context, id string) (*models.User, error)
+	// GetUserByEmail fetches a user by email (case-insensitive).
+	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	// UpdateUser applies a partial update (map of column→value) and returns the updated record.
+	UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error)
+	// DeleteUser soft-deletes a user (sets DeletedAt).
+	DeleteUser(ctx context.Context, id string) error
+	// ListUsers returns a paginated list of users matching the filter.
+	ListUsers(ctx context.Context, filter UserFilter, pagi dtos.PaginationInput) ([]models.User, int64, error)
+}
 
 // IVerificationRepo defines the repository interface for verification codes and tokens.
 type IVerificationRepo interface {
@@ -45,22 +61,6 @@ type UserFilter struct {
 	Banned      *bool   `json:"banned"`
 	SearchField *string `json:"searchField"`
 	SearchValue *string `json:"searchValue"`
-}
-
-// IUserRepo defines the repository interface for User persistence.
-type IUserRepo interface {
-	// CreateUser inserts a new user and returns the created record.
-	CreateUser(ctx context.Context, user *models.User) (*models.User, error)
-	// GetUserByID fetches a user by their ULID.
-	GetUserByID(ctx context.Context, id string) (*models.User, error)
-	// GetUserByEmail fetches a user by email (case-insensitive).
-	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
-	// UpdateUser applies a partial update (map of column→value) and returns the updated record.
-	UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error)
-	// DeleteUser soft-deletes a user (sets DeletedAt).
-	DeleteUser(ctx context.Context, id string) error
-	// ListUsers returns a paginated list of users matching the filter.
-	ListUsers(ctx context.Context, filter UserFilter, pagi dtos.PaginationInput) ([]models.User, int64, error)
 }
 
 type IAuthRepos interface {
