@@ -42,7 +42,7 @@ func (r *SessionRepo) UpsertSession(ctx context.Context, session *models.Session
 	}
 	err := gormutil.GetDB(ctx, r.db).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "session_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"hashed_token", "device_token", "active_org_id", "expires_at"}),
+		DoUpdates: clause.AssignmentColumns([]string{"hashed_token", "device_token", "active_org_id", "org_role_id", "role", "expires_at"}),
 	}).Create(session).Error
 	if err != nil {
 		return nil, fmt.Errorf("gorm/session: upsert: %w", err)
@@ -146,7 +146,7 @@ func (r *SessionRepo) ListSessions(ctx context.Context, filter models.SessionFil
 	if limit <= 0 {
 		limit = 10
 	}
-	offset := pagi.Page
+	offset := (pagi.Page - 1) * limit
 	if offset < 0 {
 		offset = 0
 	}

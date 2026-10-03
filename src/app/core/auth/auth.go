@@ -12,6 +12,7 @@ import (
 type GinAuthHandler struct {
 	AdminAuthServ *Service
 	CmnServ       *providers.IProviderS
+	Cookies       CookieAttrs
 }
 type Service struct {
 	Config   *config.SessionConfig

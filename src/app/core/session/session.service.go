@@ -81,10 +81,7 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		return nil, err
 	}
 	// 4. hash the refresh token
-	refreshHash, err := hasher.ArgonCreateHash(tokens.RefreshToken)
-	if err != nil {
-		return nil, err
-	}
+	refreshHash := hasher.TokenHash(tokens.RefreshToken)
 	if opt != nil && opt.ClearSession {
 		// TODO: make sure the repo
 		if aus.SessionRepo != nil {
@@ -93,6 +90,9 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	}
 
 	expiresIn := time.Duration(aus.sConf.JwtVar.RefreshExpireMin) * time.Minute
+	if opt != nil && opt.ExpiresIn > 0 {
+		expiresIn = opt.ExpiresIn
+	}
 	if expiresIn <= 0 {
 		expiresIn = 7 * 24 * time.Hour
 	}
@@ -107,7 +107,11 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	if opt != nil {
 		session.ActiveOrgID = opt.ActiveOrgID
 		session.OrgRoleID = opt.OrgRoleID
+		if session.OrgRoleID == nil {
+			session.OrgRoleID = opt.OrgRole
+		}
 		session.DeviceToken = opt.DeviceToken
+		session.ImpersonatedBy = opt.ImpersonatedBy
 	}
 
 	if aus.Hooks != nil {

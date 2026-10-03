@@ -47,6 +47,16 @@ func (s *AdminService) SetHooks(hooks plugins.HookRegistry) {
 	s.hooks = hooks
 }
 
+// SetSessionService configures the core session service used to create and revoke sessions.
+func (s *AdminService) SetSessionService(sessionServ serv_interfaces.ISessionService) {
+	s.sessionServ = sessionServ
+}
+
+// SetAuthConfig provides the core auth configuration.
+func (s *AdminService) SetAuthConfig(conf config.AuthConfig) {
+	s.authConfig = conf
+}
+
 // NewAdminService creates a new AdminService.
 func NewAdminService(
 	adminRepo repository.IAdminRepo,

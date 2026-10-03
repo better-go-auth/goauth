@@ -28,7 +28,7 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 	var changeCode string
 
 	t.Run("Sign Up and Verify Email", func(t *testing.T) {
-		resp, body := env.PostJSON("/api/v1/01-auth/signup", models.RegisterClientInput{
+		resp, body := env.PostJSON("/api/auth/signup", models.RegisterClientInput{
 			FirstName: "Jane",
 			LastName:  "Doe",
 			Email:     email,
@@ -43,7 +43,7 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 			t.Fatalf("Expected verification token sent to %s, got none", email)
 		}
 
-		resp, body = env.PostJSON("/api/v1/01-auth/verify", auth.VerificationInput{
+		resp, body = env.PostJSON("/api/auth/verify", auth.VerificationInput{
 			Info: email,
 			Code: token,
 		})
@@ -53,7 +53,7 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("User Login", func(t *testing.T) {
-		resp, body := env.PostJSON("/api/v1/01-auth/login", auth.LoginData{
+		resp, body := env.PostJSON("/api/auth/login", auth.LoginData{
 			LoginInfo: email,
 			Password:  password,
 		})
@@ -73,7 +73,7 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("Get My Profile", func(t *testing.T) {
-		resp, body := env.GetJSON("/api/v1/01-profile", authHeader)
+		resp, body := env.GetJSON("/api/auth/profile", authHeader)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("GetMyProfile failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -91,7 +91,7 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 			FirstName: "Janet",
 			LastName:  "Smith",
 		}
-		resp, body := env.PatchJSON("/api/v1/01-profile", updateInput, authHeader)
+		resp, body := env.PatchJSON("/api/auth/profile", updateInput, authHeader)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("UpdateMyProfile failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -108,13 +108,13 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 			OldPassword: password,
 			NewPassword: newPassword,
 		}
-		resp, body := env.PostJSON("/api/v1/01-profile/change_pwd", changePwdInput, authHeader)
+		resp, body := env.PostJSON("/api/auth/profile/change_pwd", changePwdInput, authHeader)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("ChangePassword failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
 		// Verify old password fails and new password succeeds
-		resp, _ = env.PostJSON("/api/v1/01-auth/login", auth.LoginData{
+		resp, _ = env.PostJSON("/api/auth/login", auth.LoginData{
 			LoginInfo: email,
 			Password:  password,
 		})
@@ -122,7 +122,7 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 			t.Fatalf("Expected login with old password to fail")
 		}
 
-		resp, body = env.PostJSON("/api/v1/01-auth/login", auth.LoginData{
+		resp, body = env.PostJSON("/api/auth/login", auth.LoginData{
 			LoginInfo: email,
 			Password:  newPassword,
 		})
@@ -142,7 +142,7 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 			Password: newPassword,
 			NewEmail: newEmail,
 		}
-		resp, body := env.PostJSON("/api/v1/01-profile/change_email", changeEmailReq, reAuthHeader)
+		resp, body := env.PostJSON("/api/auth/profile/change_email", changeEmailReq, reAuthHeader)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("UpdateMyEmailReq failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -159,14 +159,14 @@ func TestProfileE2E_FullFlow(t *testing.T) {
 			Code:     changeCode,
 			NewEmail: newEmail,
 		}
-		resp, body := env.PostJSON("/api/v1/01-profile/verify_change_email", verifyChangeEmailReq, reAuthHeader)
+		resp, body := env.PostJSON("/api/auth/profile/verify_change_email", verifyChangeEmailReq, reAuthHeader)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("VerifyMyChangeEmailReq failed: status %d, body: %s", resp.StatusCode, body)
 		}
 	})
 
 	t.Run("Login with New Email", func(t *testing.T) {
-		resp, body := env.PostJSON("/api/v1/01-auth/login", auth.LoginData{
+		resp, body := env.PostJSON("/api/auth/login", auth.LoginData{
 			LoginInfo: newEmail,
 			Password:  newPassword,
 		})

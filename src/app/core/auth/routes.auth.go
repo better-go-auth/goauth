@@ -22,6 +22,7 @@ const (
 
 func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *Service, conf config.AuthConfig) {
 	handler := NewAuthHandler(providerS, serv)
+	handler.Cookies = CookieAttrs{Secure: conf.SecureCookies(), Domain: conf.CookieDomain()}
 	tags := []string{"01-auth"}
 	basePath := conf.BasePath
 	if basePath == "" {

@@ -22,7 +22,7 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 	var sessionId string
 
 	t.Run("Sign Up and Verify Email", func(t *testing.T) {
-		resp, body := env.PostJSON("/api/v1/01-auth/signup", models.RegisterClientInput{
+		resp, body := env.PostJSON("/api/auth/signup", models.RegisterClientInput{
 			FirstName: "Session",
 			LastName:  "User",
 			Email:     email,
@@ -37,7 +37,7 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 			t.Fatalf("Expected verification token sent to %s, got none", email)
 		}
 
-		resp, body = env.PostJSON("/api/v1/01-auth/verify", auth.VerificationInput{
+		resp, body = env.PostJSON("/api/auth/verify", auth.VerificationInput{
 			Info: email,
 			Code: token,
 		})
@@ -47,7 +47,7 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 	})
 
 	t.Run("User Login", func(t *testing.T) {
-		resp, body := env.PostJSON("/api/v1/01-auth/login", auth.LoginData{
+		resp, body := env.PostJSON("/api/auth/login", auth.LoginData{
 			LoginInfo: email,
 			Password:  password,
 		})
@@ -67,7 +67,7 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 	})
 
 	t.Run("Get Active Sessions", func(t *testing.T) {
-		resp, body := env.GetJSON("/api/v1/01-session?page=1&limit=10", authHeader)
+		resp, body := env.GetJSON("/api/auth/session?page=1&limit=10", authHeader)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("GetMySession failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -87,14 +87,14 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 	})
 
 	t.Run("Delete Session by ID", func(t *testing.T) {
-		resp, body := env.PostJSON(fmt.Sprintf("/api/v1/01-session/%s", sessionId), nil, authHeader)
+		resp, body := env.PostJSON(fmt.Sprintf("/api/auth/session/%s", sessionId), nil, authHeader)
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 			t.Fatalf("DeleteSession failed: status %d, body: %s", resp.StatusCode, body)
 		}
 	})
 
 	t.Run("Verify Sessions Empty", func(t *testing.T) {
-		resp, body := env.GetJSON("/api/v1/01-session?page=1&limit=10", authHeader)
+		resp, body := env.GetJSON("/api/auth/session?page=1&limit=10", authHeader)
 		if resp.StatusCode == http.StatusOK {
 			var afterDeleteResp dtos.PResp[[]authDtos.SessionData]
 			if err := json.Unmarshal([]byte(body), &afterDeleteResp); err == nil {

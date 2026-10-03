@@ -1,5 +1,7 @@
 package models
 
+import "time"
+
 type RegisterClientInput struct {
 	FirstName string `json:"fName" binding:"required,min=2" `
 	LastName  string `json:"lName" `
@@ -44,4 +46,8 @@ type SessionOpt struct {
 	OrgRoleID    *string
 	OrgRole      *string
 	DeviceToken  string
+	// ImpersonatedBy marks the session as an admin impersonation.
+	ImpersonatedBy *string
+	// ExpiresIn overrides the session row lifetime (default: refresh token lifetime).
+	ExpiresIn time.Duration
 }

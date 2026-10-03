@@ -1,0 +1,14 @@
+{
+  "redirect": false,
+  "token": "<string>",
+  "url": "<string|null>",
+  "user": {
+    "id": "<string>",
+    "name": "<string>",
+    "email": "<string>",
+    "emailVerified": false,
+    "image": "<string|null>",
+    "createdAt": "<date>",
+    "updatedAt": "<date>"
+  }
+}

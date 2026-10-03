@@ -5,10 +5,11 @@ import (
 	"reflect"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
+	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
-	"github.com/better-go-auth/goauth/src/common/middleware"
 	"gorm.io/gorm"
 )
 
@@ -48,11 +49,31 @@ func NewRevocationStore(db *gorm.DB, store sec_storage.SecondaryStorage, sconfig
 	if isNil(db) {
 		db = nil
 	}
-	return &RevocationStore{
+	rs := &RevocationStore{
 		db:      db,
 		store:   store,
 		sConfig: sconfig,
 	}
+	if db != nil {
+		rs.sessionRepo = gormSessionChecker{db: db}
+	}
+	return rs
+}
+
+type gormSessionChecker struct {
+	db *gorm.DB
+}
+
+func (g gormSessionChecker) GetSessionBySessionID(ctx context.Context, sessionID string) (*models.Session, error) {
+	var sess models.Session
+	err := gormutil.GetDB(ctx, g.db).
+		Select("id", "session_id", "blacklisted", "revoked_at", "expires_at").
+		Where("session_id = ?", sessionID).
+		Take(&sess).Error
+	if err != nil {
+		return nil, err
+	}
+	return &sess, nil
 }
 
 // NewRevocationStoreWithRepo creates a RevocationStore backed by a SessionRevocationChecker repository.

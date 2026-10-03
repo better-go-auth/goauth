@@ -7,6 +7,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/providers/token"
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/google/uuid"
 )
 
 func JwtValid[T jwt.Claims](signedToken string, signingKey string, claims T) (T, bool, error) {
@@ -61,6 +62,8 @@ func SignWithExpiry(signingKey string, claims *token.CustomClaims, expiryMinutes
 	now := time.Now()
 	jwtClaims := jwtClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
+			// unique per token so rotation never re-issues an identical refresh token
+			ID:        uuid.NewString(),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(expiryMinutes)),
 			Issuer:    "better-go-auth",

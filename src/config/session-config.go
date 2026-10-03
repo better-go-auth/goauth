@@ -13,9 +13,13 @@ type JwtVar struct {
 
 type SessionConfig struct {
 	JwtVar
+	// CheckRevocationInDb verifies the session row on every authenticated request.
+	// Forced on when no secondary storage is configured, otherwise revocation cannot work.
 	CheckRevocationInDb bool
 	BlacklistPrefix     string
 	RevocationPrefix    string
+	// SingleSession revokes a user's other sessions on every login.
+	SingleSession bool
 }
 type Session struct {
 	CheckRevocationInDb bool

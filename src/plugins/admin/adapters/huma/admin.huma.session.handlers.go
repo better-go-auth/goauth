@@ -79,7 +79,7 @@ func (h *AdminHandler) StopImpersonating(ctx context.Context, input *humatypes.H
 		return nil, humaauth.RespondErr(err)
 	}
 
-	if err := h.Admin.StopImpersonating(ctx, session.Session.Token); err != nil {
+	if err := h.Admin.StopImpersonating(ctx, session.Session.ID); err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
 

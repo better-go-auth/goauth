@@ -213,8 +213,10 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 		}
 	}
 	sesOpt := coremodels.SessionOpt{
-		OrgRole:     new(member.Role.String()),
 		ActiveOrgID: orgID,
+	}
+	if member != nil {
+		sesOpt.OrgRole = new(member.Role.String())
 	}
 	// TODO make sure cached tokens and etc are updated and same session with old org id is not used
 	// use some sort of version mechanism and etc

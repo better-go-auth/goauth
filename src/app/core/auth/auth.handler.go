@@ -15,16 +15,49 @@ import (
 	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
 )
 
-func CreateCookie(Name, Value string, minutes int) http.Cookie {
+// CookieAttrs carries the deployment-dependent cookie attributes.
+type CookieAttrs struct {
+	Secure bool
+	Domain string
+}
+
+func CreateCookie(Name, Value string, minutes int, attrs CookieAttrs) http.Cookie {
 	return http.Cookie{
 		Name:     Name,
 		Value:    Value,
 		Expires:  time.Now().Add(time.Minute * time.Duration(minutes)),
+		MaxAge:   minutes * 60,
 		HttpOnly: true, // Set HttpOnly to true to make the cookie accessible only through HTTP requests, not JavaScript
 		Path:     "/",
-		Domain:   "",
-		Secure:   false,
+		Domain:   attrs.Domain,
+		Secure:   attrs.Secure,
 		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+// ExpireCookie returns a cookie that deletes Name on the client.
+func ExpireCookie(Name string, attrs CookieAttrs) http.Cookie {
+	return http.Cookie{
+		Name:     Name,
+		Value:    "",
+		Expires:  time.Unix(0, 0),
+		MaxAge:   -1,
+		HttpOnly: true,
+		Path:     "/",
+		Domain:   attrs.Domain,
+		Secure:   attrs.Secure,
+		SameSite: http.SameSiteLaxMode,
+	}
+}
+
+func (ah *GinAuthHandler) tokenCookies(tokens *models.AuthTokens) []http.Cookie {
+	if tokens == nil {
+		return nil
+	}
+	jwtVar := ah.AdminAuthServ.Config.JwtVar
+	return []http.Cookie{
+		CreateCookie(Icnst.AccessToken, tokens.AccessToken, jwtVar.AccessExpireMin, ah.Cookies),
+		CreateCookie(Icnst.RefreshToken, tokens.RefreshToken, jwtVar.RefreshExpireMin, ah.Cookies),
 	}
 }
 
@@ -59,12 +92,7 @@ func (ah *GinAuthHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBo
 	if err != nil {
 		return nil, huma.NewError(http.StatusUnauthorized, err.Error())
 	}
-	var cookies []http.Cookie
-	if tkn.Body.AuthTokens != nil {
-		refreshCookie := CreateCookie(Icnst.RefreshToken, tkn.Body.AuthTokens.RefreshToken, ah.AdminAuthServ.Config.JwtVar.RefreshExpireMin)
-		accessCookie := CreateCookie(Icnst.AccessToken, tkn.Body.AuthTokens.AccessToken, ah.AdminAuthServ.Config.JwtVar.AccessExpireMin)
-		cookies = append(cookies, refreshCookie, accessCookie)
-	}
+	cookies := ah.tokenCookies(tkn.Body.AuthTokens)
 	token := ""
 	if tkn.Body.AuthTokens != nil {
 		token = tkn.Body.AuthTokens.AccessToken
@@ -83,12 +111,7 @@ func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *humatypes.Hu
 	if err != nil {
 		return nil, huma.NewError(http.StatusUnauthorized, err.Error())
 	}
-	var cookies []http.Cookie
-	if tkn.Body.AuthTokens != nil {
-		refreshCookie := CreateCookie(Icnst.RefreshToken, tkn.Body.AuthTokens.RefreshToken, ah.AdminAuthServ.Config.JwtVar.RefreshExpireMin)
-		accessCookie := CreateCookie(Icnst.AccessToken, tkn.Body.AuthTokens.AccessToken, ah.AdminAuthServ.Config.JwtVar.AccessExpireMin)
-		cookies = append(cookies, accessCookie, refreshCookie)
-	}
+	cookies := ah.tokenCookies(tkn.Body.AuthTokens)
 	token := ""
 	if tkn.Body.AuthTokens != nil {
 		token = tkn.Body.AuthTokens.AccessToken
@@ -110,7 +133,11 @@ func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqB
 	resp := authDtos.SuccessResponse{
 		Success: tkn.Body,
 	}
-	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
+	cookies := []http.Cookie{
+		ExpireCookie(Icnst.AccessToken, ah.Cookies),
+		ExpireCookie(Icnst.RefreshToken, ah.Cookies),
+	}
+	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201, cookies...), nil
 }
 
 func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaReqBody[VerifyReqInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {

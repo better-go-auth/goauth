@@ -146,7 +146,8 @@ func SetupAdminRoutes(api huma.API, h *AdminHandler) {
 		Summary:     "Stop Impersonating (Admin)",
 		Description: "Terminates the active impersonation session and clears session cookies.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.Authorize(AdminStopImpersonating, AdminPermissionsMap[AdminStopImpersonating].AllowedRoles)},
+		// the caller holds the impersonated user's token, so no admin role check; the service verifies impersonatedBy
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.StopImpersonating)
 
 	// 4. Session Control

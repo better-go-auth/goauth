@@ -103,15 +103,20 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		return fmt.Errorf("admin plugin: AdminRepo is required")
 	}
 
-	p.service = adminsvc.NewAdminService(
+	svc := adminsvc.NewAdminService(
 		p.adminRepos.AdminRepo,
 		p.config,
 	)
+	p.service = svc
 
 	p.hookService = adminsvc.NewAdminHookService(p.adminRepos.AdminRepo)
 
 	if ictx != nil {
 		p.authenticate = ictx.Authenticator
+		svc.SetAuthConfig(ictx.Config)
+		if ictx.IAuthServices != nil {
+			svc.SetSessionService(ictx.IAuthServices)
+		}
 		if ictx.Hooks != nil {
 			ictx.Hooks.Register(p.hookService)
 			p.service.SetHooks(ictx.Hooks)

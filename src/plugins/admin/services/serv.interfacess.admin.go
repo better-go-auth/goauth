@@ -35,7 +35,7 @@ type IAdminService interface {
 	ImpersonateUser(ctx context.Context, input admindtos.AdminImpersonateUserInput, adminUser *dtos.UserResponse, reqMeta dtos.RequestMeta) (*dtos.SignInResponse, error)
 
 	// StopImpersonating terminates the current impersonation session.
-	StopImpersonating(ctx context.Context, currentSessionToken string) error
+	StopImpersonating(ctx context.Context, sessionID string) error
 
 	// ListUserSessions returns all active sessions for a target user.
 	ListUserSessions(ctx context.Context, input admindtos.AdminListUserSessionsInput, adminUserID string) ([]dtos.SessionData, error)

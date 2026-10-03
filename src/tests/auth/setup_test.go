@@ -90,7 +90,9 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 		t.Fatalf("Failed to create test user for revocation tests: %v", err)
 	}
 
-	revStore := providers.NewRevocationStore(env.DB, env.SecondaryStorage, env.Options.SessionConfig)
+	revConf := env.Options.SessionConfig
+	revConf.CheckRevocationInDb = true
+	revStore := providers.NewRevocationStore(env.DB, env.SecondaryStorage, revConf)
 
 	t.Run("Empty sessionID is not revoked", func(t *testing.T) {
 		revoked, err := revStore.IsRevoked(ctx, "")

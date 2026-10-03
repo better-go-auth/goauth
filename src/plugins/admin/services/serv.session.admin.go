@@ -2,8 +2,6 @@ package services
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -94,70 +92,49 @@ func (s *AdminService) ImpersonateUser(ctx context.Context, input admindtos.Admi
 	if targetUser.Banned {
 		return nil, autherr.ErrUserBanned
 	}
-
-	rawToken, err := generateRandomToken(32)
-	if err != nil {
-		return nil, fmt.Errorf("adminsvc: generate session token: %w", err)
+	if s.sessionServ == nil {
+		return nil, fmt.Errorf("adminsvc: session service not configured")
 	}
 
 	expiresIn := s.adminConfig.ImpersonationSessionExpiresIn
 	if expiresIn <= 0 {
-		expiresIn = time.Duration(s.authConfig.SessionConfig.RefreshExpireMin)
+		expiresIn = time.Duration(s.authConfig.SessionConfig.RefreshExpireMin) * time.Minute
 	}
-	// if expiresIn <= 0 {
-	// 	expiresIn = 7 * 24 * time.Hour
-	// }
-	expiresAt := time.Now().UTC().Add(expiresIn)
 
-	session := &models.Session{
-		Base:           models.Base{ID: models.NewID()},
-		UserID:         targetUser.ID,
-		SessionId:      rawToken,
-		ExpiresAt:      expiresAt,
+	// Issue a regular JWT session so the impersonated token passes the auth middleware.
+	sessionID := models.NewSecureId()
+	tokens, err := s.sessionServ.CreateSession(ctx, sessionID, targetUser.Role.S(), targetUser.ID, &models.SessionOpt{
 		ImpersonatedBy: &adminUser.ID,
-		IPAddress:      &reqMeta.IPAddress,
-		UserAgent:      &reqMeta.UserAgent,
-		DeviceId:       reqMeta.DeviceID,
-		DeviceName:     reqMeta.DeviceName,
-		DeviceType:     reqMeta.DeviceType,
-	}
-
-	createdSession, err := s.adminRepo.CreateImpersonationSession(ctx, session)
+		ExpiresIn:      expiresIn,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("adminsvc: create impersonation session: %w", err)
 	}
 
-	sessData := dtos.SessionToData(createdSession)
-	userResp := dtos.UserToResponse(targetUser)
-
-	// Save to secondary storage if enabled
-	if store := s.secondaryStorage; store != nil {
-		sessResp := &dtos.SessionResponse{
-			Session: sessData,
-			User:    userResp,
-		}
-		payloadBytes, _ := json.Marshal(map[string]interface{}{
-			"session": sessData,
-			"user":    userResp,
-		})
-		_ = store.Set(ctx, rawToken, string(payloadBytes), expiresIn)
-		_ = sessResp
+	createdSession, err := s.adminRepo.GetSessionByToken(ctx, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("adminsvc: load impersonation session: %w", err)
 	}
+
+	sessData := dtos.SessionToData(createdSession)
+	// The refresh token is deliberately not returned: impersonation must not outlive its session row.
+	sessData.Token = tokens.AccessToken
+	userResp := dtos.UserToResponse(targetUser)
 
 	return &dtos.SignInResponse{
 		User:        userResp,
-		Token:       rawToken,
+		Token:       tokens.AccessToken,
 		SessionData: sessData,
 	}, nil
 }
 
-// StopImpersonating terminates the current impersonation session.
-func (s *AdminService) StopImpersonating(ctx context.Context, currentSessionToken string) error {
-	if currentSessionToken == "" {
-		return autherr.New(autherr.BadRequest, "No active session token provided", http.StatusBadRequest)
+// StopImpersonating terminates the impersonation session identified by sessionID.
+func (s *AdminService) StopImpersonating(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return autherr.New(autherr.BadRequest, "No active session provided", http.StatusBadRequest)
 	}
 
-	session, err := s.adminRepo.GetSessionByToken(ctx, currentSessionToken)
+	session, err := s.adminRepo.GetSessionByToken(ctx, sessionID)
 	if err != nil {
 		return autherr.ErrSessionNotFound
 	}
@@ -166,24 +143,17 @@ func (s *AdminService) StopImpersonating(ctx context.Context, currentSessionToke
 		return autherr.New(autherr.BadRequest, "Not currently impersonating a user", http.StatusBadRequest)
 	}
 
-	// Delete the impersonation session
+	if s.sessionServ != nil {
+		// also blacklists the session so the impersonation access token stops working
+		if err := s.sessionServ.DeleteSession(ctx, session.SessionId); err != nil {
+			return fmt.Errorf("adminsvc: delete impersonation session: %w", err)
+		}
+		return nil
+	}
 	if err := s.adminRepo.DeleteSessionByID(ctx, session.ID); err != nil {
 		return fmt.Errorf("adminsvc: delete impersonation session: %w", err)
 	}
-
-	if store := s.secondaryStorage; store != nil {
-		_ = store.Delete(ctx, currentSessionToken)
-	}
-
 	return nil
-}
-
-func generateRandomToken(n int) (string, error) {
-	b := make([]byte, n)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }
 
 type activeSessionEntry struct {

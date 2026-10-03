@@ -31,7 +31,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 			Email:     email,
 			Password:  initialPassword,
 		}
-		resp, body := env.PostJSON("/api/v1/01-auth/signup", signUpInput)
+		resp, body := env.PostJSON("/api/auth/signup", signUpInput)
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
 			t.Fatalf("SignUp failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -48,7 +48,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 			Info: email,
 			Code: token,
 		}
-		resp, body := env.PostJSON("/api/v1/01-auth/verify", verifyInput)
+		resp, body := env.PostJSON("/api/auth/verify", verifyInput)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("Verify failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -59,7 +59,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 			LoginInfo: email,
 			Password:  initialPassword,
 		}
-		resp, body := env.PostJSON("/api/v1/01-auth/login", loginInput)
+		resp, body := env.PostJSON("/api/auth/login", loginInput)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("Login failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -85,7 +85,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 		refreshInput := auth.RefreshTokenInput{
 			Token: refreshToken,
 		}
-		resp, body := env.PostJSON("/api/v1/01-auth/refresh", refreshInput)
+		resp, body := env.PostJSON("/api/auth/refresh", refreshInput)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("RefreshToken failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -104,7 +104,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 		forgotInput := auth.VerifyReqInput{
 			Email: email,
 		}
-		resp, body := env.PostJSON("/api/v1/01-auth/forgot_password", forgotInput)
+		resp, body := env.PostJSON("/api/auth/forgot_password", forgotInput)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("ForgotPwd failed: status %d, body: %s", resp.StatusCode, body)
 		}
@@ -122,14 +122,14 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 			Code:        resetCode,
 			NewPassword: newPassword,
 		}
-		resp, body := env.PostJSON("/api/v1/01-auth/reset_password", resetInput)
+		resp, body := env.PostJSON("/api/auth/reset_password", resetInput)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("ResetPwd failed: status %d, body: %s", resp.StatusCode, body)
 		}
 	})
 
 	t.Run("Verify Old Password Fails", func(t *testing.T) {
-		resp, _ := env.PostJSON("/api/v1/01-auth/login", auth.LoginData{
+		resp, _ := env.PostJSON("/api/auth/login", auth.LoginData{
 			LoginInfo: email,
 			Password:  initialPassword,
 		})
@@ -139,7 +139,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("Verify New Password Login", func(t *testing.T) {
-		resp, body := env.PostJSON("/api/v1/01-auth/login", auth.LoginData{
+		resp, body := env.PostJSON("/api/auth/login", auth.LoginData{
 			LoginInfo: email,
 			Password:  newPassword,
 		})
@@ -161,7 +161,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 		logoutInput := auth.RefreshTokenInput{
 			Token: activeRefreshToken,
 		}
-		resp, body := env.PostJSON("/api/v1/01-auth/logout", logoutInput)
+		resp, body := env.PostJSON("/api/auth/logout", logoutInput)
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("Logout failed: status %d, body: %s", resp.StatusCode, body)
 		}
