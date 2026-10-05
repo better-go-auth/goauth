@@ -31,7 +31,7 @@ func TestFromModels(t *testing.T) {
 	}
 
 	tok := "tok"
-	s := &models.Session{Base: models.Base{ID: "s1", CreatedAt: &now}, UserID: "u1", Token: &tok, ExpiresAt: now}
+	s := &models.Session{Base: models.Base{ID: "s1", CreatedAt: &now}, UserID: "u1", Token: tok, ExpiresAt: now}
 	ds := SessionFromModel(s)
 	b, _ := json.Marshal(SessionWithUser{Session: ds, User: du})
 	var m map[string]map[string]any

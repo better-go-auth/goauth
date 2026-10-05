@@ -76,7 +76,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		pwdAccount := &models.Account{
 			Base:       models.Base{ID: models.NewID(), CreatedAt: &now, UpdatedAt: &now},
 			UserID:     createdUser.ID,
-			ProviderId: models.ProvCredential,
+			ProviderID: models.ProvCredential,
 			AccountID:  input.Email,
 			Password:   &hash,
 		}
@@ -234,34 +234,34 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 	}
 
 	// 3. get the session that are not blacklisted
-	session, err := aus.sessionRepo.GetSessionBySessionID(ctx, claims.SessionID)
-	if err != nil || session == nil || session.UserID != claims.UserID || (session.Blacklisted != nil && *session.Blacklisted) || session.RevokedAt != nil {
+	session, err := aus.sessionRepo.GetSessionByID(ctx, claims.SessionID)
+	if err != nil || session == nil || session.UserID != claims.UserID {
 		return dtos.BadReqC[TokenResponse](errors.DataNotFound), errors.UserNotFoundError
 	}
 	if time.Now().After(session.ExpiresAt) {
-		_ = aus.SesSvc.DeleteSession(ctx, session.SessionId)
+		_ = aus.SesSvc.DeleteSession(ctx, session.ID)
 		return dtos.BadReqC[TokenResponse](errors.SessionExpired), errors.ErrSessionExpired
 	}
 
 	// 4. validate the refresh token matches
-	if !hasher.TokenMatches(refreshToken, session.HashedToken) {
+	if !hasher.TokenMatches(refreshToken, session.Token) {
 		return dtos.BadReqC[TokenResponse](errors.TokenDontMatch), errors.TokenDontMatchError
 	}
 
 	// 5. the user must still be allowed to sign in
 	if usr.Active == nil || !*usr.Active {
-		_ = aus.SesSvc.DeleteSession(ctx, session.SessionId)
+		_ = aus.SesSvc.DeleteSession(ctx, session.ID)
 		return dtos.BadReqC[TokenResponse](errors.Unauthorized), errors.ErrUnauthorized
 	}
 	if usr.Banned && (usr.BanExpires == nil || usr.BanExpires.After(time.Now())) {
-		_ = aus.SesSvc.DeleteSession(ctx, session.SessionId)
+		_ = aus.SesSvc.DeleteSession(ctx, session.ID)
 		return dtos.BadReqM[TokenResponse](errors.ErrUserBanned.Message), errors.ErrUserBanned
 	}
 
 	// 6. recreate session tokens, keeping the session's org context and device
 	tokens, err := aus.SesSvc.CreateSession(ctx, claims.SessionID, usr.Role.S(), usr.ID, &models.SessionOpt{
-		ActiveOrgID: session.ActiveOrgID,
-		OrgRoleID:   session.OrgRoleID,
+		ActiveOrgID: session.ActiveOrganizationID,
+		OrgRoleID:   session.ActiveOrganizationRole,
 		DeviceToken: session.DeviceToken,
 	})
 	if err != nil {
@@ -282,16 +282,16 @@ func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[
 		return dtos.BadReqC[bool](errors.InvalidToken), errors.InvalidTokenError
 	}
 
-	session, err := aus.sessionRepo.GetSessionBySessionID(ctx, claims.SessionID)
+	session, err := aus.sessionRepo.GetSessionByID(ctx, claims.SessionID)
 	if err != nil || session == nil {
 		return dtos.BadReqC[bool](errors.DataNotFound), errors.UserNotFoundError
 	}
 
-	if !hasher.TokenMatches(refreshToken, session.HashedToken) {
+	if !hasher.TokenMatches(refreshToken, session.Token) {
 		return dtos.BadReqC[bool](errors.TokenDontMatch), errors.TokenDontMatchError
 	}
 
-	if err := aus.SesSvc.DeleteSession(ctx, session.SessionId); err != nil {
+	if err := aus.SesSvc.DeleteSession(ctx, session.ID); err != nil {
 		return dtos.InternalErrMS[bool](err.Error()), err
 	}
 	return dtos.SuccessCreated(true, 1), nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -106,7 +107,7 @@ func (r *InvitationRepo) ListInvitationsByEmail(ctx context.Context, email strin
 	err := getDB(ctx, r.db).
 		Preload("Organization").
 		Preload("Inviter").
-		Where("LOWER(email) = LOWER(?) AND status = 'pending' AND expires_at > NOW()", email).
+		Where("LOWER(email) = LOWER(?) AND status = ? AND expires_at > ?", email, models.InvitationPending, time.Now().UTC()).
 		Find(&invitations).Error
 	if err != nil {
 		return nil, fmt.Errorf("gorm/invitation: list by email: %w", err)

@@ -89,11 +89,9 @@ func SessionFromModel(s *models.Session) BetterAuthSession {
 		IPAddress:            s.IPAddress,
 		UserAgent:            s.UserAgent,
 		ImpersonatedBy:       s.ImpersonatedBy,
-		ActiveOrganizationID: s.ActiveOrgID,
+		ActiveOrganizationID: s.ActiveOrganizationID,
 		ActiveTeamID:         s.ActiveTeamID,
-	}
-	if s.Token != nil {
-		out.Token = *s.Token
+		Token:                s.Token,
 	}
 	if s.CreatedAt != nil {
 		out.CreatedAt = Time(*s.CreatedAt)

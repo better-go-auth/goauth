@@ -78,7 +78,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 		ExpiresAt:  time.Now().Add(vSvc.Config.ExpiresIn),
 		Value:      codeHash,
 		Identifier: purpose.Make(identifier),
-		UserId:     userID,
+		UserID:     userID,
 	})
 	if err != nil {
 		logger.LogTrace("error creating verification", err)

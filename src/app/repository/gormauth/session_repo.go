@@ -42,8 +42,8 @@ func (r *SessionRepo) UpsertSession(ctx context.Context, session *models.Session
 		session.ID = models.NewID()
 	}
 	err := gormutil.GetDB(ctx, r.db).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "session_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"hashed_token", "device_token", "active_org_id", "org_role_id", "role", "expires_at"}),
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"token", "device_token", "active_organization_id", "active_organization_role", "expires_at"}),
 	}).Create(session).Error
 	if err != nil {
 		return nil, fmt.Errorf("gorm/session: upsert: %w", err)
@@ -53,7 +53,7 @@ func (r *SessionRepo) UpsertSession(ctx context.Context, session *models.Session
 
 func (r *SessionRepo) GetSessionByID(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
-	err := gormutil.GetDB(ctx, r.db).Where("id = ? OR session_id = ?", id, id).Take(&session).Error
+	err := gormutil.GetDB(ctx, r.db).Where("id = ?", id).Take(&session).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, loc_errors.NotFoundErr("gorm/session: not found")
@@ -63,21 +63,9 @@ func (r *SessionRepo) GetSessionByID(ctx context.Context, id string) (*models.Se
 	return &session, nil
 }
 
-func (r *SessionRepo) GetSessionBySessionID(ctx context.Context, sessionID string) (*models.Session, error) {
-	var session models.Session
-	err := gormutil.GetDB(ctx, r.db).Where("session_id = ?", sessionID).Take(&session).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, loc_errors.NotFoundErr("gorm/session: not found")
-		}
-		return nil, fmt.Errorf("gorm/session: get by session id: %w", err)
-	}
-	return &session, nil
-}
-
 func (r *SessionRepo) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
 	var session models.Session
-	err := gormutil.GetDB(ctx, r.db).Where("session_id = ? OR hashed_token = ?", token, token).Take(&session).Error
+	err := gormutil.GetDB(ctx, r.db).Where("token = ?", token).Take(&session).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, loc_errors.NotFoundErr("gorm/session: not found")
@@ -87,22 +75,30 @@ func (r *SessionRepo) GetSessionByToken(ctx context.Context, token string) (*mod
 	return &session, nil
 }
 
-func (r *SessionRepo) UpdateSession(ctx context.Context, sessionID string, data map[string]interface{}) (*models.Session, error) {
+func (r *SessionRepo) UpdateSession(ctx context.Context, id string, data map[string]interface{}) (*models.Session, error) {
 	db := gormutil.GetDB(ctx, r.db)
-	result := db.Model(&models.Session{}).Where("session_id = ? OR id = ?", sessionID, sessionID).Updates(data)
+	result := db.Model(&models.Session{}).Where("id = ?", id).Updates(data)
 	if result.Error != nil {
 		return nil, fmt.Errorf("gorm/session: update: %w", result.Error)
 	}
 	if result.RowsAffected == 0 {
 		return nil, loc_errors.NotFoundErr("gorm/session: not found for update")
 	}
-	return r.GetSessionByID(ctx, sessionID)
+	return r.GetSessionByID(ctx, id)
 }
 
-func (r *SessionRepo) DeleteSession(ctx context.Context, sessionID string) error {
-	result := gormutil.GetDB(ctx, r.db).Where("session_id = ? OR id = ?", sessionID, sessionID).Delete(&models.Session{})
+func (r *SessionRepo) DeleteSession(ctx context.Context, id string) error {
+	result := gormutil.GetDB(ctx, r.db).Where("id = ?", id).Delete(&models.Session{})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/session: delete: %w", result.Error)
+	}
+	return nil
+}
+
+func (r *SessionRepo) DeleteSessionByToken(ctx context.Context, token string) error {
+	result := gormutil.GetDB(ctx, r.db).Where("token = ?", token).Delete(&models.Session{})
+	if result.Error != nil {
+		return fmt.Errorf("gorm/session: delete by token: %w", result.Error)
 	}
 	return nil
 }
@@ -114,6 +110,7 @@ func (r *SessionRepo) DeleteSessionsByUserID(ctx context.Context, userID string)
 	}
 	return nil
 }
+
 func (r *SessionRepo) DeleteExpired(ctx context.Context) error {
 	result := gormutil.GetDB(ctx, r.db).
 		Where("expires_at < ?", time.Now().UTC()).
@@ -140,9 +137,6 @@ func (r *SessionRepo) ListSessions(ctx context.Context, filter models.SessionFil
 	db := gormutil.GetDB(ctx, r.db).Model(&models.Session{})
 	if filter.UserId != "" {
 		db = db.Where("user_id = ?", filter.UserId)
-	}
-	if filter.SessionId != "" {
-		db = db.Where("session_id = ?", filter.SessionId)
 	}
 	if filter.ID != "" {
 		db = db.Where("id = ?", filter.ID)

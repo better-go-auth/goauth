@@ -29,6 +29,9 @@ func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISession
 	if len(hooks) > 0 {
 		h = hooks[0]
 	}
+	if repo == nil {
+		panic("SessionRepo cannot be nil")
+	}
 	return &Service{
 		SessionRepo: repo,
 		sConf:       conf,
@@ -98,17 +101,16 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	}
 
 	session := models.Session{
-		UserID:      userId,
-		HashedToken: refreshHash,
-		SessionId:   sessionId,
-		Role:        role,
-		ExpiresAt:   time.Now().UTC().Add(expiresIn),
+		Base:      models.Base{ID: sessionId},
+		UserID:    userId,
+		Token:     refreshHash,
+		ExpiresAt: time.Now().UTC().Add(expiresIn),
 	}
 	if opt != nil {
-		session.ActiveOrgID = opt.ActiveOrgID
-		session.OrgRoleID = opt.OrgRoleID
-		if session.OrgRoleID == nil {
-			session.OrgRoleID = opt.OrgRole
+		session.ActiveOrganizationID = opt.ActiveOrgID
+		session.ActiveOrganizationRole = opt.OrgRoleID
+		if session.ActiveOrganizationRole == nil {
+			session.ActiveOrganizationRole = opt.OrgRole
 		}
 		session.DeviceToken = opt.DeviceToken
 		session.ImpersonatedBy = opt.ImpersonatedBy
@@ -192,9 +194,9 @@ func (aus Service) DeleteAllUserSessions(ctx context.Context, userId string) err
 		sessions, err := aus.SessionRepo.ListSessionsByUserID(ctx, userId)
 		if err == nil {
 			for _, s := range sessions {
-				_ = aus.BlacklistSession(ctx, s.SessionId)
+				_ = aus.BlacklistSession(ctx, s.ID)
 				if aus.Hooks != nil {
-					_ = aus.Hooks.TriggerSessionRevoked(ctx, s.SessionId)
+					_ = aus.Hooks.TriggerSessionRevoked(ctx, s.ID)
 				}
 			}
 		}

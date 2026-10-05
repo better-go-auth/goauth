@@ -14,7 +14,7 @@ type gormSessionLookup struct {
 
 func (g *gormSessionLookup) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
 	var sess models.Session
-	err := g.db.WithContext(ctx).Where("session_id = ? OR hashed_token = ?", token, token).First(&sess).Error
+	err := g.db.WithContext(ctx).Where("token = ?", token).First(&sess).Error
 	return &sess, err
 }
 

@@ -20,6 +20,20 @@ func GenerateToken() string {
 	return RandomString(32)
 }
 
+// IsToken reports whether s has the shape of a GenerateToken value (32 chars of [a-zA-Z0-9]).
+func IsToken(s string) bool {
+	if len(s) != 32 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
 // ULID returns a 26-char sortable id (goauth's default).
 func ULID() string {
 	return ulid.Make().String()

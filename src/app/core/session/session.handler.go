@@ -21,15 +21,12 @@ func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *types.Hum
 	// 	return nil, huma.NewError(http.StatusInternalServerError, "Session repository not configured")
 	// }
 
-	session, err := uh.Service.SessionRepo.GetSessionBySessionID(ctx, dto.ID)
-	if err != nil || session == nil {
-		session, err = uh.Service.SessionRepo.GetSessionByID(ctx, dto.ID)
-	}
+	session, err := uh.Service.SessionRepo.GetSessionByID(ctx, dto.ID)
 	if err != nil || session == nil || session.UserID != v.User.ID {
 		return nil, types.NewError(http.StatusNotFound, "Session Not Found")
 	}
 
-	err = uh.Service.DeleteSession(ctx, session.SessionId)
+	err = uh.Service.DeleteSession(ctx, session.ID)
 	if err != nil {
 		return nil, types.NewError(http.StatusInternalServerError, err.Error())
 	}

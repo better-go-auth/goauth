@@ -77,9 +77,6 @@ func (r *OrgRepo) DeleteOrg(ctx context.Context, id string) error {
 		if err := tx.Where("organization_id = ?", id).Delete(&models.Invitation{}).Error; err != nil {
 			return fmt.Errorf("gorm/org: delete invitations: %w", err)
 		}
-		if err := tx.Where("organization_id = ?", id).Delete(&models.OrgPermission{}).Error; err != nil {
-			return fmt.Errorf("gorm/org: delete permissions: %w", err)
-		}
 		if err := tx.Where("id = ?", id).Delete(&models.Organization{}).Error; err != nil {
 			return fmt.Errorf("gorm/org: delete: %w", err)
 		}

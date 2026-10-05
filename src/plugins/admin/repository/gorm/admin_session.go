@@ -15,7 +15,7 @@ import (
 func (r *AdminRepo) ListUserSessions(ctx context.Context, userID string) ([]models.Session, error) {
 	db := getDB(ctx, r.db)
 	var sessions []models.Session
-	err := db.Where("user_id = ? AND expires_at > ? AND revoked_at IS NULL", userID, time.Now().UTC()).
+	err := db.Where("user_id = ? AND expires_at > ?", userID, time.Now().UTC()).
 		Order("created_at desc").
 		Find(&sessions).Error
 	if err != nil {
@@ -31,7 +31,7 @@ func (r *AdminRepo) RevokeUserSession(ctx context.Context, sessionID, sessionTok
 	if sessionID != "" {
 		q = q.Where("id = ?", sessionID)
 	} else if sessionToken != "" {
-		q = q.Where("session_id = ?", sessionToken)
+		q = q.Where("token = ?", sessionToken)
 	} else {
 		return autherr.New(autherr.BadRequest, "sessionToken or id is required", 400)
 	}
@@ -56,16 +56,16 @@ func (r *AdminRepo) CreateImpersonationSession(ctx context.Context, session *mod
 	return session, nil
 }
 
-// GetSessionByToken retrieves a session by its token.
-func (r *AdminRepo) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
+// GetSessionByID retrieves a session by its ID.
+func (r *AdminRepo) GetSessionByID(ctx context.Context, id string) (*models.Session, error) {
 	db := getDB(ctx, r.db)
 	var session models.Session
-	err := db.Preload("User").Where("session_id = ?", token).Take(&session).Error
+	err := db.Preload("User").Where("id = ?", id).Take(&session).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrSessionNotFound
 		}
-		return nil, fmt.Errorf("gorm/admin: get session by token: %w", err)
+		return nil, fmt.Errorf("gorm/admin: get session by id: %w", err)
 	}
 	return &session, nil
 }

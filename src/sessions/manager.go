@@ -77,20 +77,18 @@ func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt 
 	now := m.now().UTC()
 	tok := idgen.GenerateToken()
 	s := &models.Session{
-		Base:           models.Base{ID: models.NewID(), CreatedAt: &now, UpdatedAt: &now},
-		SessionId:      tok,
-		Token:          &tok,
-		UserID:         user.ID,
-		Role:           string(user.Role),
-		ExpiresAt:      now.Add(expiresIn),
-		IPAddress:      optional(meta.IPAddress),
-		UserAgent:      optional(meta.UserAgent),
-		ImpersonatedBy: opt.ImpersonatedBy,
-		ActiveOrgID:    opt.ActiveOrganizationID,
+		Base:                 models.Base{ID: models.NewID(), CreatedAt: &now, UpdatedAt: &now},
+		Token:                tok,
+		UserID:               user.ID,
+		ExpiresAt:            now.Add(expiresIn),
+		IPAddress:            optional(meta.IPAddress),
+		UserAgent:            optional(meta.UserAgent),
+		ImpersonatedBy:       opt.ImpersonatedBy,
+		ActiveOrganizationID: opt.ActiveOrganizationID,
 	}
 
 	if m.hooks != nil {
-		claims := token.CustomClaims{UserID: user.ID, SessionID: tok, Role: s.Role}
+		claims := token.CustomClaims{UserID: user.ID, SessionID: tok, Role: string(user.Role)}
 		if err := m.hooks.TriggerBeforeSessionCreate(ctx, s, &claims); err != nil {
 			return nil, err
 		}
@@ -132,16 +130,16 @@ func (m *Manager) Get(ctx context.Context, tok string) (*compat.SessionWithUser,
 		}
 	}
 
-	s, err := m.sessions.GetSessionBySessionID(ctx, tok)
+	// legacy JWT rows store a 64-hex refresh hash in token; never accept one as a cookie token
+	if !idgen.IsToken(tok) {
+		return nil, nil
+	}
+	s, err := m.sessions.GetSessionByToken(ctx, tok)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("sessions: get: %w", err)
-	}
-	// legacy JWT sessions share the table but have no token
-	if s.Token == nil || *s.Token != tok {
-		return nil, nil
 	}
 	if !s.ExpiresAt.After(m.now()) {
 		return nil, m.Delete(ctx, tok)
@@ -171,7 +169,7 @@ func (m *Manager) Refresh(ctx context.Context, sw *compat.SessionWithUser) (*com
 	now := m.now().UTC()
 	expiresAt := now.Add(m.conf.ExpiresIn)
 	if m.storeInDB() {
-		if _, err := m.sessions.UpdateSession(ctx, sw.Session.Token, map[string]interface{}{
+		if _, err := m.sessions.UpdateSession(ctx, sw.Session.ID, map[string]interface{}{
 			"expires_at": expiresAt,
 			"updated_at": now,
 		}); err != nil {
@@ -216,7 +214,7 @@ func (m *Manager) Delete(ctx context.Context, tok string) error {
 		}
 	}
 	if m.storeInDB() && !(m.store != nil && m.conf.PreserveSessionInDatabase) {
-		if err := m.sessions.DeleteSession(ctx, tok); err != nil {
+		if err := m.sessions.DeleteSessionByToken(ctx, tok); err != nil {
 			return fmt.Errorf("sessions: delete: %w", err)
 		}
 	}
@@ -259,7 +257,7 @@ func (m *Manager) List(ctx context.Context, userID string) ([]compat.BetterAuthS
 		return nil, fmt.Errorf("sessions: list: %w", err)
 	}
 	for i := range rows {
-		if rows[i].Token != nil && rows[i].ExpiresAt.After(now) {
+		if idgen.IsToken(rows[i].Token) && rows[i].ExpiresAt.After(now) {
 			out = append(out, compat.SessionFromModel(&rows[i]))
 		}
 	}

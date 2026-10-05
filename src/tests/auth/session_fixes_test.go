@@ -27,7 +27,7 @@ func createActiveUser(t *testing.T, env *helpers.TestEnv, email, password string
 	if err != nil {
 		t.Fatal(err)
 	}
-	acc := &models.Account{UserID: usr.ID, AccountID: email, ProviderId: models.ProvCredential, Password: &hash}
+	acc := &models.Account{UserID: usr.ID, AccountID: email, ProviderID: models.ProvCredential, Password: &hash}
 	if err := env.DB.WithContext(ctx).Create(acc).Error; err != nil {
 		t.Fatalf("create account: %v", err)
 	}
@@ -86,9 +86,9 @@ func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
 	}
 
 	var stored models.Session
-	env.DB.Where("session_id = ?", sessionID).Take(&stored)
-	if len(stored.HashedToken) != 64 {
-		t.Fatalf("expected sha256 hex refresh hash, got %q", stored.HashedToken)
+	env.DB.Where("id = ?", sessionID).Take(&stored)
+	if len(stored.Token) != 64 {
+		t.Fatalf("expected sha256 hex refresh hash, got %q", stored.Token)
 	}
 
 	res, err := env.AuthService.ResetToken(ctx, tokens.RefreshToken)
@@ -102,7 +102,7 @@ func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
 	if claims.ActiveOrgId != orgID || claims.ActiveOrgRole != orgRole {
 		t.Fatalf("org context lost on refresh: org=%q role=%q", claims.ActiveOrgId, claims.ActiveOrgRole)
 	}
-	env.DB.Where("session_id = ?", sessionID).Take(&stored)
+	env.DB.Where("id = ?", sessionID).Take(&stored)
 	if stored.DeviceToken != "device-1" {
 		t.Fatalf("device token lost on refresh: %q", stored.DeviceToken)
 	}
@@ -140,7 +140,7 @@ func TestRefreshRejectsBlockedUsersAndExpiredSessions(t *testing.T) {
 		email, pwd := "expired_refresh@example.com", "password123!"
 		createActiveUser(t, env, email, pwd)
 		tokens := login(t, env, email, pwd)
-		env.DB.Model(&models.Session{}).Where("session_id = ?", sessionIDOf(t, tokens.RefreshToken)).
+		env.DB.Model(&models.Session{}).Where("id = ?", sessionIDOf(t, tokens.RefreshToken)).
 			Update("expires_at", time.Now().Add(-time.Hour))
 		if _, err := env.AuthService.ResetToken(ctx, tokens.RefreshToken); err == nil {
 			t.Fatal("expired session must not refresh")

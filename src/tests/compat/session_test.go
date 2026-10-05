@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/sessions"
 )
 
@@ -27,7 +27,7 @@ func createUser(t *testing.T, s *Server, email, passwordHash string) *models.Use
 		t.Fatal(err)
 	}
 	if passwordHash != "" {
-		acc := &models.Account{UserID: u.ID, AccountID: email, ProviderId: models.ProvCredential, Password: &passwordHash}
+		acc := &models.Account{UserID: u.ID, AccountID: email, ProviderID: models.ProvCredential, Password: &passwordHash}
 		if err := s.DB.Create(acc).Error; err != nil {
 			t.Fatal(err)
 		}

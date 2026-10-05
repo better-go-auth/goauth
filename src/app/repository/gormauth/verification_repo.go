@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	loc_errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 // VerificationRepo implements repo_interfaces.IVerificationRepo using GORM.
@@ -29,10 +29,13 @@ func (r *VerificationRepo) UpsertVerification(ctx context.Context, verification 
 	if verification.ID == "" {
 		verification.ID = models.NewID()
 	}
-	err := gormutil.GetDB(ctx, r.db).Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "identifier"}},
-		DoUpdates: clause.AssignmentColumns([]string{"value", "expires_at", "callback_url"}),
-	}).Create(verification).Error
+	// identifier is not unique in better-auth's schema, so replace instead of ON CONFLICT
+	err := gormutil.GetDB(ctx, r.db).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("identifier = ?", verification.Identifier).Delete(&models.Verification{}).Error; err != nil {
+			return err
+		}
+		return tx.Create(verification).Error
+	})
 	if err != nil {
 		return nil, fmt.Errorf("gorm/verification: upsert: %w", err)
 	}
@@ -40,9 +43,8 @@ func (r *VerificationRepo) UpsertVerification(ctx context.Context, verification 
 }
 
 func (r *VerificationRepo) GetVerification(ctx context.Context, identifier string) (*models.Verification, error) {
-	
 	var v models.Verification
-	err := gormutil.GetDB(ctx, r.db).Where("identifier = ?", identifier).Take(&v).Error
+	err := gormutil.GetDB(ctx, r.db).Where("identifier = ?", identifier).Order("created_at DESC").Take(&v).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, loc_errors.NotFoundErr("gorm/verification: not found")
@@ -61,7 +63,7 @@ func (r *VerificationRepo) DeleteVerification(ctx context.Context, identifier st
 }
 
 func (r *VerificationRepo) DeleteExpired(ctx context.Context) error {
-	result := gormutil.GetDB(ctx, r.db).Where("expires_at < NOW()").Delete(&models.Verification{})
+	result := gormutil.GetDB(ctx, r.db).Where("expires_at < ?", time.Now().UTC()).Delete(&models.Verification{})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/verification: delete expired: %w", result.Error)
 	}

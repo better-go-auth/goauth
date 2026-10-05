@@ -9,24 +9,25 @@ import (
 type OrgStatus string
 
 const (
-	OrgStatusActive   OrgStatus = "active"
-	OrgStatusInactive OrgStatus = "inactive"
+	OrgStatusActive    OrgStatus = "active"
+	OrgStatusInactive  OrgStatus = "inactive"
 	OrgStatusSuspended OrgStatus = "suspended"
-	OrgStatusPending  OrgStatus = "pending"
+	OrgStatusPending   OrgStatus = "pending"
 )
 
-// Organization represents a multi-tenant workspace (matching better-auth org plugin).
+// Organization is better-auth's `organization` model plus goauth's approval workflow.
 type Organization struct {
-	coremodels.Base
+	// ===== better-auth fields =====
+	coremodels.Base         // id, createdAt, updatedAt
+	Name            string  `json:"name"     gorm:"not null"             bun:"name,notnull"`
+	Slug            string  `json:"slug"     gorm:"uniqueIndex;not null;size:255" bun:"slug,notnull,unique"`
+	Logo            *string `json:"logo"                bun:"logo"`
+	Metadata        *string `json:"metadata"            bun:"metadata"` // JSON string
 
-	Name     string  `json:"name"   gorm:"not null;size:255"    bun:"name,notnull"`
-	Slug     string  `json:"slug"   gorm:"uniqueIndex;not null;size:100" bun:"slug,notnull,unique"`
-	Logo     *string `json:"logo"   gorm:"size:2048"            bun:"logo"`
-	Metadata *string `json:"metadata" gorm:"type:text"        bun:"metadata"` // JSON string
-	Status   OrgStatus `json:"status" gorm:"not null;size:50;default:active" bun:"status,notnull,default:active"`
-
-	// The user who created this organization (and is its initial owner).
-	CreatedBy string `json:"createdBy" gorm:"not null;size:26;index" bun:"created_by,notnull"`
+	// ===== goauth fields (not in better-auth) =====
+	Status OrgStatus `json:"status" gorm:"not null;default:active" bun:"status,notnull,default:active"`
+	// CreatedBy is the creator and initial owner; empty for organizations created by better-auth.
+	CreatedBy string `json:"createdBy" gorm:"index" bun:"created_by"`
 }
 
 func (Organization) TableName() string { return "organizations" }
@@ -42,17 +43,17 @@ const (
 	OrgRoleMember OrgMemberRole = "member"
 )
 
-// Member links a user to an organization with a role.
+// Member is better-auth's `member` model: a user's role in an organization.
 type Member struct {
-	coremodels.Base
+	// ===== better-auth fields =====
+	coremodels.Base               // id, createdAt (updatedAt is a goauth extra)
+	OrganizationID  string        `json:"organizationId" gorm:"not null;index"         bun:"organization_id,notnull"`
+	UserID          string        `json:"userId"         gorm:"not null;index"         bun:"user_id,notnull"`
+	Role            OrgMemberRole `json:"role"           gorm:"not null;default:member" bun:"role,notnull,default:member"`
 
-	OrganizationID string        `json:"organizationId" gorm:"not null;index;size:26"          bun:"organization_id,notnull"`
-	Organization   *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
-
-	UserID string           `json:"userId" gorm:"not null;index;size:26" bun:"user_id,notnull"`
-	User   *coremodels.User `json:"user,omitempty" gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
-
-	Role OrgMemberRole `json:"role" gorm:"not null;size:50;default:member" bun:"role,notnull,default:member"`
+	// ===== goauth fields (not in better-auth) =====
+	Organization *Organization    `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
+	User         *coremodels.User `json:"user,omitempty"         gorm:"foreignKey:UserID"                                    bun:"rel:belongs-to,join:user_id=id"`
 }
 
 func (Member) TableName() string { return "members" }
@@ -68,41 +69,39 @@ const (
 	InvitationExpired  InvitationStatus = "expired"
 )
 
-// Invitation represents an org invite sent to an email address.
+// Invitation is better-auth's `invitation` model.
 type Invitation struct {
-	coremodels.Base
+	// ===== better-auth fields =====
+	coremodels.Base                  // id, createdAt (updatedAt is a goauth extra)
+	OrganizationID  string           `json:"organizationId" gorm:"not null;index"           bun:"organization_id,notnull"`
+	Email           string           `json:"email"          gorm:"not null;index"           bun:"email,notnull"`
+	Role            OrgMemberRole    `json:"role"           gorm:"not null;default:member"  bun:"role,notnull,default:member"`
+	TeamID          *string          `json:"teamId,omitempty"                               bun:"team_id"`
+	Status          InvitationStatus `json:"status"         gorm:"not null;default:pending" bun:"status,notnull,default:pending"`
+	ExpiresAt       time.Time        `json:"expiresAt"                                      bun:"expires_at,notnull"`
+	InviterID       string           `json:"inviterId"      gorm:"not null;index"           bun:"inviter_id,notnull"`
 
-	OrganizationID string        `json:"organizationId" gorm:"not null;index;size:26"              bun:"organization_id,notnull"`
-	Organization   *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE"   bun:"rel:belongs-to,join:organization_id=id"`
-
-	// Who sent the invite
-	InviterID string           `json:"inviterId" gorm:"not null;size:26;index"  bun:"inviter_id,notnull"`
-	Inviter   *coremodels.User `json:"inviter,omitempty" gorm:"foreignKey:InviterID" bun:"rel:belongs-to,join:inviter_id=id"`
-
-	Email  string           `json:"email"  gorm:"not null;size:255;index"       bun:"email,notnull"`
-	Role   OrgMemberRole    `json:"role"   gorm:"not null;size:50;default:member" bun:"role,notnull,default:member"`
-	Status InvitationStatus `json:"status" gorm:"not null;size:20;default:pending" bun:"status,notnull,default:pending"`
-
-	ExpiresAt time.Time `json:"expiresAt" bun:"expires_at,notnull"`
-
-	// The user who acted on the invitation (accepted/rejected)
-	AcceptedByID *string    `json:"acceptedById" gorm:"size:26" bun:"accepted_by_id"`
-	AcceptedAt   *time.Time `json:"acceptedAt"                  bun:"accepted_at"`
+	// ===== goauth fields (not in better-auth) =====
+	// AcceptedByID / AcceptedAt record who accepted the invitation and when.
+	AcceptedByID *string          `json:"acceptedById"           bun:"accepted_by_id"`
+	AcceptedAt   *time.Time       `json:"acceptedAt"             bun:"accepted_at"`
+	Organization *Organization    `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
+	Inviter      *coremodels.User `json:"inviter,omitempty"      gorm:"foreignKey:InviterID"                                 bun:"rel:belongs-to,join:inviter_id=id"`
 }
 
 func (Invitation) TableName() string { return "invitations" }
 
 // OrgPermission defines a fine-grained permission within an organization.
-// Used for custom RBAC beyond the default owner/admin/member roles.
-type OrgPermission struct {
-	coremodels.Base
-	OrganizationID string `json:"organizationId" gorm:"not null;index;size:26" bun:"organization_id,notnull"`
-	Role           string `json:"role"           gorm:"not null;size:50"        bun:"role,notnull"`
-	Resource       string `json:"resource"       gorm:"not null;size:100"       bun:"resource,notnull"` // e.g. "project", "billing"
-	Action         string `json:"action"         gorm:"not null;size:50"        bun:"action,notnull"`   // e.g. "create", "read", "delete"
-}
+// To be deleted: replaced by better-auth's `organizationRole` table (dynamic access control).
+// type OrgPermission struct {
+// 	coremodels.Base
+// 	OrganizationID string `json:"organizationId" gorm:"not null;index" bun:"organization_id,notnull"`
+// 	Role           string `json:"role"           gorm:"not null"       bun:"role,notnull"`
+// 	Resource       string `json:"resource"       gorm:"not null"       bun:"resource,notnull"` // e.g. "project", "billing"
+// 	Action         string `json:"action"         gorm:"not null"       bun:"action,notnull"`   // e.g. "create", "read", "delete"
+// }
 
-func (OrgPermission) TableName() string { return "org_permissions" }
+// func (OrgPermission) TableName() string { return "org_permissions" }
 
 // Pagination controls offset-based paginated queries.
 type Pagination struct {

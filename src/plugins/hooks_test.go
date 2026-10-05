@@ -41,7 +41,7 @@ func TestHookRegistry_TriggersAndSubscriptions(t *testing.T) {
 	})
 
 	registry.OnBeforeSessionCreate(func(ctx context.Context, session *models.Session, claims *token.CustomClaims) error {
-		sessionCreatedID = session.SessionId
+		sessionCreatedID = session.ID
 		return nil
 	})
 
@@ -73,7 +73,7 @@ func TestHookRegistry_TriggersAndSubscriptions(t *testing.T) {
 	assert.Equal(t, "user_123", userBannedID)
 
 	// 4. Trigger BeforeSessionCreate
-	err = registry.TriggerBeforeSessionCreate(ctx, &models.Session{SessionId: "sess_abc"}, &token.CustomClaims{})
+	err = registry.TriggerBeforeSessionCreate(ctx, &models.Session{Base: models.Base{ID: "sess_abc"}}, &token.CustomClaims{})
 	require.NoError(t, err)
 	assert.Equal(t, "sess_abc", sessionCreatedID)
 

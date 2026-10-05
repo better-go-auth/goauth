@@ -3,6 +3,7 @@ package sessions
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -113,12 +114,18 @@ func TestExpiredSessionIsRemoved(t *testing.T) {
 
 func TestLegacyRowsAreIgnored(t *testing.T) {
 	f := newFixture(t, config.Session{}, false)
-	legacy := models.Session{SessionId: "legacy-id", UserID: f.user.ID, Role: "user", ExpiresAt: f.now.Add(time.Hour)}
+	refreshHash := strings.Repeat("ab", 32) // legacy rows store a 64-hex refresh-token hash
+	legacy := models.Session{Base: models.Base{ID: "legacy-id"}, Token: refreshHash, UserID: f.user.ID, ExpiresAt: f.now.Add(time.Hour)}
 	if err := f.db.Create(&legacy).Error; err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := f.mgr.Get(context.Background(), "legacy-id"); got != nil {
-		t.Fatal("legacy JWT session must not resolve as a cookie session")
+	for _, tok := range []string{"legacy-id", refreshHash} {
+		if got, _ := f.mgr.Get(context.Background(), tok); got != nil {
+			t.Fatalf("legacy JWT session must not resolve as a cookie session (%s)", tok)
+		}
+	}
+	if list, _ := f.mgr.List(context.Background(), f.user.ID); len(list) != 0 {
+		t.Fatal("legacy JWT session must not be listed with its refresh hash")
 	}
 }
 

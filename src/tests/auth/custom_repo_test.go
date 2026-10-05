@@ -13,10 +13,10 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core/session"
 	"github.com/better-go-auth/goauth/src/app/core/verification"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/stretchr/testify/assert"
@@ -113,7 +113,7 @@ func (m *mockAuthRepos) CreateAccount(ctx context.Context, account *models.Accou
 
 func (m *mockAuthRepos) GetAccountByProviderAndAccountID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
 	for _, a := range m.accounts {
-		if a.ProviderId == providerID && a.AccountID == accountID {
+		if a.ProviderID == providerID && a.AccountID == accountID {
 			return a, nil
 		}
 	}
@@ -122,7 +122,7 @@ func (m *mockAuthRepos) GetAccountByProviderAndAccountID(ctx context.Context, pr
 
 func (m *mockAuthRepos) GetAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error) {
 	for _, a := range m.accounts {
-		if a.UserID == userID && a.ProviderId == providerID {
+		if a.UserID == userID && a.ProviderID == providerID {
 			return a, nil
 		}
 	}
@@ -147,12 +147,12 @@ func (m *mockAuthRepos) DeleteAccountByUserAndProvider(ctx context.Context, user
 
 // ISessionRepo methods
 func (m *mockAuthRepos) CreateSession(ctx context.Context, session *models.Session) (*models.Session, error) {
-	m.sessions[session.SessionId] = session
+	m.sessions[session.ID] = session
 	return session, nil
 }
 
 func (m *mockAuthRepos) UpsertSession(ctx context.Context, session *models.Session) (*models.Session, error) {
-	m.sessions[session.SessionId] = session
+	m.sessions[session.ID] = session
 	return session, nil
 }
 
@@ -160,20 +160,30 @@ func (m *mockAuthRepos) GetSessionByID(ctx context.Context, id string) (*models.
 	return m.sessions[id], nil
 }
 
-func (m *mockAuthRepos) GetSessionBySessionID(ctx context.Context, sessionID string) (*models.Session, error) {
-	return m.sessions[sessionID], nil
-}
-
 func (m *mockAuthRepos) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
-	return m.sessions[token], nil
+	for _, s := range m.sessions {
+		if s.Token == token {
+			return s, nil
+		}
+	}
+	return nil, nil
 }
 
-func (m *mockAuthRepos) UpdateSession(ctx context.Context, sessionID string, data map[string]interface{}) (*models.Session, error) {
-	return m.sessions[sessionID], nil
+func (m *mockAuthRepos) UpdateSession(ctx context.Context, id string, data map[string]interface{}) (*models.Session, error) {
+	return m.sessions[id], nil
 }
 
-func (m *mockAuthRepos) DeleteSession(ctx context.Context, sessionID string) error {
-	delete(m.sessions, sessionID)
+func (m *mockAuthRepos) DeleteSession(ctx context.Context, id string) error {
+	delete(m.sessions, id)
+	return nil
+}
+
+func (m *mockAuthRepos) DeleteSessionByToken(ctx context.Context, token string) error {
+	for k, s := range m.sessions {
+		if s.Token == token {
+			delete(m.sessions, k)
+		}
+	}
 	return nil
 }
 
@@ -326,4 +336,3 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 	assert.Equal(t, "Alicia", retrieved.FirstName)
 	assert.Equal(t, "Keys", retrieved.LastName)
 }
-

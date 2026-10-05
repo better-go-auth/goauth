@@ -6,60 +6,42 @@ import (
 	"github.com/better-go-auth/goauth/src/common/dtos"
 )
 
-// Session will be put on redis,
+// Session is better-auth's `session` model plus goauth extras.
 type Session struct {
-	Base      `mapstructure:",squash" `
-	SessionId string    `gorm:"uniqueIndex;not null" ` // session id is the token that is generated randomly
-	UserID    string    `gorm:"not null"`
-	ExpiresAt time.Time `json:"expiresAt"                                         bun:"expires_at,notnull"`
-	//
-	HashedToken string `gorm:"not null" json:"-"`
+	// ===== better-auth fields =====
+	Base `mapstructure:",squash" ` // id, createdAt, updatedAt
+	// Token is the raw better-auth session token, or the SHA-256 hash of the refresh JWT for legacy JWT sessions.
+	Token     string    `json:"-"         gorm:"uniqueIndex;not null;size:255" bun:"token,notnull"`
+	UserID    string    `json:"userId"    gorm:"not null;index"       bun:"user_id,notnull"`
+	ExpiresAt time.Time `json:"expiresAt" gorm:"not null"             bun:"expires_at,notnull"`
+	IPAddress *string   `json:"ipAddress"                             bun:"ip_address"`
+	UserAgent *string   `json:"userAgent"                             bun:"user_agent"`
+	// admin plugin
+	ImpersonatedBy *string `json:"impersonatedBy,omitempty" bun:"impersonated_by"`
+	// organization plugin
+	ActiveOrganizationID *string `json:"activeOrganizationId,omitempty" bun:"active_organization_id"`
+	ActiveTeamID         *string `json:"activeTeamId,omitempty"         bun:"active_team_id"`
 
-	// we use when the admin block the user, we dont delete the session, we just blacklist it
-	Blacklisted   *bool `gorm:"default:false" json:"-"`
-	BlacklistedOn *time.Time
-	// Revocation
-	RevokedAt  *time.Time `json:"revokedAt"   bun:"revoked_at"`
-	LastUsedAt *time.Time `json:"lastUsedAt"  bun:"last_used_at"`
-	Role       string     `gorm:"not null" json:"-"`
-	// relationships
-	User *User `json:"user,omitempty" gorm:"foreignKey:UserID"  bun:"rel:belongs-to,join:user_id=id"`
-
-	DeviceToken string `json:"deviceToken"   bun:"device_token"` // used for push notification
-	// Device info (fingerprinting for multi-device management)
-	IPAddress  *string `json:"ipAddress"  gorm:"size:45"   bun:"ip_address"`
-	UserAgent  *string `json:"userAgent"  gorm:"type:text"  bun:"user_agent"`
-	DeviceId   *string `json:"deviceId"   gorm:"size:255"   bun:"device_id"`
-	DeviceName *string `json:"deviceName" gorm:"size:100"  bun:"device_name"`
-	DeviceType *string `json:"deviceType" gorm:"size:50"   bun:"device_type"` // mobile, desktop, tablet
-	//=======================   Plugin Fields ================
-	//
-	//==============================================================
-
-	// For organizations: the org the user is currently scoped to.
-	ActiveOrgID *string `json:"activeOrgId" gorm:"size:26" bun:"active_org_id"`
-	OrgRoleID   *string `json:"-"`
-
-	// Impersonation: populated with admin's userId when impersonating
-	ImpersonatedBy *string `json:"impersonatedBy,omitempty" gorm:"size:26" bun:"impersonated_by"`
-
-	// Token is the better-auth session token (compat sessions only; NULL for legacy JWT sessions).
-	Token        *string `json:"-" gorm:"uniqueIndex" bun:"token"`
-	ActiveTeamID *string `json:"activeTeamId,omitempty" gorm:"size:255" bun:"active_team_id"`
+	// ===== goauth fields (not in better-auth) =====
+	// ActiveOrganizationRole caches the member role of ActiveOrganizationID for JWT claims.
+	ActiveOrganizationRole *string    `json:"-"                      bun:"active_organization_role"`
+	DeviceToken            string     `json:"deviceToken,omitempty"  bun:"device_token"` // push notifications
+	DeviceID               *string    `json:"deviceId,omitempty"     bun:"device_id"`
+	DeviceName             *string    `json:"deviceName,omitempty"   bun:"device_name"`
+	DeviceType             *string    `json:"deviceType,omitempty"   bun:"device_type"` // mobile, desktop, tablet
+	LastUsedAt             *time.Time `json:"lastUsedAt,omitempty"   bun:"last_used_at"`
+	User                   *User      `json:"user,omitempty"         gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
 }
 type SessionFilter struct {
 	ID          string `query:"id"`
 	ActiveOrgID string `query:"-"`
 	OrgRoleID   string `query:"-"`
 
-	SessionId   string `query:"session_id"`
-	UserId      string `query:"user_id"`
-	HashedToken string `query:"hashed_token"`
-	Blacklisted bool   `query:"blacklisted"`
+	UserId string `query:"user_id"`
+	Token  string `query:"token"`
 }
 type SessionQuery struct {
 	dtos.PaginationInput
-	Blacklisted bool `query:"blacklisted"`
 }
 
 func (Session) TableName() string { return "auth_sessions" }

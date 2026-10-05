@@ -2,24 +2,24 @@ package models
 
 import "time"
 
-// Account stores OAuth provider accounts linked to a user.
-// One user can have multiple accounts (e.g. google + github).
+// Account is better-auth's `account` model: one row per sign-in method of a user
+// (providerId "credential" holds the password hash; OAuth providers hold their tokens).
 type Account struct {
-	Base
+	// ===== better-auth fields =====
+	Base                             // id, createdAt, updatedAt
+	AccountID             string     `json:"accountId"             gorm:"not null"           bun:"account_id,notnull"` // provider's user id; the user id for "credential"
+	ProviderID            Providers  `json:"providerId"            gorm:"not null"           bun:"provider_id,notnull"`
+	UserID                string     `json:"userId"                gorm:"not null;index"     bun:"user_id,notnull"`
+	AccessToken           *string    `json:"accessToken"                    bun:"access_token"`
+	RefreshToken          *string    `json:"refreshToken"                   bun:"refresh_token"`
+	IDToken               *string    `json:"idToken"                        bun:"id_token"`
+	AccessTokenExpiresAt  *time.Time `json:"accessTokenExpiresAt"                            bun:"access_token_expires_at"`
+	RefreshTokenExpiresAt *time.Time `json:"refreshTokenExpiresAt"                           bun:"refresh_token_expires_at"`
+	Scope                 *string    `json:"scope"                          bun:"scope"`
+	Password              *string    `json:"password"                       bun:"password"`
 
-	UserID string `json:"userId" gorm:"not null;index;size:26"       bun:"user_id,notnull"`
-	User   *User  `json:"user,omitempty" gorm:"foreignKey:UserID"    bun:"rel:belongs-to,join:user_id=id"`
-
-	// Provider info
-	AccountID             string     `json:"accountId"          gorm:"not null;size:255"     bun:"account_id,notnull"` //this is the email or phone or etc
-	ProviderId            Providers  `json:"providerId"         gorm:"not null;size:50"      bun:"provider_id,notnull"`
-	AccessToken           *string    `json:"accessToken"        gorm:"type:text"             bun:"access_token"`
-	RefreshToken          *string    `json:"refreshToken"       gorm:"type:text"             bun:"refresh_token"`
-	AccessTokenExpiresAt  *time.Time `json:"accessTokenExpiresAt"                          bun:"access_token_expires_at"`
-	RefreshTokenExpiresAt *time.Time `json:"refreshTokenExpiresAt"                        bun:"refresh_token_expires_at"`
-	Scope                 *string    `json:"scope"              gorm:"size:1024"             bun:"scope"`
-	IdToken               *string    `json:"idToken"            gorm:"type:text"             bun:"id_token"`
-	Password              *string    `json:"password"           gorm:"type:text"             bun:"password"` // for email/password
+	// ===== goauth fields (not in better-auth) =====
+	User *User `json:"user,omitempty" gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
 }
 
 type Providers string

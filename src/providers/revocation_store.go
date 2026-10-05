@@ -30,7 +30,7 @@ func isNil(i any) bool {
 
 // SessionRevocationChecker defines methods needed by RevocationStore to verify session validity.
 type SessionRevocationChecker interface {
-	GetSessionBySessionID(ctx context.Context, sessionID string) (*models.Session, error)
+	GetSessionByID(ctx context.Context, id string) (*models.Session, error)
 }
 
 // RevocationStore checks if a session or token has been revoked or invalidated.
@@ -64,11 +64,11 @@ type gormSessionChecker struct {
 	db *gorm.DB
 }
 
-func (g gormSessionChecker) GetSessionBySessionID(ctx context.Context, sessionID string) (*models.Session, error) {
+func (g gormSessionChecker) GetSessionByID(ctx context.Context, id string) (*models.Session, error) {
 	var sess models.Session
 	err := gormutil.GetDB(ctx, g.db).
-		Select("id", "session_id", "blacklisted", "revoked_at", "expires_at").
-		Where("session_id = ?", sessionID).
+		Select("id", "expires_at").
+		Where("id = ?", id).
 		Take(&sess).Error
 	if err != nil {
 		return nil, err
@@ -110,18 +110,12 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 	if r.sConfig.CheckRevocationInDb {
 		// 2. Check via session repository interface if configured
 		if r.sessionRepo != nil {
-			sess, err := r.sessionRepo.GetSessionBySessionID(ctx, sessionID)
+			sess, err := r.sessionRepo.GetSessionByID(ctx, sessionID)
 			if err != nil {
 				// Not found in DB => revoked/deleted
 				return true, nil
 			}
 			if sess == nil {
-				return true, nil
-			}
-			if sess.Blacklisted != nil && *sess.Blacklisted {
-				return true, nil
-			}
-			if sess.RevokedAt != nil {
 				return true, nil
 			}
 			if !sess.ExpiresAt.IsZero() && time.Now().After(sess.ExpiresAt) {

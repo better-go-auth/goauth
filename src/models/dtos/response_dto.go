@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 )
 
 // ─── Response DTOs (matching better-auth response shapes) ────────────────────
@@ -215,6 +216,15 @@ func UserToResponse(u *models.User) *UserResponse {
 	}
 }
 
+// PublicToken returns the session token when it is a client-held token; legacy JWT sessions store a
+// refresh-token hash there, which must never leave the server.
+func PublicToken(s *models.Session) string {
+	if idgen.IsToken(s.Token) {
+		return s.Token
+	}
+	return ""
+}
+
 // SessionToData converts a models.Session to a SessionData DTO.
 func SessionToData(s *models.Session) *SessionData {
 	if s == nil {
@@ -233,11 +243,11 @@ func SessionToData(s *models.Session) *SessionData {
 	return &SessionData{
 		ID:                   s.ID,
 		UserID:               s.UserID,
-		Token:                s.SessionId,
+		Token:                PublicToken(s),
 		ExpiresAt:            formatTime(s.ExpiresAt),
 		IPAddress:            ipAddress,
 		UserAgent:            userAgent,
-		ActiveOrganizationID: s.ActiveOrgID,
+		ActiveOrganizationID: s.ActiveOrganizationID,
 		ImpersonatedBy:       normalizeNilable(s.ImpersonatedBy),
 		CreatedAt:            createdAt,
 		UpdatedAt:            updatedAt,

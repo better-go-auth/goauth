@@ -36,7 +36,7 @@ func (r *AccountRepo) CreateAccount(ctx context.Context, account *models.Account
 func (r *AccountRepo) GetAccountByProviderAndAccountID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
-		Where(models.Account{ProviderId: providerID, AccountID: accountID}).
+		Where(models.Account{ProviderID: providerID, AccountID: accountID}).
 		Take(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -50,7 +50,7 @@ func (r *AccountRepo) GetAccountByProviderAndAccountID(ctx context.Context, prov
 func (r *AccountRepo) GetAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error) {
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
-		Where(models.Account{UserID: userID, ProviderId: providerID}).
+		Where(models.Account{UserID: userID, ProviderID: providerID}).
 		Take(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

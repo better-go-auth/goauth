@@ -35,8 +35,8 @@ type IAdminRepo interface {
 	RevokeUserSessions(ctx context.Context, userID string) error
 	// CreateImpersonationSession creates an impersonation session with impersonatedBy set.
 	CreateImpersonationSession(ctx context.Context, session *models.Session) (*models.Session, error)
-	// GetSessionByToken retrieves a session by its token (including associated User).
-	GetSessionByToken(ctx context.Context, token string) (*models.Session, error)
+	// GetSessionByID retrieves a session by its token (including associated User).
+	GetSessionByID(ctx context.Context, token string) (*models.Session, error)
 	// DeleteSessionByID deletes a session by ID.
 	DeleteSessionByID(ctx context.Context, id string) error
 	// GetUserByID retrieves a user by ID.

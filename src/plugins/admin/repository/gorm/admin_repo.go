@@ -177,7 +177,7 @@ func (r *AdminRepo) CreateUserWithAccount(ctx context.Context, user *models.User
 			Base:       models.Base{ID: models.NewID()},
 			UserID:     user.ID,
 			AccountID:  user.ID,
-			ProviderId: "credential",
+			ProviderID: "credential",
 			Password:   &passwordHash,
 		}
 		if err := tx.Create(account).Error; err != nil {
@@ -204,7 +204,7 @@ func (r *AdminRepo) SetUserPassword(ctx context.Context, userID, passwordHash st
 				Base:       models.Base{ID: models.NewID()},
 				UserID:     userID,
 				AccountID:  userID,
-				ProviderId: "credential",
+				ProviderID: "credential",
 				Password:   &passwordHash,
 			}
 			return db.Create(&newAccount).Error

@@ -21,6 +21,9 @@ func NewGORMAdminMigrator(db *gorm.DB) migration.IMigrator {
 
 // Migrate executes GORM AutoMigrate for User and Session models.
 func (m *GORMAdminMigrator) Migrate(_ context.Context) error {
+	// if err := core_migration.PrepareLegacyColumns(m.db); err != nil {
+	// 	return fmt.Errorf("gorm/migrate-admin: %w", err)
+	// }
 	err := m.db.AutoMigrate(
 		&models.User{},
 		&models.Session{},

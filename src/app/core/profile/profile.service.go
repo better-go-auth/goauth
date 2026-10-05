@@ -164,7 +164,7 @@ func (aus *Service) VerifyChangeEmail(ctx context.Context, userId string, input 
 		}
 
 		// 3. check if the code is for the same user
-		if user.ID != codeValid.Body.UserId {
+		if user.ID != codeValid.Body.UserID {
 			return ICnst.InfoOrCodeErr
 		}
 

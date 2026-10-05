@@ -111,7 +111,7 @@ func (s *AdminService) ImpersonateUser(ctx context.Context, input admindtos.Admi
 		return nil, fmt.Errorf("adminsvc: create impersonation session: %w", err)
 	}
 
-	createdSession, err := s.adminRepo.GetSessionByToken(ctx, sessionID)
+	createdSession, err := s.adminRepo.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return nil, fmt.Errorf("adminsvc: load impersonation session: %w", err)
 	}
@@ -134,7 +134,7 @@ func (s *AdminService) StopImpersonating(ctx context.Context, sessionID string) 
 		return autherr.New(autherr.BadRequest, "No active session provided", http.StatusBadRequest)
 	}
 
-	session, err := s.adminRepo.GetSessionByToken(ctx, sessionID)
+	session, err := s.adminRepo.GetSessionByID(ctx, sessionID)
 	if err != nil {
 		return autherr.ErrSessionNotFound
 	}
@@ -145,7 +145,7 @@ func (s *AdminService) StopImpersonating(ctx context.Context, sessionID string) 
 
 	if s.sessionServ != nil {
 		// also blacklists the session so the impersonation access token stops working
-		if err := s.sessionServ.DeleteSession(ctx, session.SessionId); err != nil {
+		if err := s.sessionServ.DeleteSession(ctx, session.ID); err != nil {
 			return fmt.Errorf("adminsvc: delete impersonation session: %w", err)
 		}
 		return nil

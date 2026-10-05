@@ -9,6 +9,7 @@ import (
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
@@ -81,17 +82,11 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 			}
 		}
 
-		// 4. Fallback: lookup session in database by token (for opaque or database sessions)
-		if lookup != nil {
+		// 4. Fallback: look up an opaque session token (shape-checked so stored refresh hashes can't be replayed)
+		if lookup != nil && idgen.IsToken(token) {
 			sess, err := lookup.GetSessionByToken(ctx, token)
 			if err == nil && sess != nil && sess.UserID != "" {
 				if sess.ExpiresAt.Before(time.Now().UTC()) {
-					return nil, autherr.ErrUnauthorized
-				}
-				if sess.Blacklisted != nil && *sess.Blacklisted {
-					return nil, autherr.ErrUnauthorized
-				}
-				if sess.RevokedAt != nil {
 					return nil, autherr.ErrUnauthorized
 				}
 
@@ -102,8 +97,8 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 						email = *user.Email
 					}
 					var activeOrgRole *string
-					if sess.OrgRoleID != nil {
-						activeOrgRole = sess.OrgRoleID
+					if sess.ActiveOrganizationRole != nil {
+						activeOrgRole = sess.ActiveOrganizationRole
 					}
 					return &dtos.SessionResponse{
 						User: &dtos.UserResponse{
@@ -118,7 +113,7 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 							ID:                   sess.ID,
 							UserID:               sess.UserID,
 							Token:                token,
-							ActiveOrganizationID: sess.ActiveOrgID,
+							ActiveOrganizationID: sess.ActiveOrganizationID,
 							ActiveOrgRole:        activeOrgRole,
 						},
 					}, nil

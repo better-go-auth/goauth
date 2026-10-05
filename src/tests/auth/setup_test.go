@@ -127,35 +127,12 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 		}
 	})
 
-	t.Run("Blacklisted session in DB is revoked", func(t *testing.T) {
-		sessionID := ulid.Make().String()
-		isBlacklisted := true
-		sess := models.Session{
-			SessionId:   sessionID,
-			UserID:      testUser.ID,
-			Role:        string(enums.User),
-			Blacklisted: &isBlacklisted,
-			ExpiresAt:   time.Now().Add(time.Hour),
-		}
-		if err := env.DB.Create(&sess).Error; err != nil {
-			t.Fatalf("Failed to create session: %v", err)
-		}
-
-		revoked, err := revStore.IsRevoked(ctx, sessionID)
-		if err != nil {
-			t.Fatalf("IsRevoked returned error: %v", err)
-		}
-		if !revoked {
-			t.Fatalf("Expected blacklisted session to be revoked")
-		}
-	})
-
 	t.Run("Expired session in DB is revoked", func(t *testing.T) {
 		sessionID := ulid.Make().String()
 		sess := models.Session{
-			SessionId: sessionID,
+			Base:      models.Base{ID: sessionID},
+			Token:     "refresh-hash-" + sessionID,
 			UserID:    testUser.ID,
-			Role:      string(enums.User),
 			ExpiresAt: time.Now().Add(-1 * time.Hour), // expired in past
 		}
 		if err := env.DB.Create(&sess).Error; err != nil && err != gorm.ErrRecordNotFound {

@@ -12,56 +12,46 @@ import (
 )
 
 type User struct {
-	Base      `mapstructure:",squash" `
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
-	UserDto   `mapstructure:",squash" `
+	Base    `mapstructure:",squash" ` // id, createdAt, updatedAt
+	UserDto `mapstructure:",squash" `
 
-	LastSeen *time.Time `json:"last_seen,omitempty" doc:"last time user is seen"`
+	// ===== goauth fields (not in better-auth) =====
+	LastSeen  *time.Time     `json:"last_seen,omitempty" doc:"last time user is seen"`
+	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 
 	Sessions []Session `json:"sessions,omitempty" gorm:"foreignKey:UserID"`
 	Tokens   []string  `json:"tokens,omitempty" gorm:"-"`
 }
 
 type UserDto struct {
-	// Name is better-auth's display name; derived from FirstName/LastName when empty.
-	Name          string     `json:"name,omitempty" gorm:"not null;default:''" bun:"name,notnull"`
-	Email         *string    `json:"email,omitempty" format:"email"  gorm:"uniqueIndex" `
-	EmailVerified bool       `json:"emailVerified"  gorm:"default:false"                  bun:"email_verified,default:false"`
-	// Password      string     `json:"-" `
-	Role          enums.Role `gorm:"default:UNVERIFIED_PERSON" json:"role" ` // this is the company-level role,
+	// ===== better-auth fields =====
+	Name          string  `json:"name,omitempty"  gorm:"not null;default:''"  bun:"name,notnull"`
+	Email         *string `json:"email,omitempty" gorm:"uniqueIndex;size:255" format:"email"`
+	EmailVerified bool    `json:"emailVerified"   gorm:"default:false"        bun:"email_verified,default:false"`
+	Image         string  `json:"image,omitempty"`
+	// admin plugin
+	Role       enums.Role `json:"role"       gorm:"default:UNVERIFIED_PERSON"`
+	Banned     bool       `json:"banned"     gorm:"default:false" bun:"banned,default:false"`
+	BanReason  *string    `json:"banReason"      bun:"ban_reason"`
+	BanExpires *time.Time `json:"banExpires"                      bun:"ban_expires"`
 
-	Active        *bool               `json:"active,omitempty"  gorm:"index:idx_users_lookup,priority:4"` // can the user login
-	AccountStatus enums.AccountStatus `json:"-" `
-	// admin related fields
-	Banned     bool       `json:"banned"    gorm:"default:false"               bun:"banned,default:false"`
-	BanReason  *string    `json:"banReason" gorm:"type:text"                   bun:"ban_reason"`
-	BanExpires *time.Time `json:"banExpires"                               bun:"ban_expires"`
+	// ===== goauth fields (not in better-auth) =====
+	FirstName     string              `json:"firstName,omitempty" minLength:"1"`
+	LastName      string              `json:"lastName,omitempty"`
+	Username      string              `json:"username,omitempty"`
+	DisplayName   *string             `json:"displayName,omitempty"  bun:"display_name"`
+	Bio           *string             `json:"bio,omitempty"          bun:"bio"`
+	DateOfBirth   *time.Time          `json:"dateOfBirth,omitempty"  bun:"date_of_birth"`
+	Gender        *string             `json:"gender,omitempty"       bun:"gender"`
+	Locale        string              `json:"locale,omitempty"       gorm:"default:en" bun:"locale,default:en"`
+	Timezone      *string             `json:"timezone,omitempty"     bun:"timezone"`
+	Active        *bool               `json:"active,omitempty"       gorm:"index:idx_users_lookup,priority:4"` // can the user login
+	AccountStatus enums.AccountStatus `json:"-"`
+	LastLoginIP   *string             `json:"lastLoginIP,omitempty"  bun:"last_login_ip"`
+	LastLoginAt   *time.Time          `json:"lastLoginAt,omitempty"`
 
-	// meta
-	LastLoginIP *string    `json:"lastLoginIP,omitempty"    gorm:"size:45"             bun:"last_login_ip"`
-	LastLoginAt *time.Time `json:"lastLoginAt,omitempty" `
-	// Extra better auth fields
-	DisplayName *string    `json:"displayName,omitempty"                   bun:"display_name"`
-	Image       string     `json:"image,omitempty" `
-	Bio         *string    `json:"bio,omitempty"                          bun:"bio"`
-	DateOfBirth *time.Time `json:"dateOfBirth,omitempty"                                   bun:"date_of_birth"`
-	Gender      *string    `json:"gender,omitempty"           gorm:"size:20"               bun:"gender"`
-	Locale      string     `json:"locale,omitempty"           gorm:"default:en;size:10"    bun:"locale,default:en"`
-	Timezone    *string    `json:"timezone,omitempty"                       bun:"timezone"`
-	//====================  Plugin  fields ===========================|
-	Username string `json:"username,omitempty"`
-	// org related
-	ActiveOrgId *string `json:"org_id,omitempty" gorm:"index:idx_users_lookup,priority:1"`
-	//=========================================   Fields Not Existing on better Auth ======================|
-	//                                                                                                     |
-	//=====================================================================================================|
-	FirstName string `json:"firstName,omitempty" minLength:"1"`
-	LastName  string `json:"lastName,omitempty" `
 }
 
-func (u *UserDto) SetOnCreate(key string) {
-	u.ActiveOrgId = &key
-}
 
 func (u *User) GetFullname() string {
 	return u.FirstName + " " + u.LastName
