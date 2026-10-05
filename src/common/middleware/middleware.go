@@ -8,6 +8,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/util"
+	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
@@ -79,7 +80,7 @@ func NewJWTTokenVerifier(accessSecret string) *JWTTokenVerifier {
 }
 
 func (v *JWTTokenVerifier) VerifyToken(tokenStr string) (token.CustomClaims, error) {
-	claims, err := jwttoken.ValidateToken(tokenStr, v.accessSecret)
+	claims, err := jwttoken.ValidateAccessToken(tokenStr, v.accessSecret)
 	if err != nil || claims == nil {
 		return token.CustomClaims{}, fmt.Errorf("invalid token: %w", err)
 	}
@@ -107,7 +108,7 @@ func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 			_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
 			return
 		}
-		//todo if the authorization header doesn't exists check the cookie header
+		// todo if the authorization header doesn't exists check the cookie header
 		claims, err := m.verifier.VerifyToken(parts[1])
 		if err != nil {
 			ctx.SetStatus(http.StatusForbidden)
@@ -123,7 +124,7 @@ func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 				return
 			}
 		}
-		//todo based on the config, check db and etc. and refresh the token
+		// todo based on the config, check db and etc. and refresh the token
 		ctx = huma.WithValue(ctx, consts.CtxClaims.Str(), claims)
 		ctx = huma.WithValue(ctx, consts.CTXCompany_ID.Str(), claims.ActiveOrgId)
 		ctx = huma.WithValue(ctx, consts.CTXUser_ID.Str(), claims.UserID)
@@ -165,7 +166,7 @@ func (m *AuthMiddleware) Authorize(operationID consts.OperationId, allowedRoles 
 			return
 		}
 		// Fallback to static JWT Claims Role check:
-		if !util.ElementExists(claims.Role, allowedRoles...) {
+		if !enums.HasRole(claims.Role, allowedRoles...) {
 			ctx.SetStatus(http.StatusUnauthorized)
 			_, _ = ctx.BodyWriter().Write([]byte("Not Authorized"))
 			return

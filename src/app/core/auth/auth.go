@@ -16,7 +16,7 @@ type GinAuthHandler struct {
 	Cookies       CookieAttrs
 }
 type Service struct {
-	Config   *config.SessionConfig
+	Config   *config.SessionGoAuth
 	Provider *providers.IProviderS
 	// services
 	VSvc   serv_interfaces.IVerificationService
@@ -32,7 +32,7 @@ type Service struct {
 	Passwords *authcrypto.Passwords
 }
 
-func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, authRepos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) *Service {
+func NewAuthService(conf *config.SessionGoAuth, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, authRepos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) *Service {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]

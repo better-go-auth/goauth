@@ -4,11 +4,18 @@ package token
 
 import "context"
 
+// Token types carried in the `typ` claim; an access token must never be accepted as a refresh token or vice versa.
+const (
+	TypeAccess  = "access"
+	TypeRefresh = "refresh"
+)
+
 // CustomClaims carries the data embedded in a token.
 type CustomClaims struct {
 	UserID    string `json:"userId"`
 	SessionID string `json:"sessionId"`
 	Role      string `json:"role"`
+	Type      string `json:"typ,omitempty"`
 	// Org related claims
 	ActiveOrgRole string         `json:"activeOrgRole"`
 	ActiveOrgId   string         `json:"activeOrgId"`

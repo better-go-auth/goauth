@@ -146,20 +146,20 @@ func (s *OrgService) GetOrganization(ctx context.Context, orgID string) (*models
 func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error) {
 	data := map[string]interface{}{}
 	if input.Name != nil {
-		data["name"] = *input.Name
+		data["Name"] = *input.Name
 	}
 	if input.Slug != nil {
 		slug := strings.ToLower(strings.TrimSpace(*input.Slug))
 		if existing, err := s.orgRepo.GetOrgBySlug(ctx, slug); err == nil && existing != nil && existing.ID != orgID {
 			return nil, orgerrors.ErrSlugTaken
 		}
-		data["slug"] = slug
+		data["Slug"] = slug
 	}
 	if input.Logo != nil {
-		data["logo"] = *input.Logo
+		data["Logo"] = *input.Logo
 	}
 	if input.Metadata != nil {
-		data["metadata"] = *input.Metadata
+		data["Metadata"] = *input.Metadata
 	}
 	if len(data) == 0 {
 		return s.orgRepo.GetOrgByID(ctx, orgID)
@@ -238,7 +238,7 @@ func (s *OrgService) AdminApproveOrg(ctx context.Context, orgID string) (*models
 	if org.Status != models.OrgStatusPending {
 		return nil, autherr.New("ORG_NOT_PENDING", "Organization is not pending approval", 400)
 	}
-	return s.orgRepo.UpdateOrg(ctx, orgID, map[string]interface{}{"status": string(models.OrgStatusActive)})
+	return s.orgRepo.UpdateOrg(ctx, orgID, map[string]interface{}{"Status": string(models.OrgStatusActive)})
 }
 
 // AdminBlockOrg suspends an organization.
@@ -247,9 +247,9 @@ func (s *OrgService) AdminBlockOrg(ctx context.Context, orgID, reason string) (*
 	if err != nil || org == nil {
 		return nil, orgerrors.ErrOrgNotFound
 	}
-	updates := map[string]interface{}{"status": string(models.OrgStatusSuspended)}
+	updates := map[string]interface{}{"Status": string(models.OrgStatusSuspended)}
 	if reason != "" {
-		updates["metadata"] = reason
+		updates["Metadata"] = reason
 	}
 	return s.orgRepo.UpdateOrg(ctx, orgID, updates)
 }
@@ -260,7 +260,7 @@ func (s *OrgService) AdminUnblockOrg(ctx context.Context, orgID string) (*models
 	if err != nil || org == nil {
 		return nil, orgerrors.ErrOrgNotFound
 	}
-	return s.orgRepo.UpdateOrg(ctx, orgID, map[string]interface{}{"status": string(models.OrgStatusActive)})
+	return s.orgRepo.UpdateOrg(ctx, orgID, map[string]interface{}{"Status": string(models.OrgStatusActive)})
 }
 
 // AdminListOrganizations returns all organizations, optionally filtered by status.

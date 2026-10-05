@@ -63,13 +63,13 @@ func (aus *Service) UpdateProfile(ctx context.Context, userId string, update mod
 	}
 	data := make(map[string]interface{})
 	if update.FirstName != "" {
-		data["first_name"] = update.FirstName
+		data["FirstName"] = update.FirstName
 	}
 	if update.LastName != "" {
-		data["last_name"] = update.LastName
+		data["LastName"] = update.LastName
 	}
 	if update.Avatar != "" {
-		data["image"] = update.Avatar
+		data["Image"] = update.Avatar
 	}
 	return aus.userRepo.UpdateUser(ctx, userId, data)
 }
@@ -97,7 +97,7 @@ func (aus *Service) ChangePassword(ctx context.Context, userId, sessionId string
 	}
 
 	err = aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
-		_, err := aus.accountRepo.UpdateAccount(txCtx, account.ID, map[string]interface{}{"password": hash})
+		_, err := aus.accountRepo.UpdateAccount(txCtx, account.ID, map[string]interface{}{"Password": hash})
 		if err != nil {
 			return fmt.Errorf("profilesvc: update password: %w", err)
 		}
@@ -177,8 +177,8 @@ func (aus *Service) VerifyChangeEmail(ctx context.Context, userId string, input 
 
 		// 4. update the email on User
 		_, err = aus.userRepo.UpdateUser(txCtx, userId, map[string]interface{}{
-			"email":          newEmail,
-			"email_verified": true,
+			"Email":         newEmail,
+			"EmailVerified": true,
 		})
 		if err != nil {
 			return err
@@ -187,7 +187,7 @@ func (aus *Service) VerifyChangeEmail(ctx context.Context, userId string, input 
 		// 5. update account account_id for ProvCredential if exists
 		account, err := aus.accountRepo.GetAccountByUserAndProvider(txCtx, userId, models.ProvCredential)
 		if err == nil && account != nil {
-			_, err = aus.accountRepo.UpdateAccount(txCtx, account.ID, map[string]any{"account_id": newEmail})
+			_, err = aus.accountRepo.UpdateAccount(txCtx, account.ID, map[string]any{"AccountID": newEmail})
 			if err != nil {
 				return fmt.Errorf("profilesvc: update account email: %w", err)
 			}

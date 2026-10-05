@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
@@ -36,7 +37,7 @@ func (r *MemberRepo) GetMemberByOrgAndUser(ctx context.Context, orgID, userID st
 	var member models.Member
 	err := getDB(ctx, r.db).
 		Preload("User").
-		Where("organization_id = ? AND user_id = ?", orgID, userID).
+		Where(&models.Member{OrganizationID: orgID, UserID: userID}, "OrganizationID", "UserID").
 		Take(&member).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -49,7 +50,7 @@ func (r *MemberRepo) GetMemberByOrgAndUser(ctx context.Context, orgID, userID st
 
 func (r *MemberRepo) GetMemberByID(ctx context.Context, id string) (*models.Member, error) {
 	var member models.Member
-	err := getDB(ctx, r.db).Preload("User").Where("id = ?", id).Take(&member).Error
+	err := getDB(ctx, r.db).Preload("User").Where(memberByID(id), "ID").Take(&member).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("gorm/member: not found")
@@ -62,7 +63,7 @@ func (r *MemberRepo) GetMemberByID(ctx context.Context, id string) (*models.Memb
 func (r *MemberRepo) UpdateMember(ctx context.Context, id string, data map[string]interface{}) (*models.Member, error) {
 	result := getDB(ctx, r.db).
 		Model(&models.Member{}).
-		Where("id = ?", id).
+		Where(memberByID(id), "ID").
 		Updates(data)
 	if result.Error != nil {
 		return nil, fmt.Errorf("gorm/member: update: %w", result.Error)
@@ -71,7 +72,7 @@ func (r *MemberRepo) UpdateMember(ctx context.Context, id string, data map[strin
 }
 
 func (r *MemberRepo) DeleteMemberByID(ctx context.Context, id string) error {
-	if err := getDB(ctx, r.db).Where("id = ?", id).Delete(&models.Member{}).Error; err != nil {
+	if err := getDB(ctx, r.db).Where(memberByID(id), "ID").Delete(&models.Member{}).Error; err != nil {
 		return fmt.Errorf("gorm/member: delete by id: %w", err)
 	}
 	return nil
@@ -79,7 +80,7 @@ func (r *MemberRepo) DeleteMemberByID(ctx context.Context, id string) error {
 
 func (r *MemberRepo) DeleteMemberByOrgAndUser(ctx context.Context, orgID, userID string) error {
 	if err := getDB(ctx, r.db).
-		Where("organization_id = ? AND user_id = ?", orgID, userID).
+		Where(&models.Member{OrganizationID: orgID, UserID: userID}, "OrganizationID", "UserID").
 		Delete(&models.Member{}).Error; err != nil {
 		return fmt.Errorf("gorm/member: delete by org and user: %w", err)
 	}
@@ -89,7 +90,7 @@ func (r *MemberRepo) DeleteMemberByOrgAndUser(ctx context.Context, orgID, userID
 func (r *MemberRepo) ListMembersByOrgID(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Member, int64, error) {
 	query := getDB(ctx, r.db).
 		Preload("User").
-		Where("organization_id = ?", orgID)
+		Where(&models.Member{OrganizationID: orgID}, "OrganizationID")
 
 	var total int64
 	if err := query.Model(&models.Member{}).Count(&total).Error; err != nil {
@@ -102,9 +103,13 @@ func (r *MemberRepo) ListMembersByOrgID(ctx context.Context, orgID string, pagi 
 	}
 
 	var members []models.Member
-	err := query.Limit(limit).Offset(pagi.Offset).Order("created_at desc").Find(&members).Error
+	err := query.Limit(limit).Offset(pagi.Offset).Order(gormutil.OrderBy(r.db, &models.Member{}, "CreatedAt", true)).Find(&members).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("gorm/member: list: %w", err)
 	}
 	return members, total, nil
+}
+
+func memberByID(id string) *models.Member {
+	return &models.Member{Base: coremodels.Base{ID: id}}
 }

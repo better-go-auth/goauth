@@ -14,6 +14,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // AdminRepo implements repository.IAdminRepo using GORM.
@@ -30,31 +31,35 @@ func NewAdminRepo(db *gorm.DB) repository.IAdminRepo {
 
 // ListUsers searches, filters, and paginates users according to admin criteria.
 func (r *AdminRepo) ListUsers(ctx context.Context, input dtos.AdminListUsersInput) ([]models.User, int64, error) {
-	db := gormutil.GetDB(ctx, r.db).Model(&models.User{})
+	user := &models.User{}
+	db := gormutil.GetDB(ctx, r.db).Model(user)
 
 	// Global / Field Search
 	if input.SearchValue != nil && *input.SearchValue != "" {
-		val := "%" + strings.ToLower(*input.SearchValue) + "%"
+		val := "%" + *input.SearchValue + "%"
 		if input.SearchField != nil && *input.SearchField != "" {
-			col, ok := resolveUserColumn(*input.SearchField)
-			if ok {
-				db = db.Where(fmt.Sprintf("LOWER(%s) LIKE ?", col), val)
+			if field, ok := resolveUserField(*input.SearchField); ok {
+				db = db.Where(gormutil.ILike(r.db, user, field, val))
 			}
 		} else {
 			// Search across name and email by default
-			db = db.Where("LOWER(first_name) LIKE ? OR LOWER(last_name) LIKE ? OR LOWER(email) LIKE ?", val, val, val)
+			db = db.Where(clause.Or(
+				gormutil.ILike(r.db, user, "Name", val),
+				gormutil.ILike(r.db, user, "FirstName", val),
+				gormutil.ILike(r.db, user, "LastName", val),
+				gormutil.ILike(r.db, user, "Email", val),
+			))
 		}
 	}
 
 	// Filter operator & field
 	if input.FilterField != nil && *input.FilterField != "" && input.FilterValue != nil {
-		col, ok := resolveUserColumn(*input.FilterField)
-		if ok {
+		if field, ok := resolveUserField(*input.FilterField); ok {
 			op := "eq"
 			if input.FilterOperator != nil && *input.FilterOperator != "" {
 				op = strings.ToLower(*input.FilterOperator)
 			}
-			db = applyFilterOperator(db, col, op, *input.FilterValue)
+			db = db.Where(r.filterExpr(field, op, *input.FilterValue))
 		}
 	}
 
@@ -64,16 +69,13 @@ func (r *AdminRepo) ListUsers(ctx context.Context, input dtos.AdminListUsersInpu
 	}
 
 	// Sorting
-	sortBy := "created_at"
+	sortBy := "CreatedAt"
 	if input.SortBy != nil && *input.SortBy != "" {
-		if col, ok := resolveUserColumn(*input.SortBy); ok {
-			sortBy = col
+		if field, ok := resolveUserField(*input.SortBy); ok {
+			sortBy = field
 		}
 	}
-	sortDir := "desc"
-	if input.SortDirection != nil && strings.ToLower(*input.SortDirection) == "asc" {
-		sortDir = "asc"
-	}
+	desc := input.SortDirection == nil || strings.ToLower(*input.SortDirection) != "asc"
 
 	// Pagination
 	limit := 20
@@ -86,7 +88,7 @@ func (r *AdminRepo) ListUsers(ctx context.Context, input dtos.AdminListUsersInpu
 	}
 
 	var users []models.User
-	err := db.Order(fmt.Sprintf("%s %s", sortBy, sortDir)).
+	err := db.Order(gormutil.OrderBy(r.db, user, sortBy, desc)).
 		Limit(limit).
 		Offset(offset).
 		Find(&users).Error
@@ -97,69 +99,70 @@ func (r *AdminRepo) ListUsers(ctx context.Context, input dtos.AdminListUsersInpu
 	return users, total, nil
 }
 
-func applyFilterOperator(db *gorm.DB, col, op, val string) *gorm.DB {
+// filterExpr builds better-auth's filterOperator condition on a user field.
+func (r *AdminRepo) filterExpr(field, op, val string) clause.Expression {
+	col := gormutil.Col(r.db, &models.User{}, field)
+	var v any = val
+	if field == "Banned" || field == "EmailVerified" {
+		v = strings.ToLower(val) == "true" || val == "1"
+	}
 	switch op {
-	case "eq", "=":
-		if col == "banned" || col == "email_verified" {
-			b := strings.ToLower(val) == "true" || val == "1"
-			return db.Where(fmt.Sprintf("%s = ?", col), b)
-		}
-		return db.Where(fmt.Sprintf("%s = ?", col), val)
 	case "ne", "!=":
-		if col == "banned" || col == "email_verified" {
-			b := strings.ToLower(val) == "true" || val == "1"
-			return db.Where(fmt.Sprintf("%s != ?", col), b)
-		}
-		return db.Where(fmt.Sprintf("%s != ?", col), val)
+		return clause.Neq{Column: col, Value: v}
 	case "lt", "<":
-		return db.Where(fmt.Sprintf("%s < ?", col), val)
+		return clause.Lt{Column: col, Value: v}
 	case "lte", "<=":
-		return db.Where(fmt.Sprintf("%s <= ?", col), val)
+		return clause.Lte{Column: col, Value: v}
 	case "gt", ">":
-		return db.Where(fmt.Sprintf("%s > ?", col), val)
+		return clause.Gt{Column: col, Value: v}
 	case "gte", ">=":
-		return db.Where(fmt.Sprintf("%s >= ?", col), val)
+		return clause.Gte{Column: col, Value: v}
 	case "contains":
-		return db.Where(fmt.Sprintf("LOWER(%s) LIKE ?", col), "%"+strings.ToLower(val)+"%")
+		return gormutil.ILike(r.db, &models.User{}, field, "%"+val+"%")
 	case "starts_with":
-		return db.Where(fmt.Sprintf("LOWER(%s) LIKE ?", col), strings.ToLower(val)+"%")
+		return gormutil.ILike(r.db, &models.User{}, field, val+"%")
 	case "ends_with":
-		return db.Where(fmt.Sprintf("LOWER(%s) LIKE ?", col), "%"+strings.ToLower(val))
+		return gormutil.ILike(r.db, &models.User{}, field, "%"+val)
 	default:
-		return db.Where(fmt.Sprintf("%s = ?", col), val)
+		return clause.Eq{Column: col, Value: v}
 	}
 }
 
-func resolveUserColumn(field string) (string, bool) {
+// resolveUserField maps an allowed API field name to its Go field on models.User.
+func resolveUserField(field string) (string, bool) {
 	switch strings.ToLower(strings.ReplaceAll(field, "_", "")) {
 	case "id":
-		return "id", true
-	case "name", "firstname":
-		return "first_name", true
+		return "ID", true
+	case "name":
+		return "Name", true
+	case "firstname":
+		return "FirstName", true
 	case "lastname":
-		return "last_name", true
+		return "LastName", true
 	case "email":
-		return "email", true
+		return "Email", true
 	case "emailverified":
-		return "email_verified", true
+		return "EmailVerified", true
 	case "role":
-		return "role", true
+		return "Role", true
 	case "banned":
-		return "banned", true
+		return "Banned", true
 	case "banreason":
-		return "ban_reason", true
+		return "BanReason", true
 	case "banexpires":
-		return "ban_expires", true
+		return "BanExpires", true
 	case "createdat":
-		return "created_at", true
+		return "CreatedAt", true
 	case "updatedat":
-		return "updated_at", true
+		return "UpdatedAt", true
 	case "lastloginat":
-		return "last_login_at", true
+		return "LastLoginAt", true
 	default:
 		return "", false
 	}
 }
+
+func userByID(id string) *models.User { return &models.User{Base: models.Base{ID: id}} }
 
 // CreateUserWithAccount inserts a new user and credential account in a transaction.
 func (r *AdminRepo) CreateUserWithAccount(ctx context.Context, user *models.User, passwordHash string) (*models.User, error) {
@@ -196,7 +199,7 @@ func (r *AdminRepo) SetUserPassword(ctx context.Context, userID, passwordHash st
 	db := getDB(ctx, r.db)
 
 	var account models.Account
-	err := db.Where("user_id = ? AND provider_id = ?", userID, "credential").Take(&account).Error
+	err := db.Where(&models.Account{UserID: userID, ProviderID: models.ProvCredential}, "UserID", "ProviderID").Take(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			// Create account if not present
@@ -212,14 +215,14 @@ func (r *AdminRepo) SetUserPassword(ctx context.Context, userID, passwordHash st
 		return fmt.Errorf("gorm/admin: find credential account: %w", err)
 	}
 
-	return db.Model(&account).Update("password", passwordHash).Error
+	return db.Model(&account).Update("Password", passwordHash).Error
 }
 
 // SetUserRole changes a user's role and returns the updated record.
 func (r *AdminRepo) SetUserRole(ctx context.Context, userID string, role enums.Role) (*models.User, error) {
 	db := getDB(ctx, r.db)
 	var user models.User
-	err := db.Where("id = ?", userID).Take(&user).Error
+	err := db.Where(userByID(userID), "ID").Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrUserNotFound
@@ -227,7 +230,7 @@ func (r *AdminRepo) SetUserRole(ctx context.Context, userID string, role enums.R
 		return nil, fmt.Errorf("gorm/admin: get user for role update: %w", err)
 	}
 
-	if err := db.Model(&user).Update("role", role).Error; err != nil {
+	if err := db.Model(&user).Update("Role", role).Error; err != nil {
 		return nil, fmt.Errorf("gorm/admin: update user role: %w", err)
 	}
 	user.Role = role
@@ -238,7 +241,7 @@ func (r *AdminRepo) SetUserRole(ctx context.Context, userID string, role enums.R
 func (r *AdminRepo) BanUser(ctx context.Context, userID string, reason *string, expiresAt *time.Time) (*models.User, error) {
 	db := getDB(ctx, r.db)
 	var user models.User
-	err := db.Where("id = ?", userID).Take(&user).Error
+	err := db.Where(userByID(userID), "ID").Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrUserNotFound
@@ -247,10 +250,10 @@ func (r *AdminRepo) BanUser(ctx context.Context, userID string, reason *string, 
 	}
 
 	updates := map[string]interface{}{
-		"banned":      true,
-		"ban_reason":  reason,
-		"ban_expires": expiresAt,
-		"updated_at":  time.Now().UTC(),
+		"Banned":     true,
+		"BanReason":  reason,
+		"BanExpires": expiresAt,
+		"UpdatedAt":  time.Now().UTC(),
 	}
 	if err := db.Model(&user).Updates(updates).Error; err != nil {
 		return nil, fmt.Errorf("gorm/admin: ban user: %w", err)
@@ -266,7 +269,7 @@ func (r *AdminRepo) BanUser(ctx context.Context, userID string, reason *string, 
 func (r *AdminRepo) UnbanUser(ctx context.Context, userID string) (*models.User, error) {
 	db := getDB(ctx, r.db)
 	var user models.User
-	err := db.Where("id = ?", userID).Take(&user).Error
+	err := db.Where(userByID(userID), "ID").Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrUserNotFound
@@ -275,10 +278,10 @@ func (r *AdminRepo) UnbanUser(ctx context.Context, userID string) (*models.User,
 	}
 
 	updates := map[string]interface{}{
-		"banned":      false,
-		"ban_reason":  nil,
-		"ban_expires": nil,
-		"updated_at":  time.Now().UTC(),
+		"Banned":     false,
+		"BanReason":  nil,
+		"BanExpires": nil,
+		"UpdatedAt":  time.Now().UTC(),
 	}
 	if err := db.Model(&user).Updates(updates).Error; err != nil {
 		return nil, fmt.Errorf("gorm/admin: unban user: %w", err)
@@ -297,17 +300,17 @@ func (r *AdminRepo) RemoveUser(ctx context.Context, userID string) error {
 	tombstoneEmail := models.AnonymizeEmail(userID, now)
 	return db.Transaction(func(tx *gorm.DB) error {
 		// Delete sessions
-		if err := tx.Where("user_id = ?", userID).Delete(&models.Session{}).Error; err != nil {
+		if err := tx.Where(&models.Session{UserID: userID}, "UserID").Delete(&models.Session{}).Error; err != nil {
 			return fmt.Errorf("delete sessions: %w", err)
 		}
 		// Delete accounts
-		if err := tx.Where("user_id = ?", userID).Delete(&models.Account{}).Error; err != nil {
+		if err := tx.Where(&models.Account{UserID: userID}, "UserID").Delete(&models.Account{}).Error; err != nil {
 			return fmt.Errorf("delete accounts: %w", err)
 		}
 		// Anonymize email and soft-delete user
-		if err := tx.Model(&models.User{}).Where("id = ?", userID).Updates(map[string]interface{}{
-			"deleted_at": now,
-			"email":      tombstoneEmail,
+		if err := tx.Model(&models.User{}).Where(userByID(userID), "ID").Updates(map[string]interface{}{
+			"DeletedAt": now,
+			"Email":     tombstoneEmail,
 		}).Error; err != nil {
 			return fmt.Errorf("delete user: %w", err)
 		}
@@ -319,7 +322,7 @@ func (r *AdminRepo) RemoveUser(ctx context.Context, userID string) error {
 func (r *AdminRepo) GetUserByID(ctx context.Context, id string) (*models.User, error) {
 	db := getDB(ctx, r.db)
 	var user models.User
-	err := db.Where("id = ?", id).Take(&user).Error
+	err := db.Where(userByID(id), "ID").Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrUserNotFound
@@ -333,7 +336,7 @@ func (r *AdminRepo) GetUserByID(ctx context.Context, id string) (*models.User, e
 func (r *AdminRepo) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	db := getDB(ctx, r.db)
 	var user models.User
-	err := db.Where("email = ?", email).Take(&user).Error
+	err := db.Where(gormutil.IEq(r.db, &models.User{}, "Email", email)).Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrUserNotFound

@@ -8,15 +8,10 @@ import (
 )
 
 type EmailVerification struct {
-	/**
-	 * Number of seconds the verification token is
-	 * valid for.
-	 * @default 30 minutes
-	 */
+	// ExpiresIn is how long a verification link token is valid (default 1 hour).
 	ExpiresIn time.Duration
 
-	VerificationCodeSender VerificationSender
-	CodeGenerator          GenerateCode
+	GoAuth EmailVerificationGoAuth
 
 	//===================================    TO USE NOW ===================================
 
@@ -58,6 +53,14 @@ type (
 	SendVerificationEmail func(data EmailVerificationData, request *http.Request) error
 	GenerateCode          func() string
 )
+
+// EmailVerificationGoAuth configures goauth's 6-digit code flow.
+type EmailVerificationGoAuth struct {
+	CodeSender    VerificationSender
+	CodeGenerator GenerateCode
+	// CodeExpiresIn is how long a code is valid (default 15 minutes).
+	CodeExpiresIn time.Duration
+}
 
 type EmailVerificationData struct {
 	User  models.User

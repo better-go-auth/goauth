@@ -8,7 +8,7 @@ import (
 func (opts *GoAuthOptions) SetDefaults() {
 	opts.AuthConfig.SetDefaults()
 	if opts.SecondaryStorage == nil {
-		opts.SessionConfig.CheckRevocationInDb = true
+		opts.GoAuth.Session.JWT.CheckRevocation = true
 	}
 }
 

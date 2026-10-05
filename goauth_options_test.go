@@ -10,8 +10,8 @@ func TestSetDefaultsRevocationCheck(t *testing.T) {
 	t.Run("forced on without secondary storage", func(t *testing.T) {
 		opts := GoAuthOptions{}
 		opts.SetDefaults()
-		if !opts.SessionConfig.CheckRevocationInDb {
-			t.Fatal("CheckRevocationInDb must default to true without secondary storage")
+		if !opts.GoAuth.Session.JWT.CheckRevocation {
+			t.Fatal("CheckRevocation must default to true without secondary storage")
 		}
 	})
 
@@ -22,8 +22,8 @@ func TestSetDefaultsRevocationCheck(t *testing.T) {
 		}
 		opts := GoAuthOptions{SecondaryStorage: store}
 		opts.SetDefaults()
-		if opts.SessionConfig.CheckRevocationInDb {
-			t.Fatal("CheckRevocationInDb must stay false when secondary storage handles revocation")
+		if opts.GoAuth.Session.JWT.CheckRevocation {
+			t.Fatal("CheckRevocation must stay false when secondary storage handles revocation")
 		}
 	})
 }

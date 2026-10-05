@@ -66,9 +66,6 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 		SecondaryStorage: store,
 		AuthConfig: config.AuthConfig{
 			Secret: TestSecret,
-			SessionConfig: config.SessionConfig{JwtVar: config.JwtVar{
-				AccessSecret: TestSecret, RefreshSecret: TestSecret,
-			}},
 		},
 	}
 	for _, opt := range opts {

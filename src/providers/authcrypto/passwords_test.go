@@ -13,7 +13,7 @@ func TestPasswordsDefaults(t *testing.T) {
 		t.Fatalf("legacy mode must hash with bcrypt, got %q", h)
 	}
 
-	compat := NewPasswords(config.AuthConfig{Mode: config.ModeCompat})
+	compat := NewPasswords(config.AuthConfig{GoAuth: config.GoAuthConfig{Mode: config.ModeCompat}})
 	h, _ = compat.Hash("pw-12345678")
 	if HashFormat(h) != FormatScrypt {
 		t.Fatalf("compat mode must hash with scrypt, got %q", h)
@@ -29,12 +29,12 @@ func TestPasswordsDefaults(t *testing.T) {
 func TestPasswordsRehash(t *testing.T) {
 	bcryptHash, _ := HashPasswordBcrypt("pw-12345678")
 
-	noRehash := NewPasswords(config.AuthConfig{Mode: config.ModeCompat})
+	noRehash := NewPasswords(config.AuthConfig{GoAuth: config.GoAuthConfig{Mode: config.ModeCompat}})
 	if ok, up, _ := noRehash.Verify(bcryptHash, "pw-12345678"); !ok || up != "" {
 		t.Fatalf("rehash must be opt-in: ok=%v up=%q", ok, up)
 	}
 
-	p := NewPasswords(config.AuthConfig{Mode: config.ModeCompat,
+	p := NewPasswords(config.AuthConfig{GoAuth: config.GoAuthConfig{Mode: config.ModeCompat},
 		EmailAndPassword: config.EmailAndPassword{RehashPasswords: true}})
 	ok, up, err := p.Verify(bcryptHash, "pw-12345678")
 	if !ok || err != nil || HashFormat(up) != FormatScrypt {

@@ -17,6 +17,7 @@ import (
 	coreauth "github.com/better-go-auth/goauth/src/app/core/auth"
 	"github.com/better-go-auth/goauth/src/app/core/profile"
 	"github.com/better-go-auth/goauth/src/app/core/session"
+	"github.com/better-go-auth/goauth/src/common/consts"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
@@ -28,7 +29,6 @@ import (
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
-	"github.com/better-go-auth/goauth/src/common/consts"
 	redis_storage "github.com/better-go-auth/goauth/src/providers/sec-storage/redis"
 	"github.com/better-go-auth/goauth/src/providers/token"
 	"github.com/danielgtaylor/huma/v2"
@@ -86,7 +86,8 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 
 	if useContainers {
 		slog.Info("========== Using testcontainers")
-		pgContainer, err := postgres.Run(ctx,
+		pgContainer, err := postgres.Run(
+			ctx,
 			"postgres:15-alpine",
 			postgres.WithDatabase("testdb"),
 			postgres.WithUsername("testuser"),
@@ -94,7 +95,8 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			testcontainers.WithWaitStrategy(
 				wait.ForLog("database system is ready to accept connections").
 					WithOccurrence(2).
-					WithStartupTimeout(30*time.Second)),
+					WithStartupTimeout(30*time.Second),
+			),
 		)
 		if err != nil {
 			log.Fatalf("failed to start postgres container: %v", err)
@@ -116,7 +118,8 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		//
 		//==================================================================================|
 
-		redisContainer, err := test_redis.Run(ctx,
+		redisContainer, err := test_redis.Run(
+			ctx,
 			"redis:7-alpine",
 			testcontainers.WithWaitStrategy(
 				wait.ForListeningPort("6379/tcp"),
@@ -166,11 +169,11 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			log.Fatalf("failed to create in-memory secondary storage: %v", err)
 		}
 	}
-	jwt := loc_conf.JwtVar{
+	jwt := loc_conf.SessionJWT{
 		AccessSecret:     TestAccessSecret,
 		RefreshSecret:    TestRefreshSecret,
-		AccessExpireMin:  60,
-		RefreshExpireMin: 1440,
+		AccessExpiresIn:  time.Hour,
+		RefreshExpiresIn: 24 * time.Hour,
 	}
 
 	mockEmail := NewMockEmailSender()
@@ -178,7 +181,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Better Go Auth Test API", "1.0.0"))
 
-	adminPlugin, err := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
+	adminPlugin, err := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}))
 	if err != nil {
 		log.Fatalf("failed to initialize admin plugin: %v", err)
 	}
@@ -193,11 +196,13 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		SecondaryStorage: secStorage,
 		AuthConfig: loc_conf.AuthConfig{
 			EmailVerification: loc_conf.EmailVerification{
-				ExpiresIn:              15 * time.Minute,
-				VerificationCodeSender: mockEmail,
+				GoAuth: loc_conf.EmailVerificationGoAuth{
+					CodeExpiresIn: 15 * time.Minute,
+					CodeSender:    mockEmail,
+				},
 			},
-			SessionConfig: loc_conf.SessionConfig{
-				JwtVar: jwt,
+			GoAuth: loc_conf.GoAuthConfig{
+				Session: loc_conf.SessionGoAuth{JWT: jwt},
 			},
 		},
 		Plugins: []plugin.Plugin{
@@ -240,7 +245,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		prevTeardown()
 	}
 
-	sConf := loc_conf.SessionConfig{JwtVar: jwt}
+	sConf := loc_conf.SessionGoAuth{JWT: jwt}
 
 	// gormauth.NewAuthRepos(opts.Conn)
 	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)

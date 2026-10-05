@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/better-go-auth/goauth/compat"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 )
 
 type getSessionInput struct {
@@ -32,7 +33,7 @@ func (h *handler) getSession(ctx context.Context, in *getSessionInput) (*getSess
 
 func (h *handler) postSession(ctx context.Context, in *getSessionInput) (*getSessionOutput, error) {
 	if !h.Conf.Session.DeferSessionRefresh {
-		return nil, compat.ErrMethodNotAllowedDeferSessionRequired
+		return nil, autherr.ErrMethodNotAllowedDeferSessionRequired
 	}
 	return h.session(ctx, in, false)
 }
@@ -47,7 +48,7 @@ func (h *handler) session(ctx context.Context, in *getSessionInput, deferRefresh
 	}
 	sw, err := h.Sessions.Get(ctx, tok)
 	if err != nil {
-		return nil, compat.ErrFailedToGetSession
+		return nil, autherr.ErrFailedToGetSession
 	}
 	if sw == nil {
 		out.SetCookie = h.Cookies.ExpireSessionCookies()
@@ -63,11 +64,11 @@ func (h *handler) session(ctx context.Context, in *getSessionInput, deferRefresh
 	if needsRefresh {
 		refreshed, err := h.Sessions.Refresh(ctx, sw)
 		if err != nil {
-			return nil, compat.ErrFailedToGetSession
+			return nil, autherr.ErrFailedToGetSession
 		}
 		if refreshed == nil {
 			out.SetCookie = h.Cookies.ExpireSessionCookies()
-			return nil, compat.ErrFailedToGetSession.WithStatus(http.StatusUnauthorized)
+			return nil, autherr.ErrFailedToGetSession.WithStatus(http.StatusUnauthorized)
 		}
 		sw = refreshed
 		out.SetCookie = h.Cookies.SessionCookies(tok, false)

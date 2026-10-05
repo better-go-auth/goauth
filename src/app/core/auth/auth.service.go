@@ -40,12 +40,12 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 			// Update pending verification user
 			updated, err := aus.userRepo.UpdateUser(txCtx, existingUser.ID, map[string]interface{}{
 				// "password":       hash,
-				"first_name":     input.FirstName,
-				"last_name":      input.LastName,
-				"account_status": enums.AccountPendingVerification,
+				"FirstName":     input.FirstName,
+				"LastName":      input.LastName,
+				"AccountStatus": enums.AccountPendingVerification,
 				// is this ptr or actual value
-				"role":   enums.User.S(),
-				"active": false,
+				"Role":   enums.User.S(),
+				"Active": false,
 			})
 			if err != nil {
 				return err
@@ -54,9 +54,9 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		} else {
 			newUser := &models.User{
 				UserDto: models.UserDto{
-					FirstName:     input.FirstName,
-					LastName:      input.LastName,
-					Email:         &input.Email,
+					FirstName: input.FirstName,
+					LastName:  input.LastName,
+					Email:     &input.Email,
 					// Password:      hash,
 					Role:          enums.User,
 					AccountStatus: enums.AccountPendingVerification,
@@ -83,7 +83,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		if _, err := aus.accountRepo.CreateAccount(txCtx, pwdAccount); err != nil {
 			// if account already exists for user and provider, update password
 			if existingAcc, _ := aus.accountRepo.GetAccountByUserAndProvider(txCtx, createdUser.ID, models.ProvCredential); existingAcc != nil {
-				_, _ = aus.accountRepo.UpdateAccount(txCtx, existingAcc.ID, map[string]interface{}{"password": hash})
+				_, _ = aus.accountRepo.UpdateAccount(txCtx, existingAcc.ID, map[string]interface{}{"Password": hash})
 			} else {
 				return fmt.Errorf("authsvc: create account: %w", err)
 			}
@@ -127,9 +127,9 @@ func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationI
 
 		// Update the user's status
 		updatedUsr, err := aus.userRepo.UpdateUser(txCtx, usr.ID, map[string]interface{}{
-			"account_status": enums.AccountActive,
-			"active":         true,
-			"email_verified": true,
+			"AccountStatus": enums.AccountActive,
+			"Active":        true,
+			"EmailVerified": true,
 		})
 		if err != nil {
 			return err
@@ -166,7 +166,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
 	}
 	if upgraded != "" {
-		if _, err := aus.accountRepo.UpdateAccount(ctx, account.ID, map[string]interface{}{"password": upgraded}); err != nil {
+		if _, err := aus.accountRepo.UpdateAccount(ctx, account.ID, map[string]interface{}{"Password": upgraded}); err != nil {
 			logger.ErrorCtx(ctx, "could not upgrade password hash", err, nil)
 		}
 	}
@@ -178,15 +178,15 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 		}
 		// if the ban has expired lift the ban
 		_, _ = aus.userRepo.UpdateUser(ctx, usr.ID, map[string]interface{}{
-			"banned":      false,
-			"ban_reason":  nil,
-			"ban_expires": nil,
+			"Banned":     false,
+			"BanReason":  nil,
+			"BanExpires": nil,
 		})
 	}
 	// setup active org id
 	now := time.Now()
 	updatedUsr, err := aus.userRepo.UpdateUser(ctx, usr.ID, map[string]interface{}{
-		"last_login_at": now,
+		"LastLoginAt": now,
 	})
 	if err != nil {
 		logger.ErrorCtx(ctx, "could not update user last login at", err, nil)
@@ -222,7 +222,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 // ResetToken (acc-04): FIXME to be update with redis: [Role, id]
 func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GResp[TokenResponse], error) {
 	// 1. validate the refresh token
-	claims, err := jwttoken.ValidateToken(refreshToken, aus.Config.RefreshSecret)
+	claims, err := jwttoken.ValidateRefreshToken(refreshToken, aus.Config.JWT.RefreshSecret)
 	if err != nil {
 		return dtos.BadReqC[TokenResponse](errors.InvalidToken), errors.InvalidTokenError
 	}
@@ -240,7 +240,7 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 	}
 	if time.Now().After(session.ExpiresAt) {
 		_ = aus.SesSvc.DeleteSession(ctx, session.ID)
-		return dtos.BadReqC[TokenResponse](errors.SessionExpired), errors.ErrSessionExpired
+		return dtos.BadReqC[TokenResponse](errors.SessionExpired), errors.ErrSessionExpired.WithStatus(401)
 	}
 
 	// 4. validate the refresh token matches
@@ -277,7 +277,7 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 // Logout [-]
 func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[bool], error) {
 	// 1. the jwt token
-	claims, err := jwttoken.ValidateToken(refreshToken, aus.Config.RefreshSecret)
+	claims, err := jwttoken.ValidateRefreshToken(refreshToken, aus.Config.JWT.RefreshSecret)
 	if err != nil {
 		return dtos.BadReqC[bool](errors.InvalidToken), errors.InvalidTokenError
 	}
@@ -336,7 +336,7 @@ func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GRes
 		if account == nil {
 			return errors.ErrInvalidCredentials
 		}
-		_, err = aus.accountRepo.UpdateAccount(txCtx, account.ID, map[string]interface{}{"password": hash})
+		_, err = aus.accountRepo.UpdateAccount(txCtx, account.ID, map[string]interface{}{"Password": hash})
 		if err != nil {
 			return fmt.Errorf("authsvc: update password: %w", err)
 		}

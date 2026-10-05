@@ -5,8 +5,6 @@ import (
 	"net/http"
 	"testing"
 
-	"time"
-
 	bettergoauth "github.com/better-go-auth/goauth"
 	"github.com/better-go-auth/goauth/src/app/core/auth"
 	"github.com/better-go-auth/goauth/src/app/core/profile"
@@ -71,22 +69,22 @@ func (m *mockAuthRepos) UpdateUser(ctx context.Context, id string, data map[stri
 	if !ok {
 		return nil, nil
 	}
-	if fn, ok := data["first_name"].(string); ok {
+	if fn, ok := data["FirstName"].(string); ok {
 		u.FirstName = fn
 	}
-	if ln, ok := data["last_name"].(string); ok {
+	if ln, ok := data["LastName"].(string); ok {
 		u.LastName = ln
 	}
-	if img, ok := data["image"].(string); ok {
+	if img, ok := data["Image"].(string); ok {
 		u.Image = img
 	}
-	if as, ok := data["account_status"].(enums.AccountStatus); ok {
+	if as, ok := data["AccountStatus"].(enums.AccountStatus); ok {
 		u.AccountStatus = as
 	}
-	if act, ok := data["active"].(bool); ok {
+	if act, ok := data["Active"].(bool); ok {
 		u.Active = &act
 	}
-	if ev, ok := data["email_verified"].(bool); ok {
+	if ev, ok := data["EmailVerified"].(bool); ok {
 		u.EmailVerified = ev
 	}
 	return u, nil
@@ -262,7 +260,7 @@ func TestSetupGoAuth_CustomRepositoriesWithoutGorm(t *testing.T) {
 		Migrator:     migrator,
 		TxManager:    txMgr,
 	}
-	opts.SessionConfig.AccessSecret = "super-secret-access-key-32-chars-long"
+	opts.Secret = "super-secret-access-key-32-chars-long"
 
 	app, err := bettergoauth.SetupGoAuth(api, opts)
 	require.NoError(t, err)
@@ -287,9 +285,9 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 		Migrator:     migrator,
 		TxManager:    txMgr,
 	}
-	opts.SessionConfig.AccessSecret = "super-secret-access-key-32-chars-long"
-	opts.EmailVerification.VerificationCodeSender = mockEmail
-	opts.EmailVerification.ExpiresIn = 15 * time.Minute
+	opts.Secret = "super-secret-access-key-32-chars-long"
+	opts.EmailVerification.GoAuth.CodeSender = mockEmail
+	opts.SetDefaults()
 
 	app, err := bettergoauth.SetupGoAuth(api, opts)
 	require.NoError(t, err)
@@ -297,8 +295,8 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 	ctx := context.Background()
 
 	vSvc := verification.NewVerificationServiceWithRepo(mockRepos, opts.EmailVerification)
-	sSvc := session.NewServiceWithRepo(opts.SessionConfig, mockRepos, nil, app.Hooks)
-	authSvc := auth.NewAuthService(&opts.SessionConfig, app.Provider, vSvc, sSvc, mockRepos, app.Hooks)
+	sSvc := session.NewServiceWithRepo(opts.GoAuth.Session, mockRepos, nil, app.Hooks)
+	authSvc := auth.NewAuthService(&opts.GoAuth.Session, app.Provider, vSvc, sSvc, mockRepos, app.Hooks)
 	profileSvc := profile.NewProfileServH(app.Provider, vSvc, sSvc, mockRepos)
 
 	// 1. Register with email

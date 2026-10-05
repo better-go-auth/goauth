@@ -10,11 +10,11 @@ func TestSetDefaults(t *testing.T) {
 
 	t.Run("legacy defaults", func(t *testing.T) {
 		c := AuthConfig{}
-		c.SessionConfig.AccessSecret = "access-secret"
+		c.GoAuth.Session.JWT.AccessSecret = "access-secret"
 		c.SetDefaults()
 
-		if c.Mode != ModeLegacy {
-			t.Errorf("Mode = %q, want legacy", c.Mode)
+		if c.GoAuth.Mode != ModeLegacy {
+			t.Errorf("Mode = %q, want legacy", c.GoAuth.Mode)
 		}
 		if c.AppName != DefaultAppName || c.BasePath != "/api/auth" || c.Advanced.CookiePrefix != DefaultCookiePrefix {
 			t.Errorf("unexpected defaults: %q %q %q", c.AppName, c.BasePath, c.Advanced.CookiePrefix)
@@ -28,12 +28,28 @@ func TestSetDefaults(t *testing.T) {
 		if c.EmailAndPassword.MinPasswordLength != 8 || c.EmailAndPassword.MaxPasswordLength != 128 {
 			t.Errorf("password length defaults = %d/%d", c.EmailAndPassword.MinPasswordLength, c.EmailAndPassword.MaxPasswordLength)
 		}
+		jwt := c.GoAuth.Session.JWT
+		if jwt.AccessSecret != "access-secret" || jwt.RefreshSecret != DeriveKey("access-secret", "goauth-refresh") {
+			t.Errorf("explicit access secret must be kept and refresh derived: %q %q", jwt.AccessSecret, jwt.RefreshSecret)
+		}
+	})
+
+	t.Run("jwt keys derived from Secret", func(t *testing.T) {
+		c := AuthConfig{Secret: "s"}
+		c.SetDefaults()
+		jwt := c.GoAuth.Session.JWT
+		if jwt.AccessSecret != DeriveKey("s", "goauth-access") || jwt.RefreshSecret != DeriveKey("s", "goauth-refresh") {
+			t.Errorf("keys not derived: %q %q", jwt.AccessSecret, jwt.RefreshSecret)
+		}
+		if jwt.AccessSecret == jwt.RefreshSecret || jwt.AccessSecret == "s" {
+			t.Error("derived keys must differ from each other and from Secret")
+		}
 	})
 
 	t.Run("secret from env wins over fallback", func(t *testing.T) {
 		t.Setenv(SecretEnvVar, "env-secret")
 		c := AuthConfig{}
-		c.SessionConfig.AccessSecret = "access-secret"
+		c.GoAuth.Session.JWT.AccessSecret = "access-secret"
 		c.SetDefaults()
 		if c.Secret != "env-secret" {
 			t.Errorf("Secret = %q, want env-secret", c.Secret)
@@ -41,19 +57,11 @@ func TestSetDefaults(t *testing.T) {
 	})
 
 	t.Run("compat does not fall back to AccessSecret", func(t *testing.T) {
-		c := AuthConfig{Mode: ModeCompat}
-		c.SessionConfig.AccessSecret = "access-secret"
+		c := AuthConfig{GoAuth: GoAuthConfig{Mode: ModeCompat}}
+		c.GoAuth.Session.JWT.AccessSecret = "access-secret"
 		c.SetDefaults()
 		if c.Secret != "" {
 			t.Errorf("Secret = %q, want empty", c.Secret)
-		}
-	})
-
-	t.Run("compat seeds AccessSecret from Secret", func(t *testing.T) {
-		c := AuthConfig{Mode: ModeCompat, Secret: strings.Repeat("s", 32)}
-		c.SetDefaults()
-		if c.SessionConfig.AccessSecret != c.Secret {
-			t.Errorf("AccessSecret = %q", c.SessionConfig.AccessSecret)
 		}
 	})
 
@@ -70,21 +78,25 @@ func TestValidate(t *testing.T) {
 	t.Setenv(SecretEnvVar, "")
 	longSecret := strings.Repeat("s", 32)
 
+	legacyJWT := GoAuthConfig{Session: SessionGoAuth{JWT: SessionJWT{AccessSecret: "a"}}}
+	compat := GoAuthConfig{Mode: ModeCompat}
+
 	cases := []struct {
 		name    string
 		cfg     AuthConfig
 		wantErr string
 	}{
-		{"legacy ok", AuthConfig{SessionConfig: SessionConfig{JwtVar: JwtVar{AccessSecret: "a"}}}, ""},
-		{"legacy missing access secret", AuthConfig{}, "AccessSecret"},
-		{"compat ok", AuthConfig{Mode: ModeCompat, Secret: longSecret, BaseURL: "https://example.com"}, ""},
-		{"compat missing secret", AuthConfig{Mode: ModeCompat, BaseURL: "https://example.com"}, "Secret"},
-		{"compat missing base url", AuthConfig{Mode: ModeCompat, Secret: longSecret}, "BaseURL"},
-		{"relative base url", AuthConfig{Mode: ModeCompat, Secret: longSecret, BaseURL: "example.com"}, "absolute"},
-		{"unknown mode", AuthConfig{Mode: "nope", SessionConfig: SessionConfig{JwtVar: JwtVar{AccessSecret: "a"}}}, "unknown Mode"},
+		{"legacy ok", AuthConfig{GoAuth: legacyJWT}, ""},
+		{"legacy missing secret", AuthConfig{}, "Secret"},
+		{"same access and refresh secret", AuthConfig{GoAuth: GoAuthConfig{Session: SessionGoAuth{JWT: SessionJWT{AccessSecret: "a", RefreshSecret: "a"}}}}, "must differ"},
+		{"compat ok", AuthConfig{GoAuth: compat, Secret: longSecret, BaseURL: "https://example.com"}, ""},
+		{"compat missing secret", AuthConfig{GoAuth: compat, BaseURL: "https://example.com"}, "Secret"},
+		{"compat missing base url", AuthConfig{GoAuth: compat, Secret: longSecret}, "BaseURL"},
+		{"relative base url", AuthConfig{GoAuth: compat, Secret: longSecret, BaseURL: "example.com"}, "absolute"},
+		{"unknown mode", AuthConfig{GoAuth: GoAuthConfig{Mode: "nope", Session: legacyJWT.Session}}, "unknown Mode"},
 		{"cross subdomain without domain", AuthConfig{
-			SessionConfig: SessionConfig{JwtVar: JwtVar{AccessSecret: "a"}},
-			Advanced:      Advanced{CrossSubDomainCookies: CrossSubDomainCookies{Enabled: true}},
+			GoAuth:   legacyJWT,
+			Advanced: Advanced{CrossSubDomainCookies: CrossSubDomainCookies{Enabled: true}},
 		}, "CrossSubDomainCookies"},
 	}
 	for _, tc := range cases {

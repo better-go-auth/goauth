@@ -30,9 +30,9 @@ func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg conf
 	if provServ != nil {
 		secondaryStorage = provServ.SecondaryStorage
 	}
-	sSvc := session.NewServiceWithRepo(conf.SessionConfig, repos, secondaryStorage, h)
+	sSvc := session.NewServiceWithRepo(conf.GoAuth.Session, repos, secondaryStorage, h)
 
-	authSvc := auth.NewAuthService(&conf.SessionConfig, provServ, vSvc, sSvc, repos, h)
+	authSvc := auth.NewAuthService(&conf.GoAuth.Session, provServ, vSvc, sSvc, repos, h)
 	profileServ := profile.NewProfileServH(provServ, vSvc, sSvc, repos)
 	passwords := authcrypto.NewPasswords(conf)
 	authSvc.Passwords = passwords

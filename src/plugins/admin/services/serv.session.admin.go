@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models"
@@ -98,7 +97,7 @@ func (s *AdminService) ImpersonateUser(ctx context.Context, input admindtos.Admi
 
 	expiresIn := s.adminConfig.ImpersonationSessionExpiresIn
 	if expiresIn <= 0 {
-		expiresIn = time.Duration(s.authConfig.SessionConfig.RefreshExpireMin) * time.Minute
+		expiresIn = s.authConfig.GoAuth.Session.JWT.RefreshExpiresIn
 	}
 
 	// Issue a regular JWT session so the impersonated token passes the auth middleware.

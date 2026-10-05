@@ -104,7 +104,7 @@ func (h *OrgHandler) isInvitee(ctx context.Context, session *dtos.SessionRespons
 
 // defaultPagi returns sensible default pagination for org list endpoints.
 func defaultPagi() models.Pagination {
-	return models.Pagination{Limit: 50, Offset: 0, SortBy: "created_at", SortDir: "desc"}
+	return models.Pagination{Limit: 50, Offset: 0, SortBy: "createdAt", SortDir: "desc"}
 }
 
 // Authenticate delegates authentication to the core authenticate function.

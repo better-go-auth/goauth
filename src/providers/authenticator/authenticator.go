@@ -76,7 +76,7 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 
 		// 3. Verify JWT
 		if accessSecret != "" {
-			claims, err := jwttoken.ValidateToken(token, accessSecret)
+			claims, err := jwttoken.ValidateAccessToken(token, accessSecret)
 			if err == nil && claims.UserID != "" {
 				return sessionResponseFromClaims(claims, token)
 			}

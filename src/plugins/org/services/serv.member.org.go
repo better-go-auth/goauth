@@ -32,7 +32,7 @@ func (s *OrgService) ListMembers(ctx context.Context, orgID string, pagi models.
 }
 
 func (s *OrgService) UpdateMemberRole(ctx context.Context, input dtos.UpdateMemberRoleInput, requestingUserID string) (*models.Member, error) {
-	return s.memberRepo.UpdateMember(ctx, input.MemberID, map[string]interface{}{"role": string(input.Role)})
+	return s.memberRepo.UpdateMember(ctx, input.MemberID, map[string]interface{}{"Role": string(input.Role)})
 }
 
 func (s *OrgService) RemoveMember(ctx context.Context, input dtos.RemoveMemberInput, requestingUserID string) error {

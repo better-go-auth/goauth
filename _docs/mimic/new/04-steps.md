@@ -9,7 +9,12 @@ the step explicitly changes their contract.
 `src/providers/authcrypto`, `src/providers/cookies` (`cookies.Manager`, `cookies.New`), `src/providers/idgen`.
 Test vectors in `src/providers/authcrypto/testdata/better_auth_vectors.json`.
 
-## Step 1 – Config reshape (S)
+## Step 1 – Config reshape (S) ✅ (partial)
+
+Done: `GoAuth.Mode`, `GoAuth.Session{SingleSession, JWT}`, `EmailVerification.GoAuth{CodeSender, CodeGenerator, CodeExpiresIn}`,
+`Advanced.GoAuth.OverrideHumaErrors`; JWT keys derived from `Secret` (must differ); `typ` claim checked by
+`ValidateAccessToken` / `ValidateRefreshToken`. Old fields were removed instead of mapped (breaking).
+Open: `User`, `Account`, `Verification`, `RateLimit` sections.
 
 - Introduce the sections and `GoAuth` sub-structs from 03-config.md.
 - Map the old fields in `SetDefaults` and log deprecations.
@@ -30,7 +35,11 @@ Test vectors in `src/providers/authcrypto/testdata/better_auth_vectors.json`.
     (`better-auth-schema`) with `fields` mappings to snake_case and `npx @better-auth/cli migrate`; it must report no changes.
   - A database dump from the current release migrates cleanly (fixture test on SQLite and Postgres).
 
-## Step 3 – Repositories (M)
+## Step 3 – Repositories (M) ✅ (partial)
+
+Done: all GORM repos use struct conditions with named fields (`Where(&models.Session{Token: t}, "Token")`, so an
+empty value matches nothing), `gormutil.Col/OrderBy/ILike/IEq` for non-equality conditions, and Go field names as
+`Updates` map keys. Open: renaming the contracts to better-auth's adapter operations, contract test suite.
 
 - Contracts in `repo_interfaces` named after better-auth's internal adapter operations:
   `CreateUser, FindUserByID, FindUserByEmail, UpdateUser, DeleteUser, ListUsers`,
@@ -45,6 +54,8 @@ Test vectors in `src/providers/authcrypto/testdata/better_auth_vectors.json`.
 - **Done when:** a repository contract test suite runs against `gormauth` (SQLite) and an in-memory fake.
 
 ## Step 4 – Shared foundations (S)
+
+Done: `compat/errors.go` + `apierror.go` merged into `src/common/errors` (`AuthError` + registry `Err/Register/Lookup/Codes`).
 
 - `src/sessions` → `src/app/services/session` (manager) and `src/app/adapters/huma` (middlewares).
 - `compat/errors.go` + `apierror.go` → `src/common/errors`; merge with `AuthError` into one type.

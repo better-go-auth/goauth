@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 
 	"github.com/better-go-auth/goauth/compat"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -46,7 +47,7 @@ func (r *Resolver) Optional() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		sw, err := r.Resolve(ctx.Context(), ctx.Header("Cookie"))
 		if err != nil {
-			writeError(ctx, compat.ErrFailedToGetSession)
+			writeError(ctx, autherr.ErrFailedToGetSession)
 			return
 		}
 		if sw != nil {
@@ -70,23 +71,23 @@ func (r *Resolver) require(fresh bool) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		sw, err := r.Resolve(ctx.Context(), ctx.Header("Cookie"))
 		if err != nil {
-			writeError(ctx, compat.ErrFailedToGetSession)
+			writeError(ctx, autherr.ErrFailedToGetSession)
 			return
 		}
 		if sw == nil {
-			writeError(ctx, compat.ErrUnauthorized)
+			writeError(ctx, autherr.ErrUnauthorized)
 			return
 		}
 		if fresh && !r.mgr.IsFresh(sw) {
-			writeError(ctx, compat.ErrSessionNotFresh)
+			writeError(ctx, autherr.ErrSessionNotFresh)
 			return
 		}
 		next(huma.WithContext(ctx, WithSession(ctx.Context(), sw)))
 	}
 }
 
-func writeError(ctx huma.Context, e *compat.APIError) {
+func writeError(ctx huma.Context, e *autherr.AuthError) {
 	ctx.SetHeader("Content-Type", "application/json")
-	ctx.SetStatus(e.Status)
+	ctx.SetStatus(e.StatusCode)
 	_ = json.NewEncoder(ctx.BodyWriter()).Encode(e)
 }

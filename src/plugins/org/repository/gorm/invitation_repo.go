@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
@@ -38,7 +40,7 @@ func (r *InvitationRepo) GetInvitationByID(ctx context.Context, id string) (*mod
 	err := getDB(ctx, r.db).
 		Preload("Organization").
 		Preload("Inviter").
-		Where("id = ?", id).Take(&inv).Error
+		Where(invitationByID(id), "ID").Take(&inv).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fmt.Errorf("gorm/invitation: not found")
@@ -51,7 +53,8 @@ func (r *InvitationRepo) GetInvitationByID(ctx context.Context, id string) (*mod
 func (r *InvitationRepo) GetInvitationByOrgAndEmail(ctx context.Context, orgID, email string) (*models.Invitation, error) {
 	var inv models.Invitation
 	err := getDB(ctx, r.db).
-		Where("organization_id = ? AND LOWER(email) = LOWER(?) AND status = 'pending'", orgID, email).
+		Where(&models.Invitation{OrganizationID: orgID, Status: models.InvitationPending}, "OrganizationID", "Status").
+		Where(gormutil.IEq(r.db, &models.Invitation{}, "Email", email)).
 		Take(&inv).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -65,7 +68,7 @@ func (r *InvitationRepo) GetInvitationByOrgAndEmail(ctx context.Context, orgID, 
 func (r *InvitationRepo) UpdateInvitation(ctx context.Context, id string, data map[string]interface{}) (*models.Invitation, error) {
 	if err := getDB(ctx, r.db).
 		Model(&models.Invitation{}).
-		Where("id = ?", id).
+		Where(invitationByID(id), "ID").
 		Updates(data).Error; err != nil {
 		return nil, fmt.Errorf("gorm/invitation: update: %w", err)
 	}
@@ -73,7 +76,7 @@ func (r *InvitationRepo) UpdateInvitation(ctx context.Context, id string, data m
 }
 
 func (r *InvitationRepo) DeleteInvitationByID(ctx context.Context, id string) error {
-	if err := getDB(ctx, r.db).Where("id = ?", id).Delete(&models.Invitation{}).Error; err != nil {
+	if err := getDB(ctx, r.db).Where(invitationByID(id), "ID").Delete(&models.Invitation{}).Error; err != nil {
 		return fmt.Errorf("gorm/invitation: delete: %w", err)
 	}
 	return nil
@@ -82,7 +85,7 @@ func (r *InvitationRepo) DeleteInvitationByID(ctx context.Context, id string) er
 func (r *InvitationRepo) ListInvitationsByOrgID(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Invitation, int64, error) {
 	query := getDB(ctx, r.db).
 		Preload("Inviter").
-		Where("organization_id = ?", orgID)
+		Where(&models.Invitation{OrganizationID: orgID}, "OrganizationID")
 
 	var total int64
 	if err := query.Model(&models.Invitation{}).Count(&total).Error; err != nil {
@@ -95,7 +98,7 @@ func (r *InvitationRepo) ListInvitationsByOrgID(ctx context.Context, orgID strin
 	}
 
 	var invitations []models.Invitation
-	err := query.Limit(limit).Offset(pagi.Offset).Order("created_at desc").Find(&invitations).Error
+	err := query.Limit(limit).Offset(pagi.Offset).Order(gormutil.OrderBy(r.db, &models.Invitation{}, "CreatedAt", true)).Find(&invitations).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("gorm/invitation: list: %w", err)
 	}
@@ -107,10 +110,16 @@ func (r *InvitationRepo) ListInvitationsByEmail(ctx context.Context, email strin
 	err := getDB(ctx, r.db).
 		Preload("Organization").
 		Preload("Inviter").
-		Where("LOWER(email) = LOWER(?) AND status = ? AND expires_at > ?", email, models.InvitationPending, time.Now().UTC()).
+		Where(&models.Invitation{Status: models.InvitationPending}, "Status").
+		Where(gormutil.IEq(r.db, &models.Invitation{}, "Email", email)).
+		Where(clause.Gt{Column: gormutil.Col(r.db, &models.Invitation{}, "ExpiresAt"), Value: time.Now().UTC()}).
 		Find(&invitations).Error
 	if err != nil {
 		return nil, fmt.Errorf("gorm/invitation: list by email: %w", err)
 	}
 	return invitations, nil
+}
+
+func invitationByID(id string) *models.Invitation {
+	return &models.Invitation{Base: coremodels.Base{ID: id}}
 }

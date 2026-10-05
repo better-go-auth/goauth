@@ -15,7 +15,7 @@ import (
 
 // isSystemAdmin returns true when the authenticated session user has the system Admin role.
 func isSystemAdmin(role string) bool {
-	return role == enums.Admin.S()
+	return enums.HasRole(role, enums.Admin.S())
 }
 
 // AdminApproveOrg approves a pending organization (system Admin only).
@@ -92,7 +92,7 @@ func (h *OrgHandler) AdminListOrgs(ctx context.Context, input *AdminListOrgsInpu
 	if limit <= 0 {
 		limit = 50
 	}
-	pagi := orgmodels.Pagination{Limit: limit, Offset: input.Offset, SortBy: "created_at", SortDir: "desc"}
+	pagi := orgmodels.Pagination{Limit: limit, Offset: input.Offset, SortBy: "createdAt", SortDir: "desc"}
 
 	orgs, total, err := h.Org.AdminListOrganizations(ctx, statusFilter, pagi)
 	if err != nil {

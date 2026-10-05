@@ -6,17 +6,21 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/models"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	"github.com/better-go-auth/goauth/src/common/gormutil"
+	"github.com/better-go-auth/goauth/src/models"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // ListUserSessions returns all active, non-expired sessions for a user.
 func (r *AdminRepo) ListUserSessions(ctx context.Context, userID string) ([]models.Session, error) {
 	db := getDB(ctx, r.db)
+	s := &models.Session{}
 	var sessions []models.Session
-	err := db.Where("user_id = ? AND expires_at > ?", userID, time.Now().UTC()).
-		Order("created_at desc").
+	err := db.Where(&models.Session{UserID: userID}, "UserID").
+		Where(clause.Gt{Column: gormutil.Col(r.db, s, "ExpiresAt"), Value: time.Now().UTC()}).
+		Order(gormutil.OrderBy(r.db, s, "CreatedAt", true)).
 		Find(&sessions).Error
 	if err != nil {
 		return nil, fmt.Errorf("gorm/admin: list user sessions: %w", err)
@@ -29,9 +33,9 @@ func (r *AdminRepo) RevokeUserSession(ctx context.Context, sessionID, sessionTok
 	db := getDB(ctx, r.db)
 	q := db.Model(&models.Session{})
 	if sessionID != "" {
-		q = q.Where("id = ?", sessionID)
+		q = q.Where(&models.Session{Base: models.Base{ID: sessionID}}, "ID")
 	} else if sessionToken != "" {
-		q = q.Where("token = ?", sessionToken)
+		q = q.Where(&models.Session{Token: sessionToken}, "Token")
 	} else {
 		return autherr.New(autherr.BadRequest, "sessionToken or id is required", 400)
 	}
@@ -41,7 +45,7 @@ func (r *AdminRepo) RevokeUserSession(ctx context.Context, sessionID, sessionTok
 // RevokeUserSessions deletes all sessions belonging to a specific user.
 func (r *AdminRepo) RevokeUserSessions(ctx context.Context, userID string) error {
 	db := getDB(ctx, r.db)
-	return db.Where("user_id = ?", userID).Delete(&models.Session{}).Error
+	return db.Where(&models.Session{UserID: userID}, "UserID").Delete(&models.Session{}).Error
 }
 
 // CreateImpersonationSession creates an impersonation session with impersonatedBy set.
@@ -60,7 +64,7 @@ func (r *AdminRepo) CreateImpersonationSession(ctx context.Context, session *mod
 func (r *AdminRepo) GetSessionByID(ctx context.Context, id string) (*models.Session, error) {
 	db := getDB(ctx, r.db)
 	var session models.Session
-	err := db.Preload("User").Where("id = ?", id).Take(&session).Error
+	err := db.Preload("User").Where(&models.Session{Base: models.Base{ID: id}}, "ID").Take(&session).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrSessionNotFound
@@ -73,5 +77,5 @@ func (r *AdminRepo) GetSessionByID(ctx context.Context, id string) (*models.Sess
 // DeleteSessionByID deletes a session by ID.
 func (r *AdminRepo) DeleteSessionByID(ctx context.Context, id string) error {
 	db := getDB(ctx, r.db)
-	return db.Where("id = ?", id).Delete(&models.Session{}).Error
+	return db.Where(&models.Session{Base: models.Base{ID: id}}, "ID").Delete(&models.Session{}).Error
 }

@@ -48,15 +48,15 @@ func NewVerificationServiceWithRepo(repo repo_interfaces.IVerificationRepo, conf
 }
 
 func (vSvc Service) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *serv_interfaces.VerOpt) (dtos.GResp[bool], error) {
-	if vSvc.Config.VerificationCodeSender == nil {
+	if vSvc.Config.GoAuth.CodeSender == nil {
 		return dtos.InternalErrMS[bool]("no verification code sender configured"), errors.New("no verification code sender configured")
 	}
 	if vSvc.Repo == nil {
 		return dtos.InternalErrMS[bool]("no storage"), errors.New("no storage configured")
 	}
 	verificationCode := ""
-	if vSvc.Config.CodeGenerator != nil {
-		verificationCode = vSvc.Config.CodeGenerator()
+	if vSvc.Config.GoAuth.CodeGenerator != nil {
+		verificationCode = vSvc.Config.GoAuth.CodeGenerator()
 	} else {
 		verificationCode = util.GenerateRandomString(6)
 	}
@@ -65,7 +65,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 	if err != nil {
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
-	emailerr := vSvc.Config.VerificationCodeSender.SendVerificationCode(identifier, verificationCode)
+	emailerr := vSvc.Config.GoAuth.CodeSender.SendVerificationCode(identifier, verificationCode)
 	if emailerr != nil {
 		return dtos.InternalErrMS[bool]("Queueing Email error"), emailerr
 	}
@@ -75,7 +75,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 		userID = opt.UserId
 	}
 	_, err = vSvc.Repo.UpsertVerification(ctx, &models.Verification{
-		ExpiresAt:  time.Now().Add(vSvc.Config.ExpiresIn),
+		ExpiresAt:  time.Now().Add(vSvc.Config.GoAuth.CodeExpiresIn),
 		Value:      codeHash,
 		Identifier: purpose.Make(identifier),
 		UserID:     userID,
@@ -89,7 +89,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 	// TODO: remove: use this as A fallback
 	// if vSvc.GormDB != nil {
 	// 	verificationResp, err := generic.DbUpsertOneListedFields[models.Verification](gormutil.GetDB(ctx, vSvc.GormDB), ctx, models.Verification{
-	// 		ExpiresAt:  time.Now().Add(vSvc.Config.ExpiresIn),
+	// 		ExpiresAt:  time.Now().Add(vSvc.Config.GoAuth.CodeExpiresIn),
 	// 		Value:      codeHash,
 	// 		Identifier: purpose.Make(identifier),
 	// 		UserId:     opt.UserId,

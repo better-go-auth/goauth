@@ -15,7 +15,7 @@ import (
 )
 
 func compatMode(c *config.AuthConfig) {
-	c.Mode = config.ModeCompat
+	c.GoAuth.Mode = config.ModeCompat
 	c.BaseURL = "http://localhost:3000"
 }
 

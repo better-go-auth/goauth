@@ -13,7 +13,7 @@ type Passwords struct {
 // NewPasswords picks scrypt in compat mode and bcrypt in legacy mode, unless a custom hasher is set.
 func NewPasswords(conf config.AuthConfig) *Passwords {
 	p := &Passwords{format: FormatBcrypt, rehash: conf.EmailAndPassword.RehashPasswords}
-	if conf.Mode == config.ModeCompat {
+	if conf.GoAuth.Mode == config.ModeCompat {
 		p.format = FormatScrypt
 	}
 	if h := conf.EmailAndPassword.Password; h != nil && h.Hash != nil && h.Verify != nil {

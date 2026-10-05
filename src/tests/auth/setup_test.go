@@ -31,43 +31,42 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 
 	t.Run("Fails when Conn is nil", func(t *testing.T) {
 		opts := bettergoauth.GoAuthOptions{}
-		opts.SessionConfig.AccessSecret = "secret"
+		opts.Secret = "secret"
 		_, err := bettergoauth.SetupGoAuth(api, opts)
 		if err == nil {
 			t.Fatalf("Expected error when Conn is nil, got nil")
 		}
 	})
 
-	t.Run("Fails when AccessSecret is empty", func(t *testing.T) {
+	t.Run("Fails when no secret is configured", func(t *testing.T) {
+		t.Setenv(config.SecretEnvVar, "")
 		env := helpers.SetupTestEnv(t, true)
 		opts := bettergoauth.GoAuthOptions{
 			Conn: env.DB,
 		}
 		_, err := bettergoauth.SetupGoAuth(api, opts)
 		if err == nil {
-			t.Fatalf("Expected error when AccessSecret is empty, got nil")
+			t.Fatalf("Expected error when no secret is configured, got nil")
 		}
 	})
 
 	t.Run("Applies sensible defaults", func(t *testing.T) {
 		opts := config.AuthConfig{}
-		opts.SessionConfig.AccessSecret = "secret"
+		opts.Secret = "secret"
 		opts.SetDefaults()
 
+		jwt := opts.GoAuth.Session.JWT
 		if opts.BasePath != "/api/auth" {
 			t.Errorf("Expected BasePath '/api/auth', got %q", opts.BasePath)
 		}
-		if opts.SessionConfig.AccessExpireMin != 60 {
-			t.Errorf("Expected AccessExpireMin 60, got %d", opts.SessionConfig.AccessExpireMin)
+		if jwt.AccessExpiresIn != time.Hour || jwt.RefreshExpiresIn != 7*24*time.Hour {
+			t.Errorf("unexpected JWT lifetimes %v / %v", jwt.AccessExpiresIn, jwt.RefreshExpiresIn)
 		}
-		if opts.SessionConfig.RefreshExpireMin != 10080 {
-			t.Errorf("Expected RefreshExpireMin 10080, got %d", opts.SessionConfig.RefreshExpireMin)
+		if jwt.AccessSecret == "" || jwt.RefreshSecret == "" || jwt.AccessSecret == jwt.RefreshSecret {
+			t.Errorf("JWT secrets must be derived and differ: %q %q", jwt.AccessSecret, jwt.RefreshSecret)
 		}
-		if opts.SessionConfig.RefreshSecret != "secret" {
-			t.Errorf("Expected RefreshSecret to default to 'secret', got %q", opts.SessionConfig.RefreshSecret)
-		}
-		if opts.EmailVerification.ExpiresIn != 15*time.Minute {
-			t.Errorf("Expected EmailVerification.ExpiresIn 15m, got %v", opts.EmailVerification.ExpiresIn)
+		if opts.EmailVerification.GoAuth.CodeExpiresIn != 15*time.Minute {
+			t.Errorf("Expected CodeExpiresIn 15m, got %v", opts.EmailVerification.GoAuth.CodeExpiresIn)
 		}
 	})
 }
@@ -90,8 +89,8 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 		t.Fatalf("Failed to create test user for revocation tests: %v", err)
 	}
 
-	revConf := env.Options.SessionConfig
-	revConf.CheckRevocationInDb = true
+	revConf := env.Options.GoAuth.Session.JWT
+	revConf.CheckRevocation = true
 	revStore := providers.NewRevocationStore(env.DB, env.SecondaryStorage, revConf)
 
 	t.Run("Empty sessionID is not revoked", func(t *testing.T) {

@@ -126,7 +126,8 @@ type OnPasswordResetFunc func(data PasswordResetData, request *http.Request) err
 type PasswordResetData struct {
 	User models.User
 }
-//TODO: make this a interface instead of a struct
+
+// TODO: make this a interface instead of a struct
 type PasswordHasher struct {
 	Hash   func(password string) (string, error)
 	Verify func(hash string, password string) (bool, error)

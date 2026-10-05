@@ -19,6 +19,7 @@ func TestMiddleware_JWTTokenVerifier(t *testing.T) {
 		UserID:    "user_1",
 		SessionID: "sess_1",
 		Role:      "USER",
+		Type:      token.TypeAccess,
 	}
 
 	tokenStr, err := jwttoken.SignWithExpiry(secret, claims, 15*time.Minute)
@@ -28,6 +29,12 @@ func TestMiddleware_JWTTokenVerifier(t *testing.T) {
 	verifiedClaims, err := verifier.VerifyToken(tokenStr)
 	require.NoError(t, err)
 	assert.Equal(t, "user_1", verifiedClaims.UserID)
+
+	claims.Type = token.TypeRefresh
+	refreshStr, err := jwttoken.SignWithExpiry(secret, claims, 15*time.Minute)
+	require.NoError(t, err)
+	_, err = verifier.VerifyToken(refreshStr)
+	assert.Error(t, err, "a refresh token must not be accepted as an access token")
 	assert.Equal(t, "sess_1", verifiedClaims.SessionID)
 	assert.Equal(t, "USER", verifiedClaims.Role)
 }

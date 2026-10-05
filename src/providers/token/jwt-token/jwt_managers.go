@@ -2,6 +2,7 @@ package jwttoken
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -48,6 +49,7 @@ func ValidateToken(tokenStr string, signingKey string) (*token.CustomClaims, err
 			UserID:    claims.UserID,
 			SessionID: claims.SessionID,
 			Role:      claims.Role,
+			Type:      claims.Type,
 			ExpiresAt: claims.ExpiresAt.Unix(),
 			// multi tenancy support
 			ActiveOrgId:   claims.ActiveOrgID,
@@ -55,6 +57,30 @@ func ValidateToken(tokenStr string, signingKey string) (*token.CustomClaims, err
 		}, nil
 	}
 	return nil, jwt.ErrInvalidKey
+}
+
+// ErrWrongTokenType is returned when a valid JWT carries an unexpected `typ` claim.
+var ErrWrongTokenType = errors.New("jwttoken: wrong token type")
+
+// ValidateAccessToken validates tokenStr and requires typ "access".
+func ValidateAccessToken(tokenStr, signingKey string) (*token.CustomClaims, error) {
+	return validateTyped(tokenStr, signingKey, token.TypeAccess)
+}
+
+// ValidateRefreshToken validates tokenStr and requires typ "refresh".
+func ValidateRefreshToken(tokenStr, signingKey string) (*token.CustomClaims, error) {
+	return validateTyped(tokenStr, signingKey, token.TypeRefresh)
+}
+
+func validateTyped(tokenStr, signingKey, typ string) (*token.CustomClaims, error) {
+	claims, err := ValidateToken(tokenStr, signingKey)
+	if err != nil {
+		return nil, err
+	}
+	if claims.Type != typ {
+		return nil, ErrWrongTokenType
+	}
+	return claims, nil
 }
 
 // Generate generates jwt token
@@ -71,6 +97,7 @@ func SignWithExpiry(signingKey string, claims *token.CustomClaims, expiryMinutes
 		UserID:        claims.UserID,
 		SessionID:     claims.SessionID,
 		Role:          claims.Role,
+		Type:          claims.Type,
 		ActiveOrgID:   claims.ActiveOrgId,
 		ActiveOrgRole: claims.ActiveOrgRole,
 	}
@@ -115,6 +142,7 @@ type jwtClaims struct {
 	UserID        string `json:"userId"`
 	SessionID     string `json:"sessionId"`
 	Role          string `json:"role"`
+	Type          string `json:"typ,omitempty"`
 	ActiveOrgID   string `json:"activeOrgId,omitempty"`
 	ActiveOrgRole string `json:"activeOrgRole,omitempty"`
 }

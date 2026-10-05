@@ -30,7 +30,7 @@ type UserDto struct {
 	EmailVerified bool    `json:"emailVerified"   gorm:"default:false"        bun:"email_verified,default:false"`
 	Image         string  `json:"image,omitempty"`
 	// admin plugin
-	Role       enums.Role `json:"role"       gorm:"default:UNVERIFIED_PERSON"`
+	Role       enums.Role `json:"role"       gorm:"default:user"`
 	Banned     bool       `json:"banned"     gorm:"default:false" bun:"banned,default:false"`
 	BanReason  *string    `json:"banReason"      bun:"ban_reason"`
 	BanExpires *time.Time `json:"banExpires"                      bun:"ban_expires"`
@@ -100,7 +100,7 @@ type UserFilter struct {
 	FirstName     string              `query:"firstName"`
 	LastName      string              `query:"lastName"`
 	Email         string              `query:"email"`
-	Role          enums.Role          `query:"role" enum:"OPERATOR,RESPONDER,CLIENT"`
+	Role          enums.Role          `query:"role" enum:"user,admin"`
 	Username      string              `query:"username"`
 	AccountStatus enums.AccountStatus `query:"account_status"`
 	CompanyID     string              `query:"company_id"`

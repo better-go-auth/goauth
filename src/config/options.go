@@ -35,6 +35,12 @@ type Advanced struct {
 	// GenerateID overrides the default ID generator for new records.
 	GenerateID func() string
 	IPAddress  IPAddress
+
+	GoAuth AdvancedGoAuth
+}
+
+// AdvancedGoAuth holds advanced options better-auth doesn't have.
+type AdvancedGoAuth struct {
 	// OverrideHumaErrors formats every Huma error in the process (including host routes) as {"code","message"}.
 	// By default only goauth routes use that format.
 	OverrideHumaErrors bool

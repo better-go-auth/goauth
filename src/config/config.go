@@ -2,6 +2,9 @@ package config
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,8 +15,6 @@ import (
 )
 
 type AuthConfig struct {
-	// Mode selects the exposed API surface (default ModeLegacy).
-	Mode    Mode
 	AppName string
 	// BasePath is the base mount path for Better Auth routes (default: "/api/auth").
 	BasePath string // usualy /api/auth
@@ -28,16 +29,23 @@ type AuthConfig struct {
 
 	EmailAndPassword  EmailAndPassword
 	EmailVerification EmailVerification
-	// SessionConfig configures the legacy JWT access/refresh flow.
-	SessionConfig SessionConfig
-	// Session configures better-auth style cookie sessions (compat mode).
-	Session Session
+	Session           Session
+
+	GoAuth GoAuthConfig
+}
+
+// GoAuthConfig holds top-level options better-auth doesn't have.
+type GoAuthConfig struct {
+	// Mode selects the exposed API surface (default ModeLegacy).
+	Mode Mode
+	// Session holds goauth-only session options (single session, legacy JWTs).
+	Session SessionGoAuth
 }
 
 // SetDefaults sets sensible default values for unspecified options.
 func (opts *AuthConfig) SetDefaults() {
-	if opts.Mode == "" {
-		opts.Mode = ModeLegacy
+	if opts.GoAuth.Mode == "" {
+		opts.GoAuth.Mode = ModeLegacy
 	}
 	if opts.AppName == "" {
 		opts.AppName = DefaultAppName
@@ -48,12 +56,21 @@ func (opts *AuthConfig) SetDefaults() {
 	if opts.Secret == "" {
 		opts.Secret = os.Getenv(SecretEnvVar)
 	}
-	if opts.Secret == "" && opts.Mode == ModeLegacy {
-		opts.Secret = opts.SessionConfig.AccessSecret
+	jwt := &opts.GoAuth.Session.JWT
+	if opts.Secret == "" && opts.GoAuth.Mode == ModeLegacy {
+		opts.Secret = jwt.AccessSecret
 	}
-	// legacy routes are still mounted in compat mode and need a JWT secret
-	if opts.SessionConfig.AccessSecret == "" && opts.Mode == ModeCompat {
-		opts.SessionConfig.AccessSecret = opts.Secret
+	if jwt.AccessSecret == "" && opts.Secret != "" {
+		jwt.AccessSecret = DeriveKey(opts.Secret, "goauth-access")
+	}
+	if jwt.RefreshSecret == "" && opts.Secret != "" {
+		jwt.RefreshSecret = DeriveKey(opts.Secret, "goauth-refresh")
+	}
+	if jwt.AccessExpiresIn <= 0 {
+		jwt.AccessExpiresIn = time.Hour
+	}
+	if jwt.RefreshExpiresIn <= 0 {
+		jwt.RefreshExpiresIn = 7 * 24 * time.Hour
 	}
 	if opts.Advanced.CookiePrefix == "" {
 		opts.Advanced.CookiePrefix = DefaultCookiePrefix
@@ -79,34 +96,25 @@ func (opts *AuthConfig) SetDefaults() {
 	if opts.Session.FreshAge == 0 {
 		opts.Session.FreshAge = 24 * time.Hour
 	}
-	if opts.SessionConfig.RevocationPrefix == "" {
-		opts.SessionConfig.RevocationPrefix = "revoked:session"
-	}
-	if opts.SessionConfig.BlacklistPrefix == "" {
-		opts.SessionConfig.BlacklistPrefix = "blacklisted"
-	}
-	if opts.SessionConfig.AccessExpireMin <= 0 {
-		opts.SessionConfig.AccessExpireMin = 60 // 1 hour
-	}
-	if opts.SessionConfig.RefreshExpireMin <= 0 {
-		opts.SessionConfig.RefreshExpireMin = 10080 // 7 days (7 * 24 * 60 min)
-	}
-	if opts.SessionConfig.RefreshSecret == "" && opts.SessionConfig.AccessSecret != "" {
-		opts.SessionConfig.RefreshSecret = opts.SessionConfig.AccessSecret
-	}
-	// verification sender
 	if opts.EmailVerification.ExpiresIn <= 0 {
-		opts.EmailVerification.ExpiresIn = 15 * time.Minute
+		opts.EmailVerification.ExpiresIn = time.Hour
 	}
+	if opts.EmailVerification.GoAuth.CodeExpiresIn <= 0 {
+		opts.EmailVerification.GoAuth.CodeExpiresIn = 15 * time.Minute
+	}
+}
+
+// DeriveKey derives a purpose-specific key from secret (hex HMAC-SHA256), so one secret can feed several signers.
+func DeriveKey(secret, purpose string) string {
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write([]byte(purpose))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // Validate verifies that required options are present and valid.
 func (opts *AuthConfig) Validate() error {
-	switch opts.Mode {
+	switch opts.GoAuth.Mode {
 	case "", ModeLegacy:
-		if opts.SessionConfig.AccessSecret == "" {
-			return errors.New("goauth: SessionConfig.AccessSecret is required")
-		}
 	case ModeCompat:
 		if opts.Secret == "" {
 			return fmt.Errorf("goauth: Secret (or $%s) is required in compat mode", SecretEnvVar)
@@ -115,7 +123,7 @@ func (opts *AuthConfig) Validate() error {
 			return errors.New("goauth: BaseURL is required in compat mode")
 		}
 	default:
-		return fmt.Errorf("goauth: unknown Mode %q", opts.Mode)
+		return fmt.Errorf("goauth: unknown Mode %q", opts.GoAuth.Mode)
 	}
 	if opts.BaseURL != "" {
 		u, err := url.Parse(opts.BaseURL)
@@ -126,8 +134,12 @@ func (opts *AuthConfig) Validate() error {
 	if opts.Advanced.CrossSubDomainCookies.Enabled && opts.CookieDomain() == "" {
 		return errors.New("goauth: CrossSubDomainCookies requires Domain or BaseURL")
 	}
-	if opts.SessionConfig.AccessSecret == "" {
-		return errors.New("goauth: SessionConfig.AccessSecret is required")
+	jwt := opts.GoAuth.Session.JWT
+	if jwt.AccessSecret == "" || jwt.RefreshSecret == "" {
+		return errors.New("goauth: Secret (or GoAuth.Session.JWT.AccessSecret and RefreshSecret) is required")
+	}
+	if jwt.AccessSecret == jwt.RefreshSecret {
+		return errors.New("goauth: GoAuth.Session.JWT.AccessSecret and RefreshSecret must differ")
 	}
 	if opts.Secret != "" && len(opts.Secret) < MinSecretLength {
 		slog.Warn("goauth: Secret is shorter than recommended", "min", MinSecretLength, "len", len(opts.Secret))

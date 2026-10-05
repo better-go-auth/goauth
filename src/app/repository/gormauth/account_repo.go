@@ -36,7 +36,7 @@ func (r *AccountRepo) CreateAccount(ctx context.Context, account *models.Account
 func (r *AccountRepo) GetAccountByProviderAndAccountID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
-		Where(models.Account{ProviderID: providerID, AccountID: accountID}).
+		Where(&models.Account{ProviderID: providerID, AccountID: accountID}, "ProviderID", "AccountID").
 		Take(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -50,7 +50,7 @@ func (r *AccountRepo) GetAccountByProviderAndAccountID(ctx context.Context, prov
 func (r *AccountRepo) GetAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error) {
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
-		Where(models.Account{UserID: userID, ProviderID: providerID}).
+		Where(&models.Account{UserID: userID, ProviderID: providerID}, "UserID", "ProviderID").
 		Take(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -64,20 +64,20 @@ func (r *AccountRepo) GetAccountByUserAndProvider(ctx context.Context, userID st
 func (r *AccountRepo) UpdateAccount(ctx context.Context, id string, data map[string]interface{}) (*models.Account, error) {
 	result := gormutil.GetDB(ctx, r.db).
 		Model(&models.Account{}).
-		Where("id = ?", id).
+		Where(accountByID(id), "ID").
 		Updates(data)
 	if result.Error != nil {
 		return nil, fmt.Errorf("gorm/account: update: %w", result.Error)
 	}
 	var account models.Account
-	if err := gormutil.GetDB(ctx, r.db).Where("id = ?", id).Take(&account).Error; err != nil {
+	if err := gormutil.GetDB(ctx, r.db).Where(accountByID(id), "ID").Take(&account).Error; err != nil {
 		return nil, err
 	}
 	return &account, nil
 }
 
 func (r *AccountRepo) DeleteAccountsByUserID(ctx context.Context, userID string) error {
-	if err := gormutil.GetDB(ctx, r.db).Where("user_id = ?", userID).Delete(&models.Account{}).Error; err != nil {
+	if err := gormutil.GetDB(ctx, r.db).Where(&models.Account{UserID: userID}, "UserID").Delete(&models.Account{}).Error; err != nil {
 		return fmt.Errorf("gorm/account: delete by user id: %w", err)
 	}
 	return nil
@@ -85,7 +85,7 @@ func (r *AccountRepo) DeleteAccountsByUserID(ctx context.Context, userID string)
 
 func (r *AccountRepo) DeleteAccountByUserAndProvider(ctx context.Context, userID, providerID string) error {
 	if err := gormutil.GetDB(ctx, r.db).
-		Where("user_id = ? AND provider_id = ?", userID, providerID).
+		Where(&models.Account{UserID: userID, ProviderID: models.Providers(providerID)}, "UserID", "ProviderID").
 		Delete(&models.Account{}).Error; err != nil {
 		return fmt.Errorf("gorm/account: delete by user and provider: %w", err)
 	}
@@ -94,8 +94,12 @@ func (r *AccountRepo) DeleteAccountByUserAndProvider(ctx context.Context, userID
 
 func (r *AccountRepo) ListAccountsByUserID(ctx context.Context, userID string) ([]models.Account, error) {
 	var accounts []models.Account
-	if err := gormutil.GetDB(ctx, r.db).Where("user_id = ?", userID).Find(&accounts).Error; err != nil {
+	if err := gormutil.GetDB(ctx, r.db).Where(&models.Account{UserID: userID}, "UserID").Find(&accounts).Error; err != nil {
 		return nil, fmt.Errorf("gorm/account: list by user id: %w", err)
 	}
 	return accounts, nil
+}
+
+func accountByID(id string) *models.Account {
+	return &models.Account{Base: models.Base{ID: id}}
 }

@@ -25,7 +25,7 @@ type Plugin struct {
 	migrator     migration.IMigrator
 	service      adminsvc.IAdminService
 	hookService  *adminsvc.AdminHookService
-	sessionConf  config.SessionConfig
+	sessionConf  config.SessionGoAuth
 	basePath     string
 	handler      *humaadmin.AdminHandler
 	authenticate authenticator.AuthenticateFunc
@@ -59,7 +59,7 @@ func WithDefaultRole(role enums.Role) Option {
 //			p.jwtSecret = secret
 //		}
 //	}
-func WithSessionConfig(sessionConfig config.SessionConfig) Option {
+func WithSessionConfig(sessionConfig config.SessionGoAuth) Option {
 	return func(p *Plugin) {
 		p.sessionConf = sessionConfig
 	}

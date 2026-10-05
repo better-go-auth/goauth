@@ -42,7 +42,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 	var created *models.Invitation
 	err = s.txManager.Transaction(ctx, func(txCtx context.Context) error {
 		if existing, err := s.inviteRepo.GetInvitationByOrgAndEmail(txCtx, input.OrganizationID, input.Email); err == nil && existing != nil {
-			_, err = s.inviteRepo.UpdateInvitation(txCtx, existing.ID, map[string]interface{}{"status": string(models.InvitationCanceled)})
+			_, err = s.inviteRepo.UpdateInvitation(txCtx, existing.ID, map[string]interface{}{"Status": string(models.InvitationCanceled)})
 			if err != nil {
 				return fmt.Errorf("orgsvc: cancel existing invitation: %w", err)
 			}
@@ -144,9 +144,9 @@ func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID 
 		// Update invitation status
 		acceptedAt := time.Now().UTC()
 		_, err = s.inviteRepo.UpdateInvitation(txCtx, invitationID, map[string]interface{}{
-			"status":         string(models.InvitationAccepted),
-			"accepted_by_id": userID,
-			"accepted_at":    acceptedAt,
+			"Status":       string(models.InvitationAccepted),
+			"AcceptedByID": userID,
+			"AcceptedAt":   acceptedAt,
 		})
 		if err != nil {
 			return fmt.Errorf("orgsvc: update invitation status: %w", err)
@@ -161,7 +161,7 @@ func (s *OrgService) RejectInvitation(ctx context.Context, invitationID string, 
 	if _, err := s.inviteRepo.GetInvitationByID(ctx, invitationID); err != nil {
 		return orgerrors.ErrInvitationNotFound
 	}
-	_, err := s.inviteRepo.UpdateInvitation(ctx, invitationID, map[string]interface{}{"status": string(models.InvitationRejected)})
+	_, err := s.inviteRepo.UpdateInvitation(ctx, invitationID, map[string]interface{}{"Status": string(models.InvitationRejected)})
 	return err
 }
 
@@ -169,7 +169,7 @@ func (s *OrgService) CancelInvitation(ctx context.Context, invitationID string, 
 	if _, err := s.inviteRepo.GetInvitationByID(ctx, invitationID); err != nil {
 		return orgerrors.ErrInvitationNotFound
 	}
-	_, err := s.inviteRepo.UpdateInvitation(ctx, invitationID, map[string]interface{}{"status": string(models.InvitationCanceled)})
+	_, err := s.inviteRepo.UpdateInvitation(ctx, invitationID, map[string]interface{}{"Status": string(models.InvitationCanceled)})
 	return err
 }
 

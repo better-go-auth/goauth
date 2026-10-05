@@ -7,6 +7,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/core/auth"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers/hasher"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
@@ -18,7 +19,7 @@ func createActiveUser(t *testing.T, env *helpers.TestEnv, email, password string
 	active := true
 	usr := &models.User{UserDto: models.UserDto{
 		FirstName: "Fix", LastName: "User", Email: &email,
-		EmailVerified: true, Active: &active, Role: "User",
+		EmailVerified: true, Active: &active, Role: enums.User,
 	}}
 	if err := env.DB.Create(usr).Error; err != nil {
 		t.Fatalf("create user: %v", err)
@@ -149,7 +150,7 @@ func TestRefreshRejectsBlockedUsersAndExpiredSessions(t *testing.T) {
 }
 
 func TestTokenCookiesAttributes(t *testing.T) {
-	c := auth.CreateCookie("access-token", "v", 60, auth.CookieAttrs{Secure: true, Domain: "example.com"})
+	c := auth.CreateCookie("access-token", "v", time.Hour, auth.CookieAttrs{Secure: true, Domain: "example.com"})
 	if !c.Secure || c.Domain != "example.com" || !c.HttpOnly || c.MaxAge != 3600 {
 		t.Fatalf("unexpected cookie: %+v", c)
 	}

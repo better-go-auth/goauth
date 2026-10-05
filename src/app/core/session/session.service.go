@@ -19,12 +19,12 @@ import (
 type Service struct {
 	SessionRepo repo_interfaces.ISessionRepo
 	// ProvServ    *providers.IProviderS
-	sConf  config.SessionConfig
+	sConf  config.SessionGoAuth
 	sStore sec_storage.SecondaryStorage
 	Hooks  plugins.HookRegistry
 }
 
-func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISessionRepo, sStore sec_storage.SecondaryStorage, hooks ...plugins.HookRegistry) *Service {
+func NewServiceWithRepo(conf config.SessionGoAuth, repo repo_interfaces.ISessionRepo, sStore sec_storage.SecondaryStorage, hooks ...plugins.HookRegistry) *Service {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]
@@ -43,19 +43,21 @@ func NewServiceWithRepo(conf config.SessionConfig, repo repo_interfaces.ISession
 var _ serv_interfaces.ISessionService = (*Service)(nil)
 
 func (aus Service) GenerateTokens(user *token.CustomClaims) (*models.AuthTokens, error) {
-	claims := &token.CustomClaims{
-		Role:        user.Role,
-		UserID:      user.UserID,
-		ActiveOrgId: user.ActiveOrgId,
-		// CompanyId: user.CompanyId,
+	claims := token.CustomClaims{
+		Role:          user.Role,
+		UserID:        user.UserID,
+		ActiveOrgId:   user.ActiveOrgId,
 		ActiveOrgRole: user.ActiveOrgRole,
 		SessionID:     user.SessionID,
 	}
-	accessToken, err := jwttoken.SignWithExpiry(aus.sConf.JwtVar.AccessSecret, claims, time.Duration(aus.sConf.JwtVar.AccessExpireMin)*time.Minute)
+	jwtConf := aus.sConf.JWT
+	accessClaims, refreshClaims := claims, claims
+	accessClaims.Type, refreshClaims.Type = token.TypeAccess, token.TypeRefresh
+	accessToken, err := jwttoken.SignWithExpiry(jwtConf.AccessSecret, &accessClaims, jwtConf.AccessExpiresIn)
 	if err != nil {
 		return nil, err
 	}
-	refreshToken, err := jwttoken.SignWithExpiry(aus.sConf.JwtVar.RefreshSecret, claims, time.Duration(aus.sConf.JwtVar.RefreshExpireMin)*time.Minute)
+	refreshToken, err := jwttoken.SignWithExpiry(jwtConf.RefreshSecret, &refreshClaims, jwtConf.RefreshExpiresIn)
 	if err != nil {
 		return nil, err
 	}
@@ -92,7 +94,7 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		}
 	}
 
-	expiresIn := time.Duration(aus.sConf.JwtVar.RefreshExpireMin) * time.Minute
+	expiresIn := aus.sConf.JWT.RefreshExpiresIn
 	if opt != nil && opt.ExpiresIn > 0 {
 		expiresIn = opt.ExpiresIn
 	}
@@ -165,8 +167,8 @@ func (aus Service) BlacklistSession(ctx context.Context, sessionId string) error
 	}
 	key := fmt.Sprintf("blacklist:%s", sessionId)
 	ttl := time.Hour
-	if aus.sConf.JwtVar.RefreshExpireMin > 0 {
-		ttl = time.Duration(aus.sConf.JwtVar.RefreshExpireMin) * time.Minute
+	if aus.sConf.JWT.RefreshExpiresIn > 0 {
+		ttl = aus.sConf.JWT.RefreshExpiresIn
 	}
 	return aus.sStore.Set(ctx, key, "blacklisted", ttl)
 }

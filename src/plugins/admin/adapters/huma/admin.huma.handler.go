@@ -2,9 +2,9 @@ package humaadmin
 
 import (
 	"context"
-	"strings"
 
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	"github.com/better-go-auth/goauth/src/common/middleware"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -13,7 +13,6 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
-	"github.com/better-go-auth/goauth/src/common/middleware"
 )
 
 // AdminHandler holds admin-domain services and embeds AuthHandler for authentication.
@@ -57,7 +56,7 @@ func (h *AdminHandler) RequireAdmin(ctx context.Context, auth humatypes.AuthHead
 	}
 
 	for _, allowed := range h.Config.AdminRoles {
-		if strings.EqualFold(sessionResp.User.Role, allowed.S()) {
+		if enums.HasRole(sessionResp.User.Role, allowed.S()) {
 			return sessionResp, nil
 		}
 	}
@@ -67,7 +66,7 @@ func (h *AdminHandler) RequireAdmin(ctx context.Context, auth humatypes.AuthHead
 // Authenticate delegates authentication to the core authenticate function.
 // It first checks if the request was already authenticated into context by middleware.
 func (h *AdminHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
-	//TODO: use the plain session authenticator or the authFn based on the config
+	// TODO: use the plain session authenticator or the authFn based on the config
 	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
 		return sess, nil
 	}

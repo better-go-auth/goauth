@@ -1,4 +1,4 @@
-package compat
+package errors
 
 import (
 	"encoding/json"
@@ -11,7 +11,7 @@ import (
 )
 
 // tsCodesPath points at the better-auth checkout that sits next to goauth in this workspace.
-var tsCodesPath = filepath.Join("..", "..", "better-auth", "packages", "core", "src", "error", "codes.ts")
+var tsCodesPath = filepath.Join("..", "..", "..", "..", "better-auth", "packages", "core", "src", "error", "codes.ts")
 
 func loadSnapshot(t *testing.T) map[string]string {
 	t.Helper()
@@ -36,8 +36,8 @@ func TestBaseErrorCodesMatchBetterAuth(t *testing.T) {
 		if e.Message != msg {
 			t.Errorf("%s: message %q, want %q", code, e.Message, msg)
 		}
-		if e.Status < 400 || e.Status > 599 {
-			t.Errorf("%s: invalid status %d", code, e.Status)
+		if e.StatusCode < 400 || e.StatusCode > 599 {
+			t.Errorf("%s: invalid status %d", code, e.StatusCode)
 		}
 	}
 }
@@ -69,9 +69,9 @@ func TestSnapshotInSyncWithTypeScript(t *testing.T) {
 	}
 }
 
-func TestAPIErrorBehaviour(t *testing.T) {
+func TestErrorBehaviour(t *testing.T) {
 	e := ErrInvalidToken.WithStatus(http.StatusUnauthorized)
-	if e.Status != http.StatusUnauthorized || ErrInvalidToken.Status != http.StatusBadRequest {
+	if e.StatusCode != http.StatusUnauthorized || ErrInvalidToken.StatusCode != http.StatusBadRequest {
 		t.Fatal("WithStatus must copy, not mutate")
 	}
 	if !errors.Is(e, ErrInvalidToken) {
@@ -85,7 +85,7 @@ func TestAPIErrorBehaviour(t *testing.T) {
 
 func TestRegister(t *testing.T) {
 	e := Register("TEST_PLUGIN_CODE", "Test plugin code")
-	if got, ok := Lookup("TEST_PLUGIN_CODE"); !ok || got != e || got.Status != http.StatusBadRequest {
+	if got, ok := Lookup("TEST_PLUGIN_CODE"); !ok || got != e || got.StatusCode != http.StatusBadRequest {
 		t.Fatalf("Register/Lookup mismatch: %+v", got)
 	}
 	if Register("TEST_PLUGIN_CODE", "Test plugin code") != e {

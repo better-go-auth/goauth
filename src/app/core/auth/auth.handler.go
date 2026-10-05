@@ -19,12 +19,12 @@ type CookieAttrs struct {
 	Domain string
 }
 
-func CreateCookie(Name, Value string, minutes int, attrs CookieAttrs) http.Cookie {
+func CreateCookie(Name, Value string, maxAge time.Duration, attrs CookieAttrs) http.Cookie {
 	return http.Cookie{
 		Name:     Name,
 		Value:    Value,
-		Expires:  time.Now().Add(time.Minute * time.Duration(minutes)),
-		MaxAge:   minutes * 60,
+		Expires:  time.Now().Add(maxAge),
+		MaxAge:   int(maxAge.Seconds()),
 		HttpOnly: true, // Set HttpOnly to true to make the cookie accessible only through HTTP requests, not JavaScript
 		Path:     "/",
 		Domain:   attrs.Domain,
@@ -52,10 +52,10 @@ func (ah *GinAuthHandler) tokenCookies(tokens *models.AuthTokens) []http.Cookie 
 	if tokens == nil {
 		return nil
 	}
-	jwtVar := ah.AdminAuthServ.Config.JwtVar
+	jwtConf := ah.AdminAuthServ.Config.JWT
 	return []http.Cookie{
-		CreateCookie(Icnst.AccessToken, tokens.AccessToken, jwtVar.AccessExpireMin, ah.Cookies),
-		CreateCookie(Icnst.RefreshToken, tokens.RefreshToken, jwtVar.RefreshExpireMin, ah.Cookies),
+		CreateCookie(Icnst.AccessToken, tokens.AccessToken, jwtConf.AccessExpiresIn, ah.Cookies),
+		CreateCookie(Icnst.RefreshToken, tokens.RefreshToken, jwtConf.RefreshExpiresIn, ah.Cookies),
 	}
 }
 

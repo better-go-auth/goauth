@@ -22,31 +22,18 @@ func (r RespCode) ToStr() string {
 // ─── Predefined errors (matching better-auth error codes) ────────────────────
 
 var (
-	ErrUserNotFound       = New(UserNotFound, UserNotFound.Msg(), http.StatusNotFound)
 	ErrInvalidCredentials = New(InvalidCredentials, InvalidCredentials.Msg(), http.StatusUnauthorized)
-	ErrEmailNotVerified   = New(EmailNotVerified, EmailNotVerified.Msg(), http.StatusForbidden)
 	ErrUserBanned         = New(UserBanned, UserBanned.Msg(), http.StatusForbidden)
 	ErrEmailExists        = New(EmailExists, EmailExists.Msg(), http.StatusUnprocessableEntity)
-	ErrInvalidToken       = New(InvalidToken, InvalidToken.Msg(), http.StatusBadRequest)
 	ErrSessionNotFound    = New(SessionNotFound, SessionNotFound.Msg(), http.StatusNotFound)
-	ErrSessionExpired     = New(SessionExpired, SessionExpired.Msg(), http.StatusUnauthorized)
-	ErrUnauthorized       = New(Unauthorized, Unauthorized.Msg(), http.StatusUnauthorized)
 	ErrForbidden          = New(Forbidden, Forbidden.Msg(), http.StatusForbidden)
 	ErrWeakPassword       = New(WeakPassword, WeakPassword.Msg(), http.StatusBadRequest)
 
-	//
-	ErrInvalidEmail     = New(InvalidEmail, InvalidEmail.Msg(), http.StatusBadRequest)
-	ErrPasswordTooShort = New(PasswordTooShort, PasswordTooShort.Msg(), http.StatusBadRequest)
-	ErrPasswordTooLong  = New(PasswordTooLong, PasswordTooLong.Msg(), http.StatusBadRequest)
-	ErrProviderNotFound = New(ProviderNotFound, ProviderNotFound.Msg(), http.StatusNotFound)
-	ErrInternal         = New(InternalError, InternalError.Msg(), http.StatusInternalServerError)
-	ErrTokenExpired     = New(TokenExpired, TokenExpired.Msg(), http.StatusUnauthorized)
-	ErrInvalidPassword  = New(InvalidPassword, InvalidPassword.Msg(), http.StatusBadRequest)
-	ErrSessionNotFresh  = New(SessionNotFresh, SessionNotFresh.Msg(), http.StatusForbidden)
-	ErrTokenDontMatch   = New(TokenDontMatch, TokenDontMatch.Msg(), http.StatusBadRequest)
-	ErrInfoOrCode       = New(InfoOrCode, InfoOrCode.Msg(), http.StatusBadRequest)
-	ErrUserExists       = New(UserExists, UserExists.Msg(), http.StatusConflict)
-	ErrDataNotFound     = New(RecordNotFound, RecordNotFound.Msg(), http.StatusNotFound)
+	ErrInternal       = New(InternalError, InternalError.Msg(), http.StatusInternalServerError)
+	ErrTokenDontMatch = New(TokenDontMatch, TokenDontMatch.Msg(), http.StatusBadRequest)
+	ErrInfoOrCode     = New(InfoOrCode, InfoOrCode.Msg(), http.StatusBadRequest)
+	ErrUserExists     = New(UserExists, UserExists.Msg(), http.StatusConflict)
+	ErrDataNotFound   = New(RecordNotFound, RecordNotFound.Msg(), http.StatusNotFound)
 
 	// Compatibility aliases
 	EmailOrPasswordErr  = ErrInvalidCredentials

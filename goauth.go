@@ -94,7 +94,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	}
 
 	types.InstallScopedErrorHandler()
-	if opts.Advanced.OverrideHumaErrors {
+	if opts.Advanced.GoAuth.OverrideHumaErrors {
 		types.InstallGlobalErrorOverride()
 	}
 	// every route goauth and its plugins register is marked so its errors use the goauth format
@@ -134,12 +134,12 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	//=======================  Middlewares ==============================================|
 	//                                                                                   |
 	//===================================================================================|
-	verifier := middleware.NewJWTTokenVerifier(opts.SessionConfig.AccessSecret)
+	verifier := middleware.NewJWTTokenVerifier(opts.GoAuth.Session.JWT.AccessSecret)
 	var revocationStore middleware.RevocationStore
 	if repos != nil {
-		revocationStore = providers.NewRevocationStoreWithRepo(repos, opts.SecondaryStorage, opts.AuthConfig.SessionConfig)
+		revocationStore = providers.NewRevocationStoreWithRepo(repos, opts.SecondaryStorage, opts.AuthConfig.GoAuth.Session.JWT)
 	} else {
-		revocationStore = providers.NewRevocationStore(opts.Conn, opts.SecondaryStorage, opts.AuthConfig.SessionConfig)
+		revocationStore = providers.NewRevocationStore(opts.Conn, opts.SecondaryStorage, opts.AuthConfig.GoAuth.Session.JWT)
 	}
 
 	// make a middleware
@@ -156,14 +156,14 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	cookieMgr := cookies.New(opts.AuthConfig)
 	sessionMgr := sessions.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks)
 	resolver := sessions.NewResolver(sessionMgr, cookieMgr)
-	if opts.Mode == config.ModeCompat {
+	if opts.GoAuth.Mode == config.ModeCompat {
 		ba.RegisterRoutes(api, ba.Deps{Conf: opts.AuthConfig, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver})
 	}
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
 	//TODO: use the session function here
-	authenticate := authenticator.NewDefaultAuthenticator(opts.SessionConfig.AccessSecret, repos)
+	authenticate := authenticator.NewDefaultAuthenticator(opts.GoAuth.Session.JWT.AccessSecret, repos)
 	initCtx := &plugin.InitContext{
 		Ctx:           context.Background(),
 		Api:           api,

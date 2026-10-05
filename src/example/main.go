@@ -57,15 +57,15 @@ func main() {
 	mux := http.NewServeMux()
 	apiConfig := huma.DefaultConfig("Better Go Auth Example Server", "1.0.0")
 	api := humago.New(mux, apiConfig)
-	jwt := loc_conf.JwtVar{
+	jwt := loc_conf.SessionJWT{
 		AccessSecret:     accessSecret,
 		RefreshSecret:    refreshSecret,
-		AccessExpireMin:  60,
-		RefreshExpireMin: 1440,
+		AccessExpiresIn:  time.Hour,
+		RefreshExpiresIn: 24 * time.Hour,
 	}
 
 	emailSender := &ConsoleEmailSender{}
-	adminPlugin, err := admin.NewWithGorm(db, admin.WithSessionConfig(loc_conf.SessionConfig{JwtVar: jwt}))
+	adminPlugin, err := admin.NewWithGorm(db, admin.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}))
 	if err != nil {
 		log.Fatalf("failed to create admin plugin: %v", err)
 	}
@@ -87,11 +87,13 @@ func main() {
 		Conn: db,
 		AuthConfig: loc_conf.AuthConfig{
 			EmailVerification: loc_conf.EmailVerification{
-				ExpiresIn:              15 * time.Minute,
-				VerificationCodeSender: emailSender,
+				GoAuth: loc_conf.EmailVerificationGoAuth{
+					CodeExpiresIn: 15 * time.Minute,
+					CodeSender:    emailSender,
+				},
 			},
-			SessionConfig: loc_conf.SessionConfig{
-				JwtVar: jwt,
+			GoAuth: loc_conf.GoAuthConfig{
+				Session: loc_conf.SessionGoAuth{JWT: jwt},
 			},
 		},
 		Plugins: []plugin.Plugin{

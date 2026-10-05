@@ -1,8 +1,8 @@
-package compat
+package errors
 
 import "net/http"
 
-// Base error codes from better-auth `packages/core/src/error/codes.ts`.
+// Base error codes from better-auth `packages/core/src/error/codes.ts`, registered so Lookup/Codes see them.
 // Messages must match the TypeScript source exactly; statuses are the most common ones used upstream.
 var (
 	ErrUserNotFound                         = Err(http.StatusNotFound, "USER_NOT_FOUND", "User not found")

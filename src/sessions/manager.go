@@ -170,8 +170,8 @@ func (m *Manager) Refresh(ctx context.Context, sw *compat.SessionWithUser) (*com
 	expiresAt := now.Add(m.conf.ExpiresIn)
 	if m.storeInDB() {
 		if _, err := m.sessions.UpdateSession(ctx, sw.Session.ID, map[string]interface{}{
-			"expires_at": expiresAt,
-			"updated_at": now,
+			"ExpiresAt": expiresAt,
+			"UpdatedAt": now,
 		}); err != nil {
 			if isNotFound(err) {
 				return nil, nil

@@ -105,7 +105,7 @@ func backfillUserNames(db *gorm.DB) error {
 				if name == "" {
 					continue
 				}
-				if err := tx.Model(&models.User{}).Where("id = ?", users[i].ID).UpdateColumn("name", name).Error; err != nil {
+				if err := tx.Model(&models.User{}).Where(&models.User{Base: models.Base{ID: users[i].ID}}, "ID").UpdateColumn("Name", name).Error; err != nil {
 					return err
 				}
 			}
