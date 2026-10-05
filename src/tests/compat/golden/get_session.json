@@ -1,0 +1,21 @@
+{
+  "session": {
+    "id": "<string>",
+    "userId": "<string>",
+    "token": "<string>",
+    "expiresAt": "<date>",
+    "ipAddress": "<string|null>",
+    "userAgent": "<string|null>",
+    "createdAt": "<date>",
+    "updatedAt": "<date>"
+  },
+  "user": {
+    "id": "<string>",
+    "name": "<string>",
+    "email": "<string>",
+    "emailVerified": "<bool>",
+    "image": "<string|null>",
+    "createdAt": "<date>",
+    "updatedAt": "<date>"
+  }
+}

@@ -5,19 +5,24 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/better-go-auth/goauth/src/app/core"
+	"github.com/better-go-auth/goauth/src/app/core/ba"
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	"github.com/better-go-auth/goauth/src/sessions"
 	"gorm.io/gorm"
 
 	"github.com/better-go-auth/goauth/src/common/middleware"
@@ -38,6 +43,12 @@ type GoAuth struct {
 
 	Provider     *providers.IProviderS
 	Repositories repo_interfaces.IAuthRepos
+
+	// Sessions manages better-auth style cookie sessions.
+	Sessions *sessions.Manager
+	// SessionResolver provides Huma middlewares that load the cookie session.
+	SessionResolver *sessions.Resolver
+	Cookies         *cookies.Manager
 }
 type GoAuthOptions struct {
 	config.AuthConfig
@@ -89,6 +100,10 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	// every route goauth and its plugins register is marked so its errors use the goauth format
 	api = types.WrapAPI(api)
 
+	if opts.Advanced.GenerateID != nil {
+		models.SetIDGenerator(opts.Advanced.GenerateID)
+	}
+
 	if opts.Conn == nil && opts.Repositories == nil {
 		return nil, errors.New("goauth: either Conn (*gorm.DB) or Repositories (repo_interfaces.IAuthRepos) must be provided")
 	}
@@ -137,6 +152,13 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 
 	// setup the auth routes
 	authSvc := core.SetupAllAuthRoutesWithRepos(api, opts.AuthConfig, opts.EmailVerification, providerService, repos, hooks)
+
+	cookieMgr := cookies.New(opts.AuthConfig)
+	sessionMgr := sessions.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks)
+	resolver := sessions.NewResolver(sessionMgr, cookieMgr)
+	if opts.Mode == config.ModeCompat {
+		ba.RegisterRoutes(api, ba.Deps{Conf: opts.AuthConfig, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver})
+	}
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
@@ -193,5 +215,26 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		Provider:           providerService,
 		Repositories:       repos,
 		MiddlewareInt:      mdlWare,
+		Sessions:           sessionMgr,
+		SessionResolver:    resolver,
+		Cookies:            cookieMgr,
 	}, nil
+}
+
+// StartSessionCleanup deletes expired sessions every interval until ctx is cancelled.
+func (g *GoAuth) StartSessionCleanup(ctx context.Context, interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if err := g.Sessions.CleanupExpired(ctx); err != nil {
+					slog.Error("goauth: session cleanup failed", "err", err)
+				}
+			}
+		}
+	}()
 }

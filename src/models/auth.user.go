@@ -2,6 +2,7 @@ package models
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	Imdl "github.com/better-go-auth/goauth/src/common/dtos"
@@ -22,11 +23,11 @@ type User struct {
 }
 
 type UserDto struct {
-	FirstName     string     `json:"firstName,omitempty" minLength:"1"`
-	LastName      string     `json:"lastName,omitempty" `
+	// Name is better-auth's display name; derived from FirstName/LastName when empty.
+	Name          string     `json:"name,omitempty" gorm:"not null;default:''" bun:"name,notnull"`
 	Email         *string    `json:"email,omitempty" format:"email"  gorm:"uniqueIndex" `
 	EmailVerified bool       `json:"emailVerified"  gorm:"default:false"                  bun:"email_verified,default:false"`
-	Password      string     `json:"-" `
+	// Password      string     `json:"-" `
 	Role          enums.Role `gorm:"default:UNVERIFIED_PERSON" json:"role" ` // this is the company-level role,
 
 	Active        *bool               `json:"active,omitempty"  gorm:"index:idx_users_lookup,priority:4"` // can the user login
@@ -51,6 +52,11 @@ type UserDto struct {
 	Username string `json:"username,omitempty"`
 	// org related
 	ActiveOrgId *string `json:"org_id,omitempty" gorm:"index:idx_users_lookup,priority:1"`
+	//=========================================   Fields Not Existing on better Auth ======================|
+	//                                                                                                     |
+	//=====================================================================================================|
+	FirstName string `json:"firstName,omitempty" minLength:"1"`
+	LastName  string `json:"lastName,omitempty" `
 }
 
 func (u *UserDto) SetOnCreate(key string) {
@@ -59,6 +65,22 @@ func (u *UserDto) SetOnCreate(key string) {
 
 func (u *User) GetFullname() string {
 	return u.FirstName + " " + u.LastName
+}
+
+// DisplayNameOrFull returns Name, falling back to "FirstName LastName".
+func (u *UserDto) DisplayNameOrFull() string {
+	if u.Name != "" {
+		return u.Name
+	}
+	return strings.TrimSpace(u.FirstName + " " + u.LastName)
+}
+
+// BeforeSave keeps Name populated for rows created through legacy first/last name APIs.
+func (u *User) BeforeSave(tx *gorm.DB) error {
+	if u.Name == "" {
+		u.Name = u.DisplayNameOrFull()
+	}
+	return nil
 }
 
 func (u *User) GetEmail() string {

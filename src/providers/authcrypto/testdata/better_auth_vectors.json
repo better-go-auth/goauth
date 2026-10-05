@@ -1,0 +1,10 @@
+{
+  "secret": "better-auth-secret-123456789012345678901234567890",
+  "password": "Pässwörd-123!",
+  "passwordHash": "f564728f1fa68f4ecd8e6374e197a0b8:cddc128aafe856439a0b67cab56d185a5951b2149cd23acac156a0a083e2174bd2500daa2df7dc172799ee6c092119396fc4744955cd7a2ea1cefe56ef0e41b9",
+  "cookieValue": "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6",
+  "cookieSignature": "gAuAoQlhHQqF/wU+oms1xuPtOiGMngXPtZB+FcdLpq0=",
+  "plaintext": "hello better-auth",
+  "ciphertext": "0103e50ad5bb18ef87ca1a86bd18294e8bf218f9239318ac4365d803d3739f958bccb5aff56135a994d7e79b19b6e0d250fea7a33d7b18d611",
+  "jwt": "eyJhbGciOiJIUzI1NiJ9.eyJlbWFpbCI6ImFAZXhhbXBsZS5jb20iLCJpYXQiOjE3OTEwNjkyNDIsImV4cCI6MzM2Nzg2OTI0Mn0.cydYkyFVDqd1YIVKOD9cBOsG3NFtHXcCry7Vr-IvhJA"
+}

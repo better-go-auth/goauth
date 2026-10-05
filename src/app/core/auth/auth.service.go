@@ -28,7 +28,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		}
 	}
 
-	hash, err := hasher.BcryptCreateHash(input.Password)
+	hash, err := aus.Passwords.Hash(input.Password)
 	if err != nil {
 		return dtos.InternalErrMS[models.User]("Hashing Error"), err
 	}
@@ -39,7 +39,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		if getErr == nil && existingUser != nil {
 			// Update pending verification user
 			updated, err := aus.userRepo.UpdateUser(txCtx, existingUser.ID, map[string]interface{}{
-				"password":       hash,
+				// "password":       hash,
 				"first_name":     input.FirstName,
 				"last_name":      input.LastName,
 				"account_status": enums.AccountPendingVerification,
@@ -57,7 +57,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 					FirstName:     input.FirstName,
 					LastName:      input.LastName,
 					Email:         &input.Email,
-					Password:      hash,
+					// Password:      hash,
 					Role:          enums.User,
 					AccountStatus: enums.AccountPendingVerification,
 					Active:        new(bool), // false
@@ -149,21 +149,26 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 	// 1. check the user exists and is active
 	usr, err := aus.userRepo.GetUserByEmail(ctx, input.LoginInfo)
 	if err != nil || usr == nil || usr.Active == nil || (usr.Active != nil && !*usr.Active) {
-		_, _ = hasher.BcryptCreateHash(input.Password) // for security timing protection
+		_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
 		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
 	}
 
 	// 2. Get password from account record
 	account, err := aus.accountRepo.GetAccountByUserAndProvider(ctx, usr.ID, models.ProvCredential)
 	if err != nil || account == nil || account.Password == nil {
-		_, _ = hasher.BcryptCreateHash(input.Password) // for security timing protection
+		_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
 		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.ErrInvalidCredentials
 	}
 
 	// 3. compare the password hash
-	valid := hasher.BcryptPasswordsMatch(input.Password, *account.Password)
+	valid, upgraded, _ := aus.Passwords.Verify(*account.Password, input.Password)
 	if !valid {
 		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
+	}
+	if upgraded != "" {
+		if _, err := aus.accountRepo.UpdateAccount(ctx, account.ID, map[string]interface{}{"password": upgraded}); err != nil {
+			logger.ErrorCtx(ctx, "could not upgrade password hash", err, nil)
+		}
 	}
 
 	// 4. Check ban (after credential check; expired bans are lifted silently)
@@ -304,7 +309,7 @@ func (aus Service) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GR
 
 // ResetPwd [ID]
 func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GResp[bool], error) {
-	hash, err := hasher.BcryptCreateHash(input.NewPassword)
+	hash, err := aus.Passwords.Hash(input.NewPassword)
 	if err != nil {
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}

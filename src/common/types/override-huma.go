@@ -14,6 +14,10 @@ import (
 // opMetaKey marks operations registered by goauth (core and plugins).
 const opMetaKey = "goauth"
 
+// RawBodyMetaKey marks operations whose bodies must reach the client untouched (no $schema links or other
+// host transformers), as better-auth clients expect exact payloads.
+const RawBodyMetaKey = "goauth.rawBody"
+
 // NewError builds goauth's Better Auth style error ({"code","message"}).
 // Request body validation failures (422) are reported as 400 VALIDATION_ERROR, like Better Auth.
 func NewError(status int, msg string, errs ...error) huma.StatusError {
@@ -69,6 +73,14 @@ type goauthAPI struct {
 
 func (a *goauthAPI) Adapter() huma.Adapter {
 	return markingAdapter{Adapter: a.API.Adapter()}
+}
+
+// Transform skips the host's response transformers for operations marked with RawBodyMetaKey.
+func (a *goauthAPI) Transform(ctx huma.Context, status string, v any) (any, error) {
+	if op := ctx.Operation(); op != nil && op.Metadata[RawBodyMetaKey] == true {
+		return v, nil
+	}
+	return a.API.Transform(ctx, status, v)
 }
 
 // DocumentOperation keeps huma.Group prefixes and custom documenters working behind the wrapper.

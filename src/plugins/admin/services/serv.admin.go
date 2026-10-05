@@ -23,7 +23,7 @@ import (
 	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
-	"golang.org/x/crypto/bcrypt"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
 
 var emailRegex = regexp.MustCompile(`^[A-Za-z0-9_'+\-.]+@[A-Za-z0-9](?:[A-Za-z0-9\-]*[A-Za-z0-9])?\.[A-Za-z]{2,}$`)
@@ -116,7 +116,7 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 		role = input.Role
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	hash, err := authcrypto.NewPasswords(s.authConfig).Hash(input.Password)
 	if err != nil {
 		return nil, fmt.Errorf("adminsvc: hash password: %w", err)
 	}
@@ -132,7 +132,7 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 		Base: models.Base{ID: models.NewID(), UpdatedAt: &now},
 	}
 
-	created, err := s.adminRepo.CreateUserWithAccount(ctx, user, string(hash))
+	created, err := s.adminRepo.CreateUserWithAccount(ctx, user, hash)
 	if err != nil {
 		return nil, fmt.Errorf("adminsvc: create user: %w", err)
 	}
@@ -183,12 +183,12 @@ func (s *AdminService) SetUserPassword(ctx context.Context, input admindtos.Admi
 		return autherr.ErrUserNotFound
 	}
 
-	hash, err := bcrypt.GenerateFromPassword([]byte(input.NewPassword), bcrypt.DefaultCost)
+	hash, err := authcrypto.NewPasswords(s.authConfig).Hash(input.NewPassword)
 	if err != nil {
 		return fmt.Errorf("adminsvc: hash password: %w", err)
 	}
 
-	if err := s.adminRepo.SetUserPassword(ctx, input.UserID, string(hash)); err != nil {
+	if err := s.adminRepo.SetUserPassword(ctx, input.UserID, hash); err != nil {
 		return fmt.Errorf("adminsvc: set user password: %w", err)
 	}
 	return nil

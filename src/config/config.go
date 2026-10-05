@@ -28,7 +28,10 @@ type AuthConfig struct {
 
 	EmailAndPassword  EmailAndPassword
 	EmailVerification EmailVerification
-	SessionConfig     SessionConfig
+	// SessionConfig configures the legacy JWT access/refresh flow.
+	SessionConfig SessionConfig
+	// Session configures better-auth style cookie sessions (compat mode).
+	Session Session
 }
 
 // SetDefaults sets sensible default values for unspecified options.
@@ -66,6 +69,15 @@ func (opts *AuthConfig) SetDefaults() {
 	}
 	if opts.EmailAndPassword.ResetPasswordTokenExpiresIn <= 0 {
 		opts.EmailAndPassword.ResetPasswordTokenExpiresIn = time.Hour
+	}
+	if opts.Session.ExpiresIn <= 0 {
+		opts.Session.ExpiresIn = 7 * 24 * time.Hour
+	}
+	if opts.Session.UpdateAge <= 0 {
+		opts.Session.UpdateAge = 24 * time.Hour
+	}
+	if opts.Session.FreshAge == 0 {
+		opts.Session.FreshAge = 24 * time.Hour
 	}
 	if opts.SessionConfig.RevocationPrefix == "" {
 		opts.SessionConfig.RevocationPrefix = "revoked:session"

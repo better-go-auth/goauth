@@ -59,8 +59,19 @@ type OperationAccessDto struct {
 }
 
 // NewID generates a new ULID string.
+var idGenerator = func() string { return ulid.Make().String() }
+
+// SetIDGenerator replaces the generator used for new record IDs (nil restores ULID).
+// Many legacy columns are sized for 26-char ULIDs.
+func SetIDGenerator(fn func() string) {
+	if fn == nil {
+		fn = func() string { return ulid.Make().String() }
+	}
+	idGenerator = fn
+}
+
 func NewID() string {
-	return ulid.Make().String()
+	return idGenerator()
 }
 
 func NewSecureId() string {

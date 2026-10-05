@@ -3,6 +3,7 @@ package auth
 import (
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/plugins"
@@ -27,6 +28,8 @@ type Service struct {
 	// hooks & txn
 	TxMgr interfaces.ITransactionManager
 	Hooks plugins.HookRegistry
+	// Passwords hashes/verifies passwords; nil means legacy bcrypt.
+	Passwords *authcrypto.Passwords
 }
 
 func NewAuthService(conf *config.SessionConfig, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, authRepos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) *Service {

@@ -63,7 +63,11 @@ type EmailAndPassword struct {
 	 * verification function. if you want to use a
 	 * different algorithm.
 	 */
-	// Password *PasswordHasher
+	// Password overrides hashing; default is scrypt (better-auth format) in compat mode, bcrypt in legacy mode.
+	Password *PasswordHasher
+	// RehashPasswords upgrades stored hashes to the default format on successful sign-in.
+	// One-way: older goauth releases cannot verify scrypt hashes.
+	RehashPasswords bool
 	/**
 	 * Automatically sign in the user after sign up
 	 *
@@ -122,7 +126,7 @@ type OnPasswordResetFunc func(data PasswordResetData, request *http.Request) err
 type PasswordResetData struct {
 	User models.User
 }
-
+//TODO: make this a interface instead of a struct
 type PasswordHasher struct {
 	Hash   func(password string) (string, error)
 	Verify func(hash string, password string) (bool, error)

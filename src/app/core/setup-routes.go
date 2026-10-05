@@ -7,6 +7,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core/verification"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers"
@@ -33,6 +34,9 @@ func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg conf
 
 	authSvc := auth.NewAuthService(&conf.SessionConfig, provServ, vSvc, sSvc, repos, h)
 	profileServ := profile.NewProfileServH(provServ, vSvc, sSvc, repos)
+	passwords := authcrypto.NewPasswords(conf)
+	authSvc.Passwords = passwords
+	profileServ.Passwords = passwords
 
 	// Set up the routes
 	session.SetupSessionRoutes(api, provServ, sSvc, conf)

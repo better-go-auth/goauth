@@ -15,7 +15,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers"
-	"github.com/better-go-auth/goauth/src/providers/hasher"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
 
 type Service struct {
@@ -25,6 +25,8 @@ type Service struct {
 	TxMgr       interfaces.ITransactionManager
 	userRepo    repo_interfaces.IUserRepo
 	accountRepo repo_interfaces.IOAuthAccountRepo
+	// Passwords hashes/verifies passwords; nil means legacy bcrypt.
+	Passwords *authcrypto.Passwords
 }
 
 func NewProfileServH(genServ *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sesSvc serv_interfaces.ISessionService, authRepos repo_interfaces.IAuthRepos) *Service {
@@ -84,12 +86,12 @@ func (aus *Service) ChangePassword(ctx context.Context, userId, sessionId string
 		return dtos.BadReqM[models.User](ICnst.PasswordDontMatch.Msg()), ICnst.PwdDontMatch
 	}
 
-	valid := hasher.BcryptPasswordsMatch(input.OldPassword, *account.Password)
+	valid, _, _ := aus.Passwords.Verify(*account.Password, input.OldPassword)
 	if !valid {
 		return dtos.BadReqM[models.User](ICnst.PasswordDontMatch.Msg()), ICnst.PwdDontMatch
 	}
 
-	hash, err := hasher.BcryptCreateHash(input.NewPassword)
+	hash, err := aus.Passwords.Hash(input.NewPassword)
 	if err != nil {
 		return dtos.InternalErrMS[models.User]("Hashing Error"), err
 	}
@@ -131,7 +133,7 @@ func (aus *Service) SendChangeEmail(ctx context.Context, userId string, input mo
 	if err != nil || account == nil || account.Password == nil {
 		return dtos.BadReqM[bool](ICnst.InfoOrCode.Msg()), ICnst.InfoOrCodeErr
 	}
-	valid := hasher.BcryptPasswordsMatch(input.Password, *account.Password)
+	valid, _, _ := aus.Passwords.Verify(*account.Password, input.Password)
 	if !valid {
 		return dtos.BadReqM[bool](ICnst.InfoOrCode.Msg()), ICnst.InfoOrCodeErr
 	}

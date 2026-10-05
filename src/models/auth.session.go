@@ -42,6 +42,10 @@ type Session struct {
 
 	// Impersonation: populated with admin's userId when impersonating
 	ImpersonatedBy *string `json:"impersonatedBy,omitempty" gorm:"size:26" bun:"impersonated_by"`
+
+	// Token is the better-auth session token (compat sessions only; NULL for legacy JWT sessions).
+	Token        *string `json:"-" gorm:"uniqueIndex" bun:"token"`
+	ActiveTeamID *string `json:"activeTeamId,omitempty" gorm:"size:255" bun:"active_team_id"`
 }
 type SessionFilter struct {
 	ID          string `query:"id"`
