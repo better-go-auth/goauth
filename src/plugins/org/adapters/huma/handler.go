@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
+	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 )
 
@@ -33,27 +35,71 @@ func NewOrgHandler(org orgsvc.IOrgService, mdlware *middleware.AuthMiddleware, a
 	return &OrgHandler{Org: org, MiddleWare: mdlware, authFn: af}
 }
 
-// RequireOrgRoles authenticates the user and checks they hold one of the given
-// roles in their active organization. Returns the session, active org ID, and any error.
-func (h *OrgHandler) RequireOrgRoles(ctx context.Context, auth humatypes.AuthHeaders, allowedOrgRoles ...string) (string, error) {
+// RequireOrgMember authenticates the caller and checks, against the member table, that they belong to
+// orgID (the session's active organization when orgID is empty) with one of roles (any role when empty).
+func (h *OrgHandler) RequireOrgMember(ctx context.Context, auth humatypes.AuthHeaders, orgID string, roles ...string) (sessionRes *dtos.SessionResponse, orgid string, err error) {
 	sessionResp, err := h.Authenticate(ctx, auth)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
-	if sessionResp.Session.ActiveOrganizationID == nil {
-		return "", humatypes.NewError(http.StatusForbidden, "No active organization set")
+	if orgID == "" && sessionResp.Session.ActiveOrganizationID != nil {
+		orgID = *sessionResp.Session.ActiveOrganizationID
 	}
-	orgID := *sessionResp.Session.ActiveOrganizationID
+	if orgID == "" {
+		return nil, "", humatypes.NewError(http.StatusBadRequest, "organizationId is required when no organization is active")
+	}
 	member, err := h.Org.GetMember(ctx, orgID, sessionResp.User.ID)
 	if err != nil || member == nil {
-		return "", autherr.ErrForbidden
+		return nil, "", autherr.ErrForbidden
 	}
-	for _, allowed := range allowedOrgRoles {
+	if len(roles) == 0 {
+		return sessionResp, orgID, nil
+	}
+	for _, allowed := range roles {
 		if strings.EqualFold(string(member.Role), allowed) {
-			return orgID, nil
+			return sessionResp, orgID, nil
 		}
 	}
-	return "", autherr.ErrForbidden
+	return nil, "", autherr.ErrForbidden
+}
+
+// rolesFor returns the org roles an operation requires (empty means any member).
+func rolesFor(op consts.OperationId) []string {
+	return OrgPermissionsMap[op].AllowedRoles
+}
+
+// targetMember loads memberID and ensures it belongs to orgID.
+func (h *OrgHandler) targetMember(ctx context.Context, orgID, memberID string) (*models.Member, error) {
+	member, err := h.Org.GetMemberByID(ctx, memberID)
+	if err != nil || member == nil || member.OrganizationID != orgID {
+		return nil, orgerrors.ErrMemberNotFound
+	}
+	return member, nil
+}
+
+// requireInvitee authenticates the caller and ensures the invitation was sent to their email.
+func (h *OrgHandler) requireInvitee(ctx context.Context, auth humatypes.AuthHeaders, invitationID string) (*dtos.SessionResponse, error) {
+	session, err := h.Authenticate(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	inv, err := h.Org.GetInvitation(ctx, invitationID)
+	if err != nil {
+		return nil, err
+	}
+	if !h.isInvitee(ctx, session, inv.Email) {
+		return nil, autherr.ErrForbidden
+	}
+	return session, nil
+}
+
+// isInvitee reports whether the caller's email matches inviteEmail (JWT claims carry no email, so fall back to the DB).
+func (h *OrgHandler) isInvitee(ctx context.Context, session *dtos.SessionResponse, inviteEmail string) bool {
+	email := session.User.Email
+	if email == "" {
+		email, _ = h.Org.UserEmail(ctx, session.User.ID)
+	}
+	return email != "" && strings.EqualFold(email, inviteEmail)
 }
 
 // defaultPagi returns sensible default pagination for org list endpoints.

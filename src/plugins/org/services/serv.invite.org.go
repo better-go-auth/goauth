@@ -16,12 +16,6 @@ import (
 // ─── Invitations ─────────────────────────────────────────────────────────────
 
 func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input dtos.InviteMemberInput) (*models.Invitation, error) {
-	// Check inviter is admin or owner
-	inviter, err := s.memberRepo.GetMemberByOrgAndUser(ctx, input.OrganizationID, inviterID)
-	if err != nil || !isAdminOrOwner(inviter) {
-		return nil, autherr.ErrForbidden
-	}
-
 	// Ensure org is active — pending/suspended orgs cannot invite members
 	org, err := s.orgRepo.GetOrgByID(ctx, input.OrganizationID)
 	if err != nil || org == nil {
@@ -43,7 +37,6 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 			return nil, orgerrors.ErrAlreadyMember
 		}
 	}
-
 
 	// Cancel any existing pending invite and create new invite inside a transaction
 	var created *models.Invitation
@@ -96,6 +89,15 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 	return created, nil
 }
 
+// UserEmail returns the email of userID (empty when the user has none).
+func (s *OrgService) UserEmail(ctx context.Context, userID string) (string, error) {
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		return "", autherr.ErrUserNotFound
+	}
+	return user.GetEmail(), nil
+}
+
 func (s *OrgService) GetInvitation(ctx context.Context, invitationID string) (*models.Invitation, error) {
 	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
 	if err != nil {
@@ -117,6 +119,7 @@ func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID 
 	}
 
 	// Verify accepting user's email matches the invite
+	// Could be removed for accept if the system allows any user with the invitation link to accept, without email.
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
 		return autherr.ErrUserNotFound
@@ -154,30 +157,19 @@ func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID 
 	return err
 }
 
-func (s *OrgService) RejectInvitation(ctx context.Context, invitationID, userID string) error {
-	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
-	if err != nil {
+func (s *OrgService) RejectInvitation(ctx context.Context, invitationID string, requestingUserID string) error {
+	if _, err := s.inviteRepo.GetInvitationByID(ctx, invitationID); err != nil {
 		return orgerrors.ErrInvitationNotFound
 	}
-	user, _ := s.userRepo.GetUserByID(ctx, userID)
-	if user == nil || !strings.EqualFold(user.GetEmail(), inv.Email) {
-		return autherr.ErrForbidden
-	}
-	_, err = s.inviteRepo.UpdateInvitation(ctx, invitationID, map[string]interface{}{"status": string(models.InvitationRejected)})
+	_, err := s.inviteRepo.UpdateInvitation(ctx, invitationID, map[string]interface{}{"status": string(models.InvitationRejected)})
 	return err
 }
 
-func (s *OrgService) CancelInvitation(ctx context.Context, invitationID, requestingUserID string) error {
-	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
-	if err != nil {
+func (s *OrgService) CancelInvitation(ctx context.Context, invitationID string, requestingUserID string) error {
+	if _, err := s.inviteRepo.GetInvitationByID(ctx, invitationID); err != nil {
 		return orgerrors.ErrInvitationNotFound
 	}
-	// Only admin/owner of the org can cancel
-	member, err := s.memberRepo.GetMemberByOrgAndUser(ctx, inv.OrganizationID, requestingUserID)
-	if err != nil || !isAdminOrOwner(member) {
-		return autherr.ErrForbidden
-	}
-	_, err = s.inviteRepo.UpdateInvitation(ctx, invitationID, map[string]interface{}{"status": string(models.InvitationCanceled)})
+	_, err := s.inviteRepo.UpdateInvitation(ctx, invitationID, map[string]interface{}{"status": string(models.InvitationCanceled)})
 	return err
 }
 

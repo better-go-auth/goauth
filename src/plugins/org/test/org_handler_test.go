@@ -62,7 +62,7 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("03 Update Organization", func(t *testing.T) {
-		// First set active org so RequireOrgRoles succeeds for update
+		// Set the active org (exercises set-active from a token without org context)
 		setActResp, err := env.OrgHandler.SetActiveOrg(ctx, &humaorg.SetActiveOrgInput{
 			AuthHeaders: ownerAuth,
 			Body: orgdtos.SetActiveOrgInput{

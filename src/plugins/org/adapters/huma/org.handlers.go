@@ -24,10 +24,11 @@ func (h *OrgHandler) CreateOrg(ctx context.Context, input *CreateOrgInput) (*hum
 }
 
 func (h *OrgHandler) GetOrg(ctx context.Context, input *GetOrgInput) (*humatypes.HumaRes[orgdtos.OrgResponse], error) {
-	if _, err := h.Authenticate(ctx, input.AuthHeaders); err != nil {
+	_, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.OrganizationID, rolesFor(OrGetOrg)...)
+	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	org, err := h.Org.GetOrganization(ctx, input.OrganizationID)
+	org, err := h.Org.GetOrganization(ctx, orgID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -35,10 +36,11 @@ func (h *OrgHandler) GetOrg(ctx context.Context, input *GetOrgInput) (*humatypes
 }
 
 func (h *OrgHandler) UpdateOrg(ctx context.Context, input *UpdateOrgInput) (*humatypes.HumaRes[orgdtos.OrgResponse], error) {
-	if _, err := h.RequireOrgRoles(ctx, input.AuthHeaders, "admin", "owner"); err != nil {
+	session, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrUpdateOrg)...)
+	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	org, err := h.Org.UpdateOrganization(ctx, input.Body.OrganizationID, input.Body)
+	org, err := h.Org.UpdateOrganization(ctx, input.Body.OrganizationID, input.Body, session.User.ID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -46,7 +48,7 @@ func (h *OrgHandler) UpdateOrg(ctx context.Context, input *UpdateOrgInput) (*hum
 }
 
 func (h *OrgHandler) DeleteOrg(ctx context.Context, input *DeleteOrgInput) (*humatypes.SuccessOutput, error) {
-	session, err := h.Authenticate(ctx, input.AuthHeaders)
+	session, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrDeleteOrg)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -80,6 +82,11 @@ func (h *OrgHandler) SetActiveOrg(ctx context.Context, input *SetActiveOrgInput)
 	session, err := h.Authenticate(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
+	}
+	if id := input.Body.OrganizationID; id != nil && *id != "" {
+		if _, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, *id, rolesFor(OrSetActiveOrg)...); err != nil {
+			return nil, humatypes.RespondErr(err)
+		}
 	}
 	resp, err := h.Org.SetActiveOrganization(ctx, session.Session.ID, input.Body.OrganizationID, session.User.ID, session.User.Role)
 	if err != nil {

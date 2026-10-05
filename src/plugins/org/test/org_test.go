@@ -45,12 +45,6 @@ func setupOrgUser(t *testing.T, env *helpers.TestEnv, email string, orgID, orgRo
 			ActiveOrgID: ptr(orgID),
 			OrgRoleID:   ptr(orgRole),
 		}
-	} else {
-		// Provide default org context to satisfy claims check
-		opt = &models.SessionOpt{
-			ActiveOrgID: ptr("init-org"),
-			OrgRoleID:   ptr(string(orgmodels.OrgRoleOwner)),
-		}
 	}
 
 	tokens, err := env.Auth.IAuthServices.CreateSession(context.Background(), sessionID, enums.User.S(), user.ID, opt)
@@ -110,12 +104,15 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("03 Update Organization", func(t *testing.T) {
-		// First set active org so RequireOrgRoles succeeds for update
+		// Set the active org (exercises set-active from a token without org context)
 		setInput := orgdtos.SetActiveOrgInput{
 			OrganizationID: ptr(orgID),
 		}
 		setResp, setBody := env.PostJSON("/api/auth/organization/set-active", setInput, ownerAuthHeader)
-		if isSuccess(setResp.StatusCode) {
+		if !isSuccess(setResp.StatusCode) {
+			t.Fatalf("SetActiveOrg failed: status %d, body: %s", setResp.StatusCode, setBody)
+		}
+		{
 			var tokenResp models.AuthTokens
 			if err := json.Unmarshal([]byte(setBody), &tokenResp); err == nil && tokenResp.AccessToken != "" {
 				ownerAuthHeader = map[string]string{"Authorization": "Bearer " + tokenResp.AccessToken}

@@ -11,11 +11,8 @@ import (
 // ─── Invitation ───────────────────────────────────────────────────────────────
 
 func (h *OrgHandler) InviteMember(ctx context.Context, input *InviteMemberInput) (*humatypes.HumaRes[orgdtos.InvitationResponse], error) {
-	session, err := h.Authenticate(ctx, input.AuthHeaders)
+	session, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrInviteMember)...)
 	if err != nil {
-		return nil, humatypes.RespondErr(err)
-	}
-	if _, err := h.RequireOrgRoles(ctx, input.AuthHeaders, "admin", "owner"); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
 	inv, err := h.Org.InviteMember(ctx, session.User.ID, input.Body)
@@ -26,18 +23,25 @@ func (h *OrgHandler) InviteMember(ctx context.Context, input *InviteMemberInput)
 }
 
 func (h *OrgHandler) GetInvitation(ctx context.Context, input *GetInvitationInput) (*humatypes.HumaRes[orgdtos.InvitationResponse], error) {
-	if _, err := h.Authenticate(ctx, input.AuthHeaders); err != nil {
+	session, err := h.Authenticate(ctx, input.AuthHeaders)
+	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
 	inv, err := h.Org.GetInvitation(ctx, input.InvitationID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
+	// visible to the invitee, or to org members who may manage invitations
+	if !h.isInvitee(ctx, session, inv.Email) {
+		if _, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, inv.OrganizationID, rolesFor(OrListInvitations)...); err != nil {
+			return nil, humatypes.RespondErr(err)
+		}
+	}
 	return humatypes.MakeRes(*orgdtos.InvitationToResponse(inv), http.StatusOK), nil
 }
 
 func (h *OrgHandler) AcceptInvitation(ctx context.Context, input *HumaInvitationInput) (*humatypes.SuccessOutput, error) {
-	session, err := h.Authenticate(ctx, input.AuthHeaders)
+	session, err := h.requireInvitee(ctx, input.AuthHeaders, input.Body.InvitationID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -48,7 +52,7 @@ func (h *OrgHandler) AcceptInvitation(ctx context.Context, input *HumaInvitation
 }
 
 func (h *OrgHandler) RejectInvitation(ctx context.Context, input *HumaInvitationInput) (*humatypes.SuccessOutput, error) {
-	session, err := h.Authenticate(ctx, input.AuthHeaders)
+	session, err := h.requireInvitee(ctx, input.AuthHeaders, input.Body.InvitationID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -59,11 +63,16 @@ func (h *OrgHandler) RejectInvitation(ctx context.Context, input *HumaInvitation
 }
 
 func (h *OrgHandler) CancelInvitation(ctx context.Context, input *HumaInvitationInput) (*humatypes.SuccessOutput, error) {
-	session, err := h.Authenticate(ctx, input.AuthHeaders)
+	inv, err := h.Org.GetInvitation(ctx, input.Body.InvitationID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	if err := h.Org.CancelInvitation(ctx, input.Body.InvitationID, session.User.ID); err != nil {
+
+	sesRes, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, inv.OrganizationID, rolesFor(OrCancelInvitation)...)
+	if err != nil {
+		return nil, humatypes.RespondErr(err)
+	}
+	if err := h.Org.CancelInvitation(ctx, input.Body.InvitationID, sesRes.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
 	return humatypes.SuccessRes(http.StatusOK), nil
@@ -74,10 +83,11 @@ type InvitationResp struct {
 }
 
 func (h *OrgHandler) ListInvitations(ctx context.Context, input *ListInvitationsInput) (*humatypes.HumaRes[InvitationResp], error) {
-	if _, err := h.Authenticate(ctx, input.AuthHeaders); err != nil {
+	_, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.OrganizationID, rolesFor(OrListInvitations)...)
+	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	invs, _, err := h.Org.ListInvitations(ctx, input.OrganizationID, defaultPagi())
+	invs, _, err := h.Org.ListInvitations(ctx, orgID, defaultPagi())
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}

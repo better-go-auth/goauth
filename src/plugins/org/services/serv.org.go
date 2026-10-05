@@ -143,7 +143,7 @@ func (s *OrgService) GetOrganization(ctx context.Context, orgID string) (*models
 	return org, nil
 }
 
-func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput) (*models.Organization, error) {
+func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error) {
 	data := map[string]interface{}{}
 	if input.Name != nil {
 		data["name"] = *input.Name
@@ -209,7 +209,7 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 			return nil, err
 		}
 		if member == nil {
-			return nil, autherr.ErrForbidden
+			return nil, orgerrors.ErrMemberNotFound
 		}
 	}
 	sesOpt := coremodels.SessionOpt{
@@ -267,4 +267,3 @@ func (s *OrgService) AdminUnblockOrg(ctx context.Context, orgID string) (*models
 func (s *OrgService) AdminListOrganizations(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error) {
 	return s.orgRepo.ListAllOrgs(ctx, status, pagi)
 }
-

@@ -82,7 +82,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Create Organization",
 		Description: "Creates a new organization and registers the creator as its owner.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrCreateOrg, OrgPermissionsMap[OrCreateOrg].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.CreateOrg)
 	huma.Register(api, huma.Operation{
 		OperationID: OrGetOrg.Str(),
@@ -91,7 +91,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Get Organization Details",
 		Description: "Fetches details for an organization.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrGetOrg, OrgPermissionsMap[OrGetOrg].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.GetOrg)
 	huma.Register(api, huma.Operation{
 		OperationID: OrUpdateOrg.Str(),
@@ -100,7 +100,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Update Organization",
 		Description: "Updates metadata and fields for an organization (admin/owner required).",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrUpdateOrg, OrgPermissionsMap[OrUpdateOrg].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.UpdateOrg)
 	huma.Register(api, huma.Operation{
 		OperationID:   OrDeleteOrg.Str(),
@@ -110,7 +110,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Description:   "Deletes an organization and all its memberships.",
 		Tags:          orgTags,
 		DefaultStatus: http.StatusOK,
-		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrDeleteOrg, OrgPermissionsMap[OrDeleteOrg].AllowedRoles)},
+		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.DeleteOrg)
 	huma.Register(api, huma.Operation{
 		OperationID: OrListOrgs.Str(),
@@ -119,7 +119,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "List User Organizations",
 		Description: "Lists all organizations where the authenticated user is a member.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrListOrgs, OrgPermissionsMap[OrListOrgs].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.ListOrgs)
 	huma.Register(api, huma.Operation{
 		OperationID: OrSetActiveOrg.Str(),
@@ -128,7 +128,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Set Active Organization",
 		Description: "Marks an organization as active for the current session.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrSetActiveOrg, OrgPermissionsMap[OrSetActiveOrg].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.SetActiveOrg)
 
 	invitationTags := []string{"Org-Invitation"}
@@ -140,7 +140,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Invite Member",
 		Description: "Sends an organization invitation to an email address.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrInviteMember, OrgPermissionsMap[OrInviteMember].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.InviteMember)
 	huma.Register(api, huma.Operation{
 		OperationID: OrGetInvitation.Str(),
@@ -149,7 +149,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Get Invitation Details",
 		Description: "Fetches details of a specific invitation.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrGetInvitation, OrgPermissionsMap[OrGetInvitation].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.GetInvitation)
 	huma.Register(api, huma.Operation{
 		OperationID: OrAcceptInvitation.Str(),
@@ -158,7 +158,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Accept Invitation",
 		Description: "Accepts an invitation to join an organization.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrAcceptInvitation, OrgPermissionsMap[OrAcceptInvitation].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.AcceptInvitation)
 	huma.Register(api, huma.Operation{
 		OperationID: OrRejectInvitation.Str(),
@@ -167,7 +167,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Reject Invitation",
 		Description: "Rejects an organization invitation.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrRejectInvitation, OrgPermissionsMap[OrRejectInvitation].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.RejectInvitation)
 	huma.Register(api, huma.Operation{
 		OperationID: OrCancelInvitation.Str(),
@@ -176,7 +176,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Cancel Invitation",
 		Description: "Cancels a pending invitation.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrCancelInvitation, OrgPermissionsMap[OrCancelInvitation].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.CancelInvitation)
 	huma.Register(api, huma.Operation{
 		OperationID: OrListInvitations.Str(),
@@ -185,7 +185,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "List Organization Invitations",
 		Description: "Lists all pending and processed invitations for an organization.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrListInvitations, OrgPermissionsMap[OrListInvitations].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.ListInvitations)
 
 	memberTags := []string{"Org-Members"}
@@ -197,7 +197,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Get Member Details",
 		Description: "Returns details of an organization member.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrGetMember, OrgPermissionsMap[OrGetMember].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.GetMember)
 	huma.Register(api, huma.Operation{
 		OperationID: OrListMembers.Str(),
@@ -206,7 +206,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "List Organization Members",
 		Description: "Returns a list of members in the organization.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrListMembers, OrgPermissionsMap[OrListMembers].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.ListMembers)
 	huma.Register(api, huma.Operation{
 		OperationID: OrUpdateMemberRole.Str(),
@@ -215,7 +215,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Update Member Role",
 		Description: "Changes an organization member's role (owner required).",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrUpdateMemberRole, OrgPermissionsMap[OrUpdateMemberRole].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.UpdateMemberRole)
 	huma.Register(api, huma.Operation{
 		OperationID: OrRemoveMember.Str(),
@@ -224,7 +224,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Summary:     "Remove Member",
 		Description: "Removes a member from the organization.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.AuthorizeOrg(OrRemoveMember, OrgPermissionsMap[OrRemoveMember].AllowedRoles)},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.RemoveMember)
 
 	adminTags := []string{"Admin-Orgs"}
@@ -266,4 +266,3 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.AdminListOrgs)
 }
-
