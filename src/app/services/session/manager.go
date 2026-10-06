@@ -240,6 +240,19 @@ func (m *Manager) DeleteUserSessions(ctx context.Context, userID string) error {
 	return nil
 }
 
+// RefreshUser rewrites the user snapshot of every cached session of user (better-auth's refreshUserSessions).
+func (m *Manager) RefreshUser(ctx context.Context, user *models.User) {
+	if m.store == nil || user == nil {
+		return
+	}
+	for _, e := range m.activeList(ctx, user.ID) {
+		if sw, _ := m.fromStore(ctx, e.Token); sw != nil {
+			sw.User = dtos.UserFromModel(user)
+			_ = m.cache(ctx, sw)
+		}
+	}
+}
+
 // List returns the live sessions of userID.
 func (m *Manager) List(ctx context.Context, userID string) ([]dtos.BetterAuthSession, error) {
 	now := m.now()

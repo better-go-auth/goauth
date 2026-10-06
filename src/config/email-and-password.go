@@ -54,7 +54,7 @@ type EmailAndPassword struct {
 	 * A callback function that is triggered
 	 * when a user's password is changed successfully.
 	 */
-	// OnPasswordReset OnPasswordResetFunc
+	OnPasswordReset OnPasswordResetFunc
 	/**
 	 * Password hashing and verification
 	 *

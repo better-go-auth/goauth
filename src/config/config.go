@@ -30,6 +30,8 @@ type AuthConfig struct {
 	EmailAndPassword  EmailAndPassword
 	EmailVerification EmailVerification
 	Session           Session
+	User              UserOptions
+	Account           AccountOptions
 
 	GoAuth GoAuthConfig
 }

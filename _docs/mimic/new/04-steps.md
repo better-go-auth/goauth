@@ -93,6 +93,22 @@ Done:
 - Sessions are created by the session service.
 - **Done when:** a unit test per behaviour, ported from better-auth's `*.test.ts` cases.
 
+Status (✅ except the items below): ported from better-go-auth's `core/services` into package `auth`
+(`Service` implements `IAuthService`, `ISessionService`, `IUserService`; built with `auth.New(auth.Deps{...})`),
+reusing `session.Manager`, `authcrypto.Passwords` and the renamed repositories. Not wired into `core/auth`;
+the huma adapter in `src/app/adapters` comes in step 6. Tests: `service_test.go` (memory repos).
+- Follows better-auth rather than better-go-auth where they differ: verification links are better-auth's
+  `{email, updateTo, requestType}` JWTs (no DB row), reset tokens are `reset-password:<token>` rows holding the user id,
+  credential `accountId` is the user id, change-email has the confirmation / verification / legacy flows.
+- Config added: `EmailVerification.{SendVerificationEmail, SendOnSignUp, SendOnSignIn, AutoSignInAfterVerification,
+  Before/AfterEmailVerification}`, `EmailAndPassword.OnPasswordReset`, `User.{ChangeEmail, DeleteUser}`,
+  `Account.AccountLinking.AllowUnlinkingAll`. `session.Manager.RefreshUser` refreshes cached user snapshots.
+- Not done: `update-session` (no additional session fields yet), `delete-user` email confirmation + `/delete-user/callback`,
+  `set-password`, OAuth / social linking, `customSyntheticUser`, cookie cache, JWT plugin. The ban check
+  (admin plugin's session hook in better-auth) lives in `SignInEmail` until plugin hooks can veto session creation.
+- Known gap: `ResetPassword` consumes the token with find + delete (not atomic like `consumeVerificationValue`);
+  `UnlinkAccount` deletes by user + provider (no delete-by-id repo method).
+
 ## Step 6 – Huma adapter (M)
 
 - `src/app/adapters/huma` registers the better-auth endpoints over the services (moves `src/app/core/ba` here).

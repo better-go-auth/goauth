@@ -13,9 +13,8 @@ type EmailVerification struct {
 
 	GoAuth EmailVerificationGoAuth
 
-	//===================================    TO USE NOW ===================================
-
-	// SendVerificationEmail SendVerificationEmail
+	// SendVerificationEmail sends better-auth's verification link (/verify-email?token=...).
+	SendVerificationEmail SendVerificationEmail
 	/**
 	 * Send a verification email automatically after sign up.
 	 *
@@ -25,28 +24,28 @@ type EmailVerification struct {
 	 *
 	 * @default nil
 	 */
-	// SendOnSignUp *bool
+	SendOnSignUp *bool
 	/**
 	 * Send a verification email automatically
 	 * on sign in when the user's email is not verified
 	 *
 	 * @default false
 	 */
-	// SendOnSignIn *bool
+	SendOnSignIn bool
 	/**
 	 * Auto signin the user after they verify their email
 	 */
-	// AutoSignInAfterVerification *bool// create sign in after verification
+	AutoSignInAfterVerification bool
 	/**
 	 * A callback function that is triggered
 	 * before a user's email is verified.
 	 */
-	// BeforeEmailVerification func(user models.User, request *http.Request) error
+	BeforeEmailVerification func(user models.User, request *http.Request) error
 	/**
 	 * A callback function that is triggered
 	 * after a user's email is verified successfully.
 	 */
-	// AfterEmailVerification func(user models.User, request *http.Request) error
+	AfterEmailVerification func(user models.User, request *http.Request) error
 }
 
 type (
