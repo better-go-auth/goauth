@@ -27,7 +27,7 @@ func setupAdminUser(t *testing.T, env *helpers.TestEnv) (string, map[string]stri
 		UserDto: models.UserDto{
 			FirstName:     "Super",
 			LastName:      "Admin",
-			Email:         ptr("admin@example.com"),
+			Email:         "admin@example.com",
 			EmailVerified: true,
 			Role:          enums.Admin,
 		},

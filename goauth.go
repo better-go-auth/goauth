@@ -103,6 +103,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	if opts.Advanced.GenerateID != nil {
 		models.SetIDGenerator(opts.Advanced.GenerateID)
 	}
+	models.SetTableNames(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
 
 	if opts.Conn == nil && opts.Repositories == nil {
 		return nil, errors.New("goauth: either Conn (*gorm.DB) or Repositories (repo_interfaces.IAuthRepos) must be provided")
@@ -162,7 +163,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
-	//TODO: use the session function here
+	// TODO: use the session function here
 	authenticate := authenticator.NewDefaultAuthenticator(opts.GoAuth.Session.JWT.AccessSecret, repos)
 	initCtx := &plugin.InitContext{
 		Ctx:           context.Background(),

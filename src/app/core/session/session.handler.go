@@ -21,7 +21,7 @@ func (uh *HumaSessionHandler) DelteMySession(ctx context.Context, dto *types.Hum
 	// 	return nil, huma.NewError(http.StatusInternalServerError, "Session repository not configured")
 	// }
 
-	session, err := uh.Service.SessionRepo.GetSessionByID(ctx, dto.ID)
+	session, err := uh.Service.SessionRepo.FindSessionByID(ctx, dto.ID)
 	if err != nil || session == nil || session.UserID != v.User.ID {
 		return nil, types.NewError(http.StatusNotFound, "Session Not Found")
 	}
@@ -42,7 +42,7 @@ func (uh *HumaSessionHandler) GetMySession(ctx context.Context, q *models.Sessio
 	// 	return nil, huma.NewError(http.StatusInternalServerError, "Session repository not configured")
 	// }
 
-	sessions, total, err := uh.Service.SessionRepo.ListSessions(ctx, models.SessionFilter{UserId: v.Session.UserID}, q.PaginationInput)
+	sessions, total, err := uh.Service.SessionRepo.QuerySessions(ctx, models.SessionFilter{UserId: v.Session.UserID}, q.PaginationInput)
 	if err != nil {
 		return types.MakeRes(dtos.PResp[[]authDtos.SessionData]{}, http.StatusInternalServerError), err
 	}

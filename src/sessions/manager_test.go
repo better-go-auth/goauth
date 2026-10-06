@@ -35,7 +35,7 @@ func newFixture(t *testing.T, conf config.Session, withStore bool) *fixture {
 		t.Fatal(err)
 	}
 	email := "s@example.com"
-	user := &models.User{UserDto: models.UserDto{FirstName: "Sam", LastName: "Lee", Email: &email, Role: "user"}}
+	user := &models.User{UserDto: models.UserDto{FirstName: "Sam", LastName: "Lee", Email: email, Role: "user"}}
 	if err := db.Create(user).Error; err != nil {
 		t.Fatal(err)
 	}

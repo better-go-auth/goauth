@@ -77,7 +77,7 @@ func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt 
 	now := m.now().UTC()
 	tok := idgen.GenerateToken()
 	s := &models.Session{
-		Base:                 models.Base{ID: models.NewID(), CreatedAt: &now, UpdatedAt: &now},
+		Base:                 models.Base{ID: models.NewID(), CreatedAt: now, UpdatedAt: now},
 		Token:                tok,
 		UserID:               user.ID,
 		ExpiresAt:            now.Add(expiresIn),
@@ -134,7 +134,7 @@ func (m *Manager) Get(ctx context.Context, tok string) (*compat.SessionWithUser,
 	if !idgen.IsToken(tok) {
 		return nil, nil
 	}
-	s, err := m.sessions.GetSessionByToken(ctx, tok)
+	s, err := m.sessions.FindSession(ctx, tok)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, nil
@@ -144,7 +144,7 @@ func (m *Manager) Get(ctx context.Context, tok string) (*compat.SessionWithUser,
 	if !s.ExpiresAt.After(m.now()) {
 		return nil, m.Delete(ctx, tok)
 	}
-	user, err := m.users.GetUserByID(ctx, s.UserID)
+	user, err := m.users.FindUserByID(ctx, s.UserID)
 	if err != nil || user == nil {
 		return nil, nil
 	}
@@ -214,7 +214,7 @@ func (m *Manager) Delete(ctx context.Context, tok string) error {
 		}
 	}
 	if m.storeInDB() && !(m.store != nil && m.conf.PreserveSessionInDatabase) {
-		if err := m.sessions.DeleteSessionByToken(ctx, tok); err != nil {
+		if err := m.sessions.DeleteSession(ctx, tok); err != nil {
 			return fmt.Errorf("sessions: delete: %w", err)
 		}
 	}
@@ -233,7 +233,7 @@ func (m *Manager) DeleteUserSessions(ctx context.Context, userID string) error {
 		_ = m.store.Delete(ctx, activeKey(userID))
 	}
 	if m.storeInDB() && !(m.store != nil && m.conf.PreserveSessionInDatabase) {
-		if err := m.sessions.DeleteSessionsByUserID(ctx, userID); err != nil {
+		if err := m.sessions.DeleteUserSessions(ctx, userID); err != nil {
 			return fmt.Errorf("sessions: delete user sessions: %w", err)
 		}
 	}
@@ -252,7 +252,7 @@ func (m *Manager) List(ctx context.Context, userID string) ([]compat.BetterAuthS
 		}
 		return out, nil
 	}
-	rows, err := m.sessions.ListSessionsByUserID(ctx, userID)
+	rows, err := m.sessions.ListSessions(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("sessions: list: %w", err)
 	}
@@ -264,12 +264,9 @@ func (m *Manager) List(ctx context.Context, userID string) ([]compat.BetterAuthS
 	return out, nil
 }
 
-// CleanupExpired deletes expired session rows when the repository supports it.
+// CleanupExpired deletes expired session rows.
 func (m *Manager) CleanupExpired(ctx context.Context) error {
-	if r, ok := m.sessions.(interface{ DeleteExpired(context.Context) error }); ok {
-		return r.DeleteExpired(ctx)
-	}
-	return nil
+	return m.sessions.DeleteExpiredSessions(ctx)
 }
 
 func (m *Manager) expired(sw *compat.SessionWithUser) bool {

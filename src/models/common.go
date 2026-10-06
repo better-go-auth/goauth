@@ -15,9 +15,9 @@ import (
 // }
 
 type Base struct {
-	ID        string     `gorm:"primarykey" json:"id,omitempty"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	ID        string    `gorm:"primarykey" json:"id,omitempty"`
+	CreatedAt time.Time `gorm:"not null" json:"createdAt"`
+	UpdatedAt time.Time `gorm:"not null" json:"updatedAt"`
 }
 
 func (m *Base) BeforeCreate(tx *gorm.DB) (err error) {
@@ -33,8 +33,8 @@ func (b Base) GetID() string {
 
 type SDBase struct {
 	ID        string         `gorm:"primarykey" json:"id,omitempty"`
-	CreatedAt *time.Time     `json:"created_at,omitempty"`
-	UpdatedAt *time.Time     `json:"updated_at,omitempty"`
+	CreatedAt time.Time      `gorm:"not null" json:"createdAt"`
+	UpdatedAt time.Time      `gorm:"not null" json:"updatedAt"`
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
 }
 

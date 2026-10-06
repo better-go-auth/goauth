@@ -9,9 +9,9 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	"gorm.io/driver/sqlite"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
@@ -44,7 +44,7 @@ func TestUserRepo_DeleteUser_AnonymizesEmail(t *testing.T) {
 		UserDto: models.UserDto{
 			FirstName: "Alice",
 			LastName:  "Smith",
-			Email:     ptr(originalEmail),
+			Email:     originalEmail,
 			Role:      enums.User,
 		},
 	}
@@ -54,11 +54,11 @@ func TestUserRepo_DeleteUser_AnonymizesEmail(t *testing.T) {
 	require.NotEmpty(t, created.ID)
 
 	// Verify user can be fetched by ID and email
-	found, err := repo.GetUserByID(ctx, created.ID)
+	found, err := repo.FindUserByID(ctx, created.ID)
 	require.NoError(t, err)
-	require.Equal(t, originalEmail, *found.Email)
+	require.Equal(t, originalEmail, found.Email)
 
-	foundByEmail, err := repo.GetUserByEmail(ctx, originalEmail)
+	foundByEmail, err := repo.FindUserByEmail(ctx, originalEmail)
 	require.NoError(t, err)
 	require.Equal(t, created.ID, foundByEmail.ID)
 
@@ -67,10 +67,10 @@ func TestUserRepo_DeleteUser_AnonymizesEmail(t *testing.T) {
 	require.NoError(t, err)
 
 	// User should no longer be found by active queries
-	_, err = repo.GetUserByID(ctx, created.ID)
+	_, err = repo.FindUserByID(ctx, created.ID)
 	require.Error(t, err)
 
-	_, err = repo.GetUserByEmail(ctx, originalEmail)
+	_, err = repo.FindUserByEmail(ctx, originalEmail)
 	require.Error(t, err)
 
 	// Verify database record has been anonymized and has deleted_at set
@@ -78,16 +78,16 @@ func TestUserRepo_DeleteUser_AnonymizesEmail(t *testing.T) {
 	err = db.Unscoped().Where("id = ?", created.ID).Take(&rawUser).Error
 	require.NoError(t, err)
 	require.True(t, rawUser.DeletedAt.Valid)
-	require.NotNil(t, rawUser.Email)
-	require.True(t, strings.HasPrefix(*rawUser.Email, fmt.Sprintf("deleted_%s_", created.ID)))
-	require.True(t, strings.HasSuffix(*rawUser.Email, "@deleted.local"))
+	require.NotEmpty(t, rawUser.Email)
+	require.True(t, strings.HasPrefix(rawUser.Email, fmt.Sprintf("deleted_%s_", created.ID)))
+	require.True(t, strings.HasSuffix(rawUser.Email, "@deleted.local"))
 
 	// Create another user with the SAME original email - should succeed without unique constraint error
 	newUser := &models.User{
 		UserDto: models.UserDto{
 			FirstName: "Bob",
 			LastName:  "Jones",
-			Email:     ptr(originalEmail),
+			Email:     originalEmail,
 			Role:      enums.User,
 		},
 	}
@@ -97,7 +97,7 @@ func TestUserRepo_DeleteUser_AnonymizesEmail(t *testing.T) {
 	require.NotEqual(t, created.ID, newCreated.ID)
 
 	// Active GetUserByEmail should now return the newly created user
-	activeUser, err := repo.GetUserByEmail(ctx, originalEmail)
+	activeUser, err := repo.FindUserByEmail(ctx, originalEmail)
 	require.NoError(t, err)
 	require.Equal(t, newCreated.ID, activeUser.ID)
 }

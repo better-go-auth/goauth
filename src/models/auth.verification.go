@@ -3,6 +3,8 @@ package models
 import (
 	"fmt"
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // VerificationPurpose describes what a verification token is used for.
@@ -40,4 +42,10 @@ type Verification struct {
 func (v *Verification) IsExpired() bool {
 	return time.Now().After(v.ExpiresAt)
 }
-func (Verification) TableName() string { return "auth_verifications" }
+
+// BeforeSave stores ExpiresAt in UTC; SQLite compares timestamps as text, so mixed zones misorder.
+func (v *Verification) BeforeSave(*gorm.DB) error {
+	v.ExpiresAt = v.ExpiresAt.UTC()
+	return nil
+}
+func (Verification) TableName() string { return TableName(ModelVerification) }

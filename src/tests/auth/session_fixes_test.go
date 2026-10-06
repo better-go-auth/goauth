@@ -8,6 +8,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core/auth"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
+	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
 	"github.com/better-go-auth/goauth/src/providers/hasher"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
@@ -18,7 +19,7 @@ func createActiveUser(t *testing.T, env *helpers.TestEnv, email, password string
 	ctx := context.Background()
 	active := true
 	usr := &models.User{UserDto: models.UserDto{
-		FirstName: "Fix", LastName: "User", Email: &email,
+		FirstName: "Fix", LastName: "User", Email: email,
 		EmailVerified: true, Active: &active, Role: enums.User,
 	}}
 	if err := env.DB.Create(usr).Error; err != nil {
@@ -79,6 +80,9 @@ func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
 
 	sessionID := models.NewSecureId()
 	orgID, orgRole := "org_123", "owner"
+	if err := env.DB.Create(&orgmodels.Organization{Base: models.Base{ID: orgID}, Name: "Org", Slug: "org-123"}).Error; err != nil {
+		t.Fatal(err)
+	}
 	tokens, err := env.AuthService.SesSvc.CreateSession(ctx, sessionID, usr.Role.S(), usr.ID, &models.SessionOpt{
 		ActiveOrgID: &orgID, OrgRole: &orgRole, DeviceToken: "device-1",
 	})

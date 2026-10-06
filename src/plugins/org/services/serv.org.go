@@ -99,7 +99,7 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		orgStatus = models.OrgStatusPending
 	}
 
-	now := new(coremodels.TimeNow())
+	now := coremodels.TimeNow()
 	org := &models.Organization{
 		Base:      coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 		Name:      input.Name,

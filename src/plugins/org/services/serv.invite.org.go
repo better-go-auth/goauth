@@ -31,7 +31,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 	}
 
 	// Check if user is already a member
-	user, _ := s.userRepo.GetUserByEmail(ctx, strings.ToLower(input.Email))
+	user, _ := s.userRepo.FindUserByEmail(ctx, strings.ToLower(input.Email))
 	if user != nil {
 		if m, err := s.memberRepo.GetMemberByOrgAndUser(ctx, input.OrganizationID, user.ID); err == nil && m != nil {
 			return nil, orgerrors.ErrAlreadyMember
@@ -48,7 +48,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 			}
 		}
 
-		now := new(time.Now())
+		now := time.Now().UTC()
 		inv := &models.Invitation{
 			Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 			OrganizationID: input.OrganizationID,
@@ -71,7 +71,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 
 	// Send invitation email
 	if s.Config.SendOrgInvitation != nil {
-		inviterUser, _ := s.userRepo.GetUserByID(ctx, inviterID)
+		inviterUser, _ := s.userRepo.FindUserByID(ctx, inviterID)
 		org, _ := s.orgRepo.GetOrgByID(ctx, input.OrganizationID)
 		inviterName := ""
 		orgName := ""
@@ -91,7 +91,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 
 // UserEmail returns the email of userID (empty when the user has none).
 func (s *OrgService) UserEmail(ctx context.Context, userID string) (string, error) {
-	user, err := s.userRepo.GetUserByID(ctx, userID)
+	user, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil || user == nil {
 		return "", autherr.ErrUserNotFound
 	}
@@ -120,17 +120,17 @@ func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID 
 
 	// Verify accepting user's email matches the invite
 	// Could be removed for accept if the system allows any user with the invitation link to accept, without email.
-	user, err := s.userRepo.GetUserByID(ctx, userID)
+	user, err := s.userRepo.FindUserByID(ctx, userID)
 	if err != nil {
 		return autherr.ErrUserNotFound
 	}
-	if user.Email == nil || !strings.EqualFold(*user.Email, inv.Email) {
+	if user.Email == "" || !strings.EqualFold(user.Email, inv.Email) {
 		return autherr.ErrForbidden
 	}
 
 	// Add as member and update invitation status inside a transaction
 	err = s.txManager.Transaction(ctx, func(txCtx context.Context) error {
-		now := new(time.Now().UTC())
+		now := time.Now().UTC()
 		member := &models.Member{
 			Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 			OrganizationID: inv.OrganizationID,

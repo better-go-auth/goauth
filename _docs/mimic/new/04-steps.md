@@ -23,7 +23,13 @@ Open: `User`, `Account`, `Verification`, `RateLimit` sections.
   This fixes the refresh-token-as-access-token issue.
 - **Done when:** table tests cover defaults and old → new mapping, and the existing e2e tests pass unchanged.
 
-## Step 2 – Models and migration (M)
+## Step 2 – Models and migration (M) ✅ (except columns and org opt-in tables)
+
+Done: better-auth fields first, extras last; tables `user`, `session`, `account`, `verification`, `organization`,
+`member`, `invitation` (`GoAuth.TablePrefix` / `GoAuth.TableNames` via `models.SetTableNames`); `createdAt`/`updatedAt`
+NOT NULL; `user.email` NOT NULL + lowercased; `user.emailVerified` NOT NULL; `user.image` nullable; FKs
+`session.impersonatedBy → user`, `session.activeOrganizationId → organization` (org plugin); `invitation.expiresAt` NOT NULL;
+`session_id` / `hashed_token` / `role` removed. Open: camelCase columns (step 10), `team` / `teamMember` / `organizationRole`.
 
 - Rewrite `src/models` and `src/plugins/org/models` per 02-schema.md: better-auth fields first, goauth
   extras at the bottom, camelCase JSON, `TableName()` returning better-auth names (overridable via
@@ -35,11 +41,13 @@ Open: `User`, `Account`, `Verification`, `RateLimit` sections.
     (`better-auth-schema`) with `fields` mappings to snake_case and `npx @better-auth/cli migrate`; it must report no changes.
   - A database dump from the current release migrates cleanly (fixture test on SQLite and Postgres).
 
-## Step 3 – Repositories (M) ✅ (partial)
+## Step 3 – Repositories (M) ✅
 
 Done: all GORM repos use struct conditions with named fields (`Where(&models.Session{Token: t}, "Token")`, so an
 empty value matches nothing), `gormutil.Col/OrderBy/ILike/IEq` for non-equality conditions, and Go field names as
-`Updates` map keys. Open: renaming the contracts to better-auth's adapter operations, contract test suite.
+`Updates` map keys. Contracts renamed (`FindUserByID`, `FindSession(token)`, `DeleteSession(token)`, `DeleteUserSessions`,
+`ListSessions`, `FindAccounts`, `FindAccountByProviderID`, `UpsertVerificationValue`, `FindVerificationValue`, ...).
+`src/app/repository/repotest` is the contract suite; it runs against `gormauth` (SQLite) and `memory` (in-memory).
 
 - Contracts in `repo_interfaces` named after better-auth's internal adapter operations:
   `CreateUser, FindUserByID, FindUserByEmail, UpdateUser, DeleteUser, ListUsers`,

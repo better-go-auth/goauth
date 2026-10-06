@@ -51,7 +51,7 @@ func NewProfileServH(genServ *providers.IProviderS, vSvc serv_interfaces.IVerifi
 // GetProfile retrieves a user's profile by ID.
 func (aus *Service) GetProfile(ctx context.Context, userId string) (*models.User, error) {
 	if aus.userRepo != nil {
-		return aus.userRepo.GetUserByID(ctx, userId)
+		return aus.userRepo.FindUserByID(ctx, userId)
 	}
 	return nil, errors.New("profilesvc: user repository not configured")
 }
@@ -81,7 +81,7 @@ func (aus *Service) ChangePassword(ctx context.Context, userId, sessionId string
 		return dtos.BadReqM[models.User]("user not found"), err
 	}
 
-	account, err := aus.accountRepo.GetAccountByUserAndProvider(ctx, userId, models.ProvCredential)
+	account, err := aus.accountRepo.FindAccountByUserAndProvider(ctx, userId, models.ProvCredential)
 	if err != nil || account == nil || account.Password == nil {
 		return dtos.BadReqM[models.User](ICnst.PasswordDontMatch.Msg()), ICnst.PwdDontMatch
 	}
@@ -129,7 +129,7 @@ func (aus *Service) SendChangeEmail(ctx context.Context, userId string, input mo
 	}
 
 	// 2. check if password is correct from account model
-	account, err := aus.accountRepo.GetAccountByUserAndProvider(ctx, userId, models.ProvCredential)
+	account, err := aus.accountRepo.FindAccountByUserAndProvider(ctx, userId, models.ProvCredential)
 	if err != nil || account == nil || account.Password == nil {
 		return dtos.BadReqM[bool](ICnst.InfoOrCode.Msg()), ICnst.InfoOrCodeErr
 	}
@@ -140,7 +140,7 @@ func (aus *Service) SendChangeEmail(ctx context.Context, userId string, input mo
 
 	// 3. check if the new email already exists
 
-	existing, err := aus.userRepo.GetUserByEmail(ctx, input.NewEmail)
+	existing, err := aus.userRepo.FindUserByEmail(ctx, input.NewEmail)
 	if err == nil && existing != nil {
 		return dtos.BadReqC[bool](ICnst.EmailExists), ICnst.EmailExistsErr
 	}
@@ -185,7 +185,7 @@ func (aus *Service) VerifyChangeEmail(ctx context.Context, userId string, input 
 		}
 
 		// 5. update account account_id for ProvCredential if exists
-		account, err := aus.accountRepo.GetAccountByUserAndProvider(txCtx, userId, models.ProvCredential)
+		account, err := aus.accountRepo.FindAccountByUserAndProvider(txCtx, userId, models.ProvCredential)
 		if err == nil && account != nil {
 			_, err = aus.accountRepo.UpdateAccount(txCtx, account.ID, map[string]any{"AccountID": newEmail})
 			if err != nil {

@@ -80,7 +80,7 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 		UserDto: models.UserDto{
 			FirstName:     "Rev",
 			LastName:      "User",
-			Email:         &testEmail,
+			Email:         testEmail,
 			EmailVerified: true,
 			Role:          enums.User,
 		},

@@ -40,6 +40,10 @@ type GoAuthConfig struct {
 	Mode Mode
 	// Session holds goauth-only session options (single session, legacy JWTs).
 	Session SessionGoAuth
+	// TablePrefix is prepended to every table name (default "": better-auth's names user, session, ...).
+	TablePrefix string
+	// TableNames overrides tables per better-auth model name, like better-auth's modelName (e.g. {"user": "users"}).
+	TableNames map[string]string
 }
 
 // SetDefaults sets sensible default values for unspecified options.

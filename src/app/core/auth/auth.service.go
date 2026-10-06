@@ -19,7 +19,7 @@ import (
 // RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
 func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (res dtos.GResp[models.User], eror error) {
 	// Check if the email already exists
-	usr, err := aus.userRepo.GetUserByEmail(ctx, input.Email)
+	usr, err := aus.userRepo.FindUserByEmail(ctx, input.Email)
 	if err == nil && usr != nil {
 		// If the User is still pending verification, throw error
 		// todo create a time out
@@ -35,7 +35,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 
 	var createdUser *models.User
 	err = aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
-		existingUser, getErr := aus.userRepo.GetUserByEmail(txCtx, input.Email)
+		existingUser, getErr := aus.userRepo.FindUserByEmail(txCtx, input.Email)
 		if getErr == nil && existingUser != nil {
 			// Update pending verification user
 			updated, err := aus.userRepo.UpdateUser(txCtx, existingUser.ID, map[string]interface{}{
@@ -56,7 +56,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 				UserDto: models.UserDto{
 					FirstName: input.FirstName,
 					LastName:  input.LastName,
-					Email:     &input.Email,
+					Email:     input.Email,
 					// Password:      hash,
 					Role:          enums.User,
 					AccountStatus: enums.AccountPendingVerification,
@@ -74,7 +74,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		now := time.Now()
 		// 5. Create email/password account record
 		pwdAccount := &models.Account{
-			Base:       models.Base{ID: models.NewID(), CreatedAt: &now, UpdatedAt: &now},
+			Base:       models.Base{ID: models.NewID(), CreatedAt: now, UpdatedAt: now},
 			UserID:     createdUser.ID,
 			ProviderID: models.ProvCredential,
 			AccountID:  input.Email,
@@ -82,7 +82,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 		}
 		if _, err := aus.accountRepo.CreateAccount(txCtx, pwdAccount); err != nil {
 			// if account already exists for user and provider, update password
-			if existingAcc, _ := aus.accountRepo.GetAccountByUserAndProvider(txCtx, createdUser.ID, models.ProvCredential); existingAcc != nil {
+			if existingAcc, _ := aus.accountRepo.FindAccountByUserAndProvider(txCtx, createdUser.ID, models.ProvCredential); existingAcc != nil {
 				_, _ = aus.accountRepo.UpdateAccount(txCtx, existingAcc.ID, map[string]interface{}{"Password": hash})
 			} else {
 				return fmt.Errorf("authsvc: create account: %w", err)
@@ -114,7 +114,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationInput) (res dtos.GResp[models.User], eror error) {
 	var verifiedUser *models.User
 	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
-		usr, err := aus.userRepo.GetUserByEmail(txCtx, input.Info)
+		usr, err := aus.userRepo.FindUserByEmail(txCtx, input.Info)
 		if err != nil || usr == nil || usr.AccountStatus != enums.AccountPendingVerification {
 			return errors.InfoOrCodeErr
 		}
@@ -147,14 +147,14 @@ func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationI
 // Login (acc-03) [companyId, Role, Password]
 func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[TokenResponse], error) {
 	// 1. check the user exists and is active
-	usr, err := aus.userRepo.GetUserByEmail(ctx, input.LoginInfo)
+	usr, err := aus.userRepo.FindUserByEmail(ctx, input.LoginInfo)
 	if err != nil || usr == nil || usr.Active == nil || (usr.Active != nil && !*usr.Active) {
 		_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
 		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
 	}
 
 	// 2. Get password from account record
-	account, err := aus.accountRepo.GetAccountByUserAndProvider(ctx, usr.ID, models.ProvCredential)
+	account, err := aus.accountRepo.FindAccountByUserAndProvider(ctx, usr.ID, models.ProvCredential)
 	if err != nil || account == nil || account.Password == nil {
 		_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
 		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.ErrInvalidCredentials
@@ -228,13 +228,13 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 	}
 
 	// 2. get the user
-	usr, err := aus.userRepo.GetUserByID(ctx, claims.UserID)
+	usr, err := aus.userRepo.FindUserByID(ctx, claims.UserID)
 	if err != nil || usr == nil {
 		return dtos.BadReqC[TokenResponse](errors.DataNotFound), errors.UserNotFoundError
 	}
 
 	// 3. get the session that are not blacklisted
-	session, err := aus.sessionRepo.GetSessionByID(ctx, claims.SessionID)
+	session, err := aus.sessionRepo.FindSessionByID(ctx, claims.SessionID)
 	if err != nil || session == nil || session.UserID != claims.UserID {
 		return dtos.BadReqC[TokenResponse](errors.DataNotFound), errors.UserNotFoundError
 	}
@@ -282,7 +282,7 @@ func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[
 		return dtos.BadReqC[bool](errors.InvalidToken), errors.InvalidTokenError
 	}
 
-	session, err := aus.sessionRepo.GetSessionByID(ctx, claims.SessionID)
+	session, err := aus.sessionRepo.FindSessionByID(ctx, claims.SessionID)
 	if err != nil || session == nil {
 		return dtos.BadReqC[bool](errors.DataNotFound), errors.UserNotFoundError
 	}
@@ -299,7 +299,7 @@ func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[
 
 // ForgotPwd [ID]
 func (aus Service) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GResp[bool], error) {
-	usr, err := aus.userRepo.GetUserByEmail(ctx, input.Email)
+	usr, err := aus.userRepo.FindUserByEmail(ctx, input.Email)
 	if err != nil || usr == nil {
 		return dtos.SuccessCreated(true, 0), nil
 	}
@@ -314,7 +314,7 @@ func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GRes
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
 
-	usr, err := aus.userRepo.GetUserByEmail(ctx, input.Info)
+	usr, err := aus.userRepo.FindUserByEmail(ctx, input.Info)
 	if err != nil || usr == nil {
 		return dtos.BadReqC[bool](errors.InfoOrCode), errors.InfoOrCodeErr
 	}
@@ -329,7 +329,7 @@ func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GRes
 		}
 
 		// 2. Update user's password
-		account, err := aus.accountRepo.GetAccountByUserAndProvider(txCtx, usr.ID, models.ProvCredential)
+		account, err := aus.accountRepo.FindAccountByUserAndProvider(txCtx, usr.ID, models.ProvCredential)
 		if err != nil {
 			return err
 		}

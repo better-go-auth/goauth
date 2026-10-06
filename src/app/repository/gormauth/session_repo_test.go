@@ -20,19 +20,19 @@ func TestSessionRepo_EmptyKeysMatchNothing(t *testing.T) {
 	_, err := repo.CreateSession(ctx, &models.Session{Token: "tok", UserID: "u1", ExpiresAt: time.Now().Add(time.Hour)})
 	require.NoError(t, err)
 
-	got, err := repo.GetSessionByToken(ctx, "")
+	got, err := repo.FindSession(ctx, "")
 	require.Error(t, err)
 	require.Nil(t, got)
-	got, err = repo.GetSessionByID(ctx, "")
+	got, err = repo.FindSessionByID(ctx, "")
 	require.Error(t, err)
 	require.Nil(t, got)
 
-	require.NoError(t, repo.DeleteSessionsByUserID(ctx, ""))
-	rows, err := repo.ListSessionsByUserID(ctx, "u1")
+	require.NoError(t, repo.DeleteUserSessions(ctx, ""))
+	rows, err := repo.ListSessions(ctx, "u1")
 	require.NoError(t, err)
 	require.Len(t, rows, 1)
 
-	got, err = repo.GetSessionByToken(ctx, "tok")
+	got, err = repo.FindSession(ctx, "tok")
 	require.NoError(t, err)
 	require.Equal(t, "u1", got.UserID)
 }

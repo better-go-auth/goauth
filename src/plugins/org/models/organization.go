@@ -28,9 +28,12 @@ type Organization struct {
 	Status OrgStatus `json:"status" gorm:"not null;default:active" bun:"status,notnull,default:active"`
 	// CreatedBy is the creator and initial owner; empty for organizations created by better-auth.
 	CreatedBy string `json:"createdBy" gorm:"index" bun:"created_by"`
+
+	// Sessions only declares the session.activeOrganizationId foreign key.
+	Sessions []coremodels.Session `json:"-" gorm:"foreignKey:ActiveOrganizationID;constraint:OnDelete:SET NULL"`
 }
 
-func (Organization) TableName() string { return "organizations" }
+func (Organization) TableName() string { return coremodels.TableName(coremodels.ModelOrganization) }
 
 // OrgMemberRole defines the roles available within an organization.
 type OrgMemberRole string
@@ -56,7 +59,7 @@ type Member struct {
 	User         *coremodels.User `json:"user,omitempty"         gorm:"foreignKey:UserID"                                    bun:"rel:belongs-to,join:user_id=id"`
 }
 
-func (Member) TableName() string { return "members" }
+func (Member) TableName() string { return coremodels.TableName(coremodels.ModelMember) }
 
 // InvitationStatus tracks the state of an invitation.
 type InvitationStatus string
@@ -78,7 +81,7 @@ type Invitation struct {
 	Role            OrgMemberRole    `json:"role"           gorm:"not null;default:member"  bun:"role,notnull,default:member"`
 	TeamID          *string          `json:"teamId,omitempty"                               bun:"team_id"`
 	Status          InvitationStatus `json:"status"         gorm:"not null;default:pending" bun:"status,notnull,default:pending"`
-	ExpiresAt       time.Time        `json:"expiresAt"                                      bun:"expires_at,notnull"`
+	ExpiresAt       time.Time        `json:"expiresAt"      gorm:"not null"                 bun:"expires_at,notnull"`
 	InviterID       string           `json:"inviterId"      gorm:"not null;index"           bun:"inviter_id,notnull"`
 
 	// ===== goauth fields (not in better-auth) =====
@@ -89,7 +92,7 @@ type Invitation struct {
 	Inviter      *coremodels.User `json:"inviter,omitempty"      gorm:"foreignKey:InviterID"                                 bun:"rel:belongs-to,join:inviter_id=id"`
 }
 
-func (Invitation) TableName() string { return "invitations" }
+func (Invitation) TableName() string { return coremodels.TableName(coremodels.ModelInvitation) }
 
 // OrgPermission defines a fine-grained permission within an organization.
 // To be deleted: replaced by better-auth's `organizationRole` table (dynamic access control).

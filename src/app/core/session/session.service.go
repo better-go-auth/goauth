@@ -90,7 +90,7 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 	if opt != nil && opt.ClearSession {
 		// TODO: make sure the repo
 		if aus.SessionRepo != nil {
-			_ = aus.SessionRepo.DeleteSessionsByUserID(ctx, userId)
+			_ = aus.SessionRepo.DeleteUserSessions(ctx, userId)
 		}
 	}
 
@@ -175,7 +175,7 @@ func (aus Service) BlacklistSession(ctx context.Context, sessionId string) error
 
 func (aus Service) DeleteSession(ctx context.Context, sessionId string) error {
 	if aus.SessionRepo != nil {
-		if err := aus.SessionRepo.DeleteSession(ctx, sessionId); err != nil {
+		if err := aus.SessionRepo.DeleteSessionByID(ctx, sessionId); err != nil {
 			return err
 		}
 	}
@@ -193,7 +193,7 @@ func (aus Service) DeleteSession(ctx context.Context, sessionId string) error {
 
 func (aus Service) DeleteAllUserSessions(ctx context.Context, userId string) error {
 	if aus.SessionRepo != nil {
-		sessions, err := aus.SessionRepo.ListSessionsByUserID(ctx, userId)
+		sessions, err := aus.SessionRepo.ListSessions(ctx, userId)
 		if err == nil {
 			for _, s := range sessions {
 				_ = aus.BlacklistSession(ctx, s.ID)
@@ -202,7 +202,7 @@ func (aus Service) DeleteAllUserSessions(ctx context.Context, userId string) err
 				}
 			}
 		}
-		return aus.SessionRepo.DeleteSessionsByUserID(ctx, userId)
+		return aus.SessionRepo.DeleteUserSessions(ctx, userId)
 	}
 	// TODO: Remove
 	// if aus.ProvServ != nil && aus.ProvServ.GormConn != nil {

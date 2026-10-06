@@ -36,7 +36,7 @@ const (
 func (p Providers) S() string {
 	return string(p)
 }
-func (Account) TableName() string { return "auth_accounts" }
+func (Account) TableName() string { return TableName(ModelAccount) }
 
 func TimeNow() time.Time {
 	return time.Now().UTC()

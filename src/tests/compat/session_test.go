@@ -22,7 +22,7 @@ func compatMode(c *config.AuthConfig) {
 func createUser(t *testing.T, s *Server, email, passwordHash string) *models.User {
 	t.Helper()
 	active := true
-	u := &models.User{UserDto: models.UserDto{Name: "Grace Hopper", Email: &email, EmailVerified: true, Active: &active, Role: "user"}}
+	u := &models.User{UserDto: models.UserDto{Name: "Grace Hopper", Email: email, EmailVerified: true, Active: &active, Role: "user"}}
 	if err := s.DB.Create(u).Error; err != nil {
 		t.Fatal(err)
 	}

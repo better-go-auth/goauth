@@ -46,10 +46,7 @@ func OrgToResponse(o *models.Organization) *OrgResponse {
 	if o == nil {
 		return nil
 	}
-	createdAt := ""
-	if o.CreatedAt != nil {
-		createdAt = o.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
-	}
+	createdAt := o.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
 	return &OrgResponse{
 		ID:        o.ID,
 		Name:      o.Name,
@@ -67,10 +64,7 @@ func MemberToResponse(m *models.Member) *MemberResponse {
 	if m == nil {
 		return nil
 	}
-	createdAt := ""
-	if m.CreatedAt != nil {
-		createdAt = m.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
-	}
+	createdAt := m.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
 	resp := &MemberResponse{
 		ID:             m.ID,
 		OrganizationID: m.OrganizationID,
@@ -89,10 +83,7 @@ func InvitationToResponse(i *models.Invitation) *InvitationResponse {
 	if i == nil {
 		return nil
 	}
-	createdAt := ""
-	if i.CreatedAt != nil {
-		createdAt = i.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
-	}
+	createdAt := i.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
 	return &InvitationResponse{
 		ID:             i.ID,
 		OrganizationID: i.OrganizationID,

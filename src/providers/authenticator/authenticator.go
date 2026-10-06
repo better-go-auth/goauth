@@ -32,8 +32,8 @@ type AuthenticateFunc func(ctx context.Context, auth humatypes.AuthHeaders) (*dt
 
 // SessionLookupRepo defines the data access methods required by Authenticator for fallback lookups.
 type SessionLookupRepo interface {
-	GetSessionByToken(ctx context.Context, token string) (*models.Session, error)
-	GetUserByID(ctx context.Context, id string) (*models.User, error)
+	FindSession(ctx context.Context, token string) (*models.Session, error)
+	FindUserByID(ctx context.Context, id string) (*models.User, error)
 }
 
 // TODO: this is an unneeded function, it will be removed, because all authentication should happen on the middleware
@@ -84,18 +84,15 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 
 		// 4. Fallback: look up an opaque session token (shape-checked so stored refresh hashes can't be replayed)
 		if lookup != nil && idgen.IsToken(token) {
-			sess, err := lookup.GetSessionByToken(ctx, token)
+			sess, err := lookup.FindSession(ctx, token)
 			if err == nil && sess != nil && sess.UserID != "" {
 				if sess.ExpiresAt.Before(time.Now().UTC()) {
 					return nil, autherr.ErrUnauthorized
 				}
 
-				user, err := lookup.GetUserByID(ctx, sess.UserID)
+				user, err := lookup.FindUserByID(ctx, sess.UserID)
 				if err == nil && user != nil {
-					var email string
-					if user.Email != nil {
-						email = *user.Email
-					}
+					email := user.Email
 					var activeOrgRole *string
 					if sess.ActiveOrganizationRole != nil {
 						activeOrgRole = sess.ActiveOrganizationRole

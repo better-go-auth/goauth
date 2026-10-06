@@ -177,23 +177,12 @@ func UserToResponse(u *models.User) *UserResponse {
 	if u == nil {
 		return nil
 	}
-	createdAt := ""
-	if u.CreatedAt != nil {
-		createdAt = formatTime(*u.CreatedAt)
-	}
-	updatedAt := ""
-	if u.UpdatedAt != nil {
-		updatedAt = formatTime(*u.UpdatedAt)
-	}
+	createdAt := formatTime(u.CreatedAt)
+	updatedAt := formatTime(u.UpdatedAt)
 	var banExpires *string
 	if u.BanExpires != nil {
 		tStr := formatTime(*u.BanExpires)
 		banExpires = &tStr
-	}
-
-	var image *string
-	if u.Image != "" {
-		image = &u.Image
 	}
 
 	name := strings.TrimSpace(u.GetFullname())
@@ -204,9 +193,9 @@ func UserToResponse(u *models.User) *UserResponse {
 	return &UserResponse{
 		ID:            u.ID,
 		Name:          name,
-		Email:         GetVal(u.Email),
+		Email:         u.Email,
 		EmailVerified: u.EmailVerified,
-		Image:         image,
+		Image:         u.Image,
 		Role:          u.Role.S(),
 		Banned:        u.Banned,
 		BanReason:     u.BanReason,
@@ -230,14 +219,8 @@ func SessionToData(s *models.Session) *SessionData {
 	if s == nil {
 		return nil
 	}
-	createdAt := ""
-	if s.CreatedAt != nil {
-		createdAt = formatTime(*s.CreatedAt)
-	}
-	updatedAt := ""
-	if s.UpdatedAt != nil {
-		updatedAt = formatTime(*s.UpdatedAt)
-	}
+	createdAt := formatTime(s.CreatedAt)
+	updatedAt := formatTime(s.UpdatedAt)
 	ipAddress := normalizeNilable(s.IPAddress)
 	userAgent := normalizeNilable(s.UserAgent)
 	return &SessionData{

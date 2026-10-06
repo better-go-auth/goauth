@@ -52,7 +52,7 @@ func (r *SessionRepo) UpsertSession(ctx context.Context, session *models.Session
 	return session, nil
 }
 
-func (r *SessionRepo) GetSessionByID(ctx context.Context, id string) (*models.Session, error) {
+func (r *SessionRepo) FindSessionByID(ctx context.Context, id string) (*models.Session, error) {
 	var session models.Session
 	err := gormutil.GetDB(ctx, r.db).Where(sessionByID(id), "ID").Take(&session).Error
 	if err != nil {
@@ -64,7 +64,7 @@ func (r *SessionRepo) GetSessionByID(ctx context.Context, id string) (*models.Se
 	return &session, nil
 }
 
-func (r *SessionRepo) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
+func (r *SessionRepo) FindSession(ctx context.Context, token string) (*models.Session, error) {
 	var session models.Session
 	err := gormutil.GetDB(ctx, r.db).Where(sessionByToken(token), "Token").Take(&session).Error
 	if err != nil {
@@ -85,10 +85,10 @@ func (r *SessionRepo) UpdateSession(ctx context.Context, id string, data map[str
 	if result.RowsAffected == 0 {
 		return nil, loc_errors.NotFoundErr("gorm/session: not found for update")
 	}
-	return r.GetSessionByID(ctx, id)
+	return r.FindSessionByID(ctx, id)
 }
 
-func (r *SessionRepo) DeleteSession(ctx context.Context, id string) error {
+func (r *SessionRepo) DeleteSessionByID(ctx context.Context, id string) error {
 	result := gormutil.GetDB(ctx, r.db).Where(sessionByID(id), "ID").Delete(&models.Session{})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/session: delete: %w", result.Error)
@@ -96,7 +96,7 @@ func (r *SessionRepo) DeleteSession(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *SessionRepo) DeleteSessionByToken(ctx context.Context, token string) error {
+func (r *SessionRepo) DeleteSession(ctx context.Context, token string) error {
 	result := gormutil.GetDB(ctx, r.db).Where(sessionByToken(token), "Token").Delete(&models.Session{})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/session: delete by token: %w", result.Error)
@@ -104,7 +104,7 @@ func (r *SessionRepo) DeleteSessionByToken(ctx context.Context, token string) er
 	return nil
 }
 
-func (r *SessionRepo) DeleteSessionsByUserID(ctx context.Context, userID string) error {
+func (r *SessionRepo) DeleteUserSessions(ctx context.Context, userID string) error {
 	result := gormutil.GetDB(ctx, r.db).Where(sessionsOfUser(userID), "UserID").Delete(&models.Session{})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/session: delete by user: %w", result.Error)
@@ -112,7 +112,7 @@ func (r *SessionRepo) DeleteSessionsByUserID(ctx context.Context, userID string)
 	return nil
 }
 
-func (r *SessionRepo) DeleteExpired(ctx context.Context) error {
+func (r *SessionRepo) DeleteExpiredSessions(ctx context.Context) error {
 	result := gormutil.GetDB(ctx, r.db).
 		Where(clause.Lt{Column: gormutil.Col(r.db, &models.Session{}, "ExpiresAt"), Value: time.Now().UTC()}).
 		Delete(&models.Session{})
@@ -122,7 +122,7 @@ func (r *SessionRepo) DeleteExpired(ctx context.Context) error {
 	return nil
 }
 
-func (r *SessionRepo) ListSessionsByUserID(ctx context.Context, userID string) ([]models.Session, error) {
+func (r *SessionRepo) ListSessions(ctx context.Context, userID string) ([]models.Session, error) {
 	var sessions []models.Session
 	err := gormutil.GetDB(ctx, r.db).Where(sessionsOfUser(userID), "UserID").Find(&sessions).Error
 	if err != nil {
@@ -131,7 +131,7 @@ func (r *SessionRepo) ListSessionsByUserID(ctx context.Context, userID string) (
 	return sessions, nil
 }
 
-func (r *SessionRepo) ListSessions(ctx context.Context, filter models.SessionFilter, pagi dtos.PaginationInput) ([]models.Session, int64, error) {
+func (r *SessionRepo) QuerySessions(ctx context.Context, filter models.SessionFilter, pagi dtos.PaginationInput) ([]models.Session, int64, error) {
 	var sessions []models.Session
 	var total int64
 

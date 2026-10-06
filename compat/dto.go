@@ -69,13 +69,9 @@ func UserFromModel(u *models.User) BetterAuthUser {
 		Name:          u.DisplayNameOrFull(),
 		Email:         u.GetEmail(),
 		EmailVerified: u.EmailVerified,
-		Image:         nonEmpty(u.Image),
-	}
-	if u.CreatedAt != nil {
-		out.CreatedAt = Time(*u.CreatedAt)
-	}
-	if u.UpdatedAt != nil {
-		out.UpdatedAt = Time(*u.UpdatedAt)
+		Image:         u.Image,
+		CreatedAt:     Time(u.CreatedAt),
+		UpdatedAt:     Time(u.UpdatedAt),
 	}
 	return out
 }
@@ -92,19 +88,10 @@ func SessionFromModel(s *models.Session) BetterAuthSession {
 		ActiveOrganizationID: s.ActiveOrganizationID,
 		ActiveTeamID:         s.ActiveTeamID,
 		Token:                s.Token,
-	}
-	if s.CreatedAt != nil {
-		out.CreatedAt = Time(*s.CreatedAt)
-	}
-	if s.UpdatedAt != nil {
-		out.UpdatedAt = Time(*s.UpdatedAt)
+		CreatedAt:            Time(s.CreatedAt),
+		UpdatedAt:            Time(s.UpdatedAt),
 	}
 	return out
 }
 
-func nonEmpty(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
+

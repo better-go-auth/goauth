@@ -23,15 +23,15 @@ func TestTimeJSON(t *testing.T) {
 func TestFromModels(t *testing.T) {
 	email := "a@example.com"
 	now := time.Now()
-	u := &models.User{Base: models.Base{ID: "u1", CreatedAt: &now, UpdatedAt: &now},
-		UserDto: models.UserDto{FirstName: "Ada", LastName: "Lovelace", Email: &email}}
+	u := &models.User{Base: models.Base{ID: "u1", CreatedAt: now, UpdatedAt: now},
+		UserDto: models.UserDto{FirstName: "Ada", LastName: "Lovelace", Email: email}}
 	du := UserFromModel(u)
 	if du.Name != "Ada Lovelace" || du.Image != nil || du.Email != email {
 		t.Fatalf("unexpected user %+v", du)
 	}
 
 	tok := "tok"
-	s := &models.Session{Base: models.Base{ID: "s1", CreatedAt: &now}, UserID: "u1", Token: tok, ExpiresAt: now}
+	s := &models.Session{Base: models.Base{ID: "s1", CreatedAt: now}, UserID: "u1", Token: tok, ExpiresAt: now}
 	ds := SessionFromModel(s)
 	b, _ := json.Marshal(SessionWithUser{Session: ds, User: du})
 	var m map[string]map[string]any

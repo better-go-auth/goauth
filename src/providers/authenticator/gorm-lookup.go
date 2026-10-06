@@ -12,13 +12,13 @@ type gormSessionLookup struct {
 	db *gorm.DB
 }
 
-func (g *gormSessionLookup) GetSessionByToken(ctx context.Context, token string) (*models.Session, error) {
+func (g *gormSessionLookup) FindSession(ctx context.Context, token string) (*models.Session, error) {
 	var sess models.Session
 	err := g.db.WithContext(ctx).Where(&models.Session{Token: token}, "Token").First(&sess).Error
 	return &sess, err
 }
 
-func (g *gormSessionLookup) GetUserByID(ctx context.Context, id string) (*models.User, error) {
+func (g *gormSessionLookup) FindUserByID(ctx context.Context, id string) (*models.User, error) {
 	var user models.User
 	err := g.db.WithContext(ctx).Where(&models.User{Base: models.Base{ID: id}}, "ID").First(&user).Error
 	return &user, err

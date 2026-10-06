@@ -35,7 +35,7 @@ func (r *UserRepo) CreateUser(ctx context.Context, user *models.User) (*models.U
 	return user, nil
 }
 
-func (r *UserRepo) GetUserByID(ctx context.Context, id string) (*models.User, error) {
+func (r *UserRepo) FindUserByID(ctx context.Context, id string) (*models.User, error) {
 	var user models.User
 	err := gormutil.GetDB(ctx, r.db).Where(userByID(id), "ID").Take(&user).Error
 	if err != nil {
@@ -47,7 +47,7 @@ func (r *UserRepo) GetUserByID(ctx context.Context, id string) (*models.User, er
 	return &user, nil
 }
 
-func (r *UserRepo) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
+func (r *UserRepo) FindUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
 	err := gormutil.GetDB(ctx, r.db).
 		Where(gormutil.IEq(r.db, &models.User{}, "Email", email)).
@@ -107,7 +107,7 @@ func (r *UserRepo) ListUsers(ctx context.Context, filter repo_interfaces.UserFil
 		query = query.Where(clause.Eq{Column: gormutil.Col(r.db, user, "Banned"), Value: *filter.Banned})
 	}
 	if filter.SearchField != nil && filter.SearchValue != nil {
-		field, ok := userListField(*filter.SearchField)
+		field, ok := repo_interfaces.UserListField(*filter.SearchField)
 		if !ok {
 			return nil, 0, fmt.Errorf("gorm/user: invalid search field")
 		}
@@ -121,7 +121,7 @@ func (r *UserRepo) ListUsers(ctx context.Context, filter repo_interfaces.UserFil
 
 	sortBy := "CreatedAt"
 	if pagi.SortBy != "" {
-		field, ok := userListField(pagi.SortBy)
+		field, ok := repo_interfaces.UserListField(pagi.SortBy)
 		if !ok {
 			return nil, 0, fmt.Errorf("gorm/user: invalid sort field")
 		}
@@ -132,12 +132,16 @@ func (r *UserRepo) ListUsers(ctx context.Context, filter repo_interfaces.UserFil
 	if pagi.Limit > 0 {
 		limit = pagi.Limit
 	}
+	offset := 0
+	if pagi.Page > 1 {
+		offset = (pagi.Page - 1) * limit
+	}
 
 	var users []models.User
 	err := query.
 		Order(gormutil.OrderBy(r.db, user, sortBy, strings.ToLower(pagi.SortDir) != "asc")).
 		Limit(limit).
-		Offset(pagi.Page).
+		Offset(offset).
 		Find(&users).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("gorm/user: list: %w", err)
@@ -148,28 +152,4 @@ func (r *UserRepo) ListUsers(ctx context.Context, filter repo_interfaces.UserFil
 // userByID is a struct condition on the primary key; pass "ID" to Where so an empty id matches nothing.
 func userByID(id string) *models.User {
 	return &models.User{Base: models.Base{ID: id}}
-}
-
-// userListField maps an allowed sort/search name (API or column spelling) to its Go field.
-func userListField(field string) (string, bool) {
-	switch strings.ToLower(field) {
-	case "id":
-		return "ID", true
-	case "name":
-		return "Name", true
-	case "email":
-		return "Email", true
-	case "role":
-		return "Role", true
-	case "banned":
-		return "Banned", true
-	case "createdat", "created_at":
-		return "CreatedAt", true
-	case "updatedat", "updated_at":
-		return "UpdatedAt", true
-	case "lastloginat", "last_login_at":
-		return "LastLoginAt", true
-	default:
-		return "", false
-	}
 }

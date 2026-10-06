@@ -30,5 +30,12 @@ func (m *GORMOrgMigrator) Migrate(_ context.Context) error {
 	if err != nil {
 		return fmt.Errorf("gorm/migrate-org: %w", err)
 	}
+	// has-many constraints live on the child table, so AutoMigrate(&Organization{}) does not create them
+	m2 := m.db.Migrator()
+	if !m2.HasConstraint(&models.Organization{}, "Sessions") {
+		if err := m2.CreateConstraint(&models.Organization{}, "Sessions"); err != nil {
+			return fmt.Errorf("gorm/migrate-org: session.activeOrganizationId foreign key: %w", err)
+		}
+	}
 	return nil
 }

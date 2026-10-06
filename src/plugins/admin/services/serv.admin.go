@@ -125,11 +125,11 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 	user := &models.User{
 		UserDto: models.UserDto{
 			FirstName:     input.Name,
-			Email:         &email,
+			Email:         email,
 			EmailVerified: true,
 			Role:          role,
 		},
-		Base: models.Base{ID: models.NewID(), UpdatedAt: &now},
+		Base: models.Base{ID: models.NewID(), UpdatedAt: now},
 	}
 
 	created, err := s.adminRepo.CreateUserWithAccount(ctx, user, hash)

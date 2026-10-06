@@ -2,6 +2,7 @@ package repo_interfaces
 
 import (
 	"context"
+	"strings"
 
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
@@ -11,44 +12,44 @@ import (
 type IUserRepo interface {
 	// CreateUser inserts a new user and returns the created record.
 	CreateUser(ctx context.Context, user *models.User) (*models.User, error)
-	// GetUserByID fetches a user by their ULID.
-	GetUserByID(ctx context.Context, id string) (*models.User, error)
-	// GetUserByEmail fetches a user by email (case-insensitive).
-	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
-	// UpdateUser applies a partial update (map of column→value) and returns the updated record.
+	// FindUserByID fetches a non-deleted user by id.
+	FindUserByID(ctx context.Context, id string) (*models.User, error)
+	// FindUserByEmail fetches a user by email (case-insensitive).
+	FindUserByEmail(ctx context.Context, email string) (*models.User, error)
+	// UpdateUser applies a partial update keyed by Go field name (e.g. "EmailVerified") and returns the updated record.
 	UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error)
-	// DeleteUser soft-deletes a user (sets DeletedAt).
+	// DeleteUser soft-deletes a user and frees their email.
 	DeleteUser(ctx context.Context, id string) error
-	// ListUsers returns a paginated list of users matching the filter.
+	// ListUsers returns a page of users matching the filter, plus the total count.
 	ListUsers(ctx context.Context, filter UserFilter, pagi dtos.PaginationInput) ([]models.User, int64, error)
 }
 
 // IVerificationRepo defines the repository interface for verification codes and tokens.
 type IVerificationRepo interface {
-	// UpsertVerification inserts or updates a verification record matching the identifier.
-	UpsertVerification(ctx context.Context, verification *models.Verification) (*models.Verification, error)
-	// GetVerification fetches a verification record by identifier and purpose.
-	GetVerification(ctx context.Context, identifier string) (*models.Verification, error)
-	// DeleteVerification deletes a verification record by identifier and purpose.
-	DeleteVerification(ctx context.Context, identifier string) error
-	// DeleteExpired removes all expired verification records.
-	DeleteExpired(ctx context.Context) error
+	// UpsertVerificationValue stores a verification, replacing any row with the same identifier.
+	UpsertVerificationValue(ctx context.Context, verification *models.Verification) (*models.Verification, error)
+	// FindVerificationValue fetches the newest verification for identifier.
+	FindVerificationValue(ctx context.Context, identifier string) (*models.Verification, error)
+	// DeleteVerificationByIdentifier deletes every verification with identifier.
+	DeleteVerificationByIdentifier(ctx context.Context, identifier string) error
+	// DeleteExpiredVerifications removes all expired verification records.
+	DeleteExpiredVerifications(ctx context.Context) error
 }
 
 // IOAuthAccountRepo defines the repository interface for OAuth Account persistence.
 type IOAuthAccountRepo interface {
 	// CreateAccount inserts a new account.
 	CreateAccount(ctx context.Context, account *models.Account) (*models.Account, error)
-	// GetAccountByProviderAndAccountID fetches an account by (providerId, accountId).
-	GetAccountByProviderAndAccountID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error)
-	// GetAccountByUserAndProvider fetches a user's account for a specific provider.
-	GetAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error)
+	// FindAccountByProviderID fetches an account by (providerId, accountId).
+	FindAccountByProviderID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error)
+	// FindAccountByUserAndProvider fetches a user's account for a specific provider.
+	FindAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error)
 	// UpdateAccount applies a partial update to an account.
 	UpdateAccount(ctx context.Context, id string, data map[string]interface{}) (*models.Account, error)
-	// DeleteAccountsByUserID removes all OAuth accounts for a user.
-	DeleteAccountsByUserID(ctx context.Context, userID string) error
-	// ListAccountsByUserID returns all accounts linked to a user.
-	ListAccountsByUserID(ctx context.Context, userID string) ([]models.Account, error)
+	// DeleteAccounts removes all OAuth accounts for a user.
+	DeleteAccounts(ctx context.Context, userID string) error
+	// FindAccounts returns all accounts linked to a user.
+	FindAccounts(ctx context.Context, userID string) ([]models.Account, error)
 	// DeleteAccountByUserAndProvider removes a user's account for a specific provider
 	// (used by Better Auth's /unlink-account).
 	DeleteAccountByUserAndProvider(ctx context.Context, userID, providerID string) error
@@ -61,6 +62,30 @@ type UserFilter struct {
 	Banned      *bool   `json:"banned"`
 	SearchField *string `json:"searchField"`
 	SearchValue *string `json:"searchValue"`
+}
+
+// UserListField maps an allowed sort/search name (API or column spelling) to its models.User Go field.
+func UserListField(field string) (string, bool) {
+	switch strings.ToLower(field) {
+	case "id":
+		return "ID", true
+	case "name":
+		return "Name", true
+	case "email":
+		return "Email", true
+	case "role":
+		return "Role", true
+	case "banned":
+		return "Banned", true
+	case "createdat", "created_at":
+		return "CreatedAt", true
+	case "updatedat", "updated_at":
+		return "UpdatedAt", true
+	case "lastloginat", "last_login_at":
+		return "LastLoginAt", true
+	default:
+		return "", false
+	}
 }
 
 type IAuthRepos interface {

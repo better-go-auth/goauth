@@ -25,10 +25,10 @@ type User struct {
 
 type UserDto struct {
 	// ===== better-auth fields =====
-	Name          string  `json:"name,omitempty"  gorm:"not null;default:''"  bun:"name,notnull"`
-	Email         *string `json:"email,omitempty" gorm:"uniqueIndex;size:255" format:"email"`
-	EmailVerified bool    `json:"emailVerified"   gorm:"default:false"        bun:"email_verified,default:false"`
-	Image         string  `json:"image,omitempty"`
+	Name          string  `json:"name,omitempty"  gorm:"not null;default:''"           bun:"name,notnull"`
+	Email         string  `json:"email"           gorm:"not null;uniqueIndex;size:255" format:"email"`
+	EmailVerified bool    `json:"emailVerified"   gorm:"not null;default:false"        bun:"email_verified,default:false"`
+	Image         *string `json:"image"`
 	// admin plugin
 	Role       enums.Role `json:"role"       gorm:"default:user"`
 	Banned     bool       `json:"banned"     gorm:"default:false" bun:"banned,default:false"`
@@ -49,9 +49,7 @@ type UserDto struct {
 	AccountStatus enums.AccountStatus `json:"-"`
 	LastLoginIP   *string             `json:"lastLoginIP,omitempty"  bun:"last_login_ip"`
 	LastLoginAt   *time.Time          `json:"lastLoginAt,omitempty"`
-
 }
-
 
 func (u *User) GetFullname() string {
 	return u.FirstName + " " + u.LastName
@@ -65,19 +63,18 @@ func (u *UserDto) DisplayNameOrFull() string {
 	return strings.TrimSpace(u.FirstName + " " + u.LastName)
 }
 
-// BeforeSave keeps Name populated for rows created through legacy first/last name APIs.
+// BeforeSave keeps Name populated for rows created through legacy first/last name APIs
+// and stores emails lowercased, as better-auth does.
 func (u *User) BeforeSave(tx *gorm.DB) error {
 	if u.Name == "" {
 		u.Name = u.DisplayNameOrFull()
 	}
+	u.Email = strings.ToLower(strings.TrimSpace(u.Email))
 	return nil
 }
 
 func (u *User) GetEmail() string {
-	if u.Email != nil {
-		return *u.Email
-	}
-	return ""
+	return u.Email
 }
 
 // AnonymizeEmail generates a unique, non-colliding placeholder email for soft-deleted users.
@@ -128,7 +125,7 @@ type UserQuery struct {
 // 	return q.UserFilter, q.PaginationInput, &generic.Opt{Preloads: []string{"CompanyRole"}}
 // }
 
-func (User) TableName() string { return "auth_users" }
+func (User) TableName() string { return TableName(ModelUser) }
 
 // type IntUsr interface {
 // 	GetID() string

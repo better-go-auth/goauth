@@ -29,7 +29,7 @@ func setupOrgUser(t *testing.T, env *helpers.TestEnv, email string, orgID, orgRo
 		UserDto: models.UserDto{
 			FirstName:     "Org",
 			LastName:      "User",
-			Email:         ptr(email),
+			Email:         email,
 			EmailVerified: true,
 			Role:          enums.User,
 		},

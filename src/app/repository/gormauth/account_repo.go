@@ -33,7 +33,7 @@ func (r *AccountRepo) CreateAccount(ctx context.Context, account *models.Account
 	return account, nil
 }
 
-func (r *AccountRepo) GetAccountByProviderAndAccountID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
+func (r *AccountRepo) FindAccountByProviderID(ctx context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
 		Where(&models.Account{ProviderID: providerID, AccountID: accountID}, "ProviderID", "AccountID").
@@ -47,7 +47,7 @@ func (r *AccountRepo) GetAccountByProviderAndAccountID(ctx context.Context, prov
 	return &account, nil
 }
 
-func (r *AccountRepo) GetAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error) {
+func (r *AccountRepo) FindAccountByUserAndProvider(ctx context.Context, userID string, providerID models.Providers) (*models.Account, error) {
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
 		Where(&models.Account{UserID: userID, ProviderID: providerID}, "UserID", "ProviderID").
@@ -76,7 +76,7 @@ func (r *AccountRepo) UpdateAccount(ctx context.Context, id string, data map[str
 	return &account, nil
 }
 
-func (r *AccountRepo) DeleteAccountsByUserID(ctx context.Context, userID string) error {
+func (r *AccountRepo) DeleteAccounts(ctx context.Context, userID string) error {
 	if err := gormutil.GetDB(ctx, r.db).Where(&models.Account{UserID: userID}, "UserID").Delete(&models.Account{}).Error; err != nil {
 		return fmt.Errorf("gorm/account: delete by user id: %w", err)
 	}
@@ -92,7 +92,7 @@ func (r *AccountRepo) DeleteAccountByUserAndProvider(ctx context.Context, userID
 	return nil
 }
 
-func (r *AccountRepo) ListAccountsByUserID(ctx context.Context, userID string) ([]models.Account, error) {
+func (r *AccountRepo) FindAccounts(ctx context.Context, userID string) ([]models.Account, error) {
 	var accounts []models.Account
 	if err := gormutil.GetDB(ctx, r.db).Where(&models.Account{UserID: userID}, "UserID").Find(&accounts).Error; err != nil {
 		return nil, fmt.Errorf("gorm/account: list by user id: %w", err)

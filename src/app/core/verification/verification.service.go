@@ -74,7 +74,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 	if opt != nil {
 		userID = opt.UserId
 	}
-	_, err = vSvc.Repo.UpsertVerification(ctx, &models.Verification{
+	_, err = vSvc.Repo.UpsertVerificationValue(ctx, &models.Verification{
 		ExpiresAt:  time.Now().Add(vSvc.Config.GoAuth.CodeExpiresIn),
 		Value:      codeHash,
 		Identifier: purpose.Make(identifier),
@@ -107,7 +107,7 @@ func (vSvc Service) VerifyCode(ctx context.Context, identifier string, purpose m
 		return dtos.InternalErrMS[models.Verification]("no storage"), errors.New("no storage configured")
 	}
 	fullIdentifier := purpose.Make(identifier)
-	v, err := vSvc.Repo.GetVerification(ctx, fullIdentifier)
+	v, err := vSvc.Repo.FindVerificationValue(ctx, fullIdentifier)
 	if err != nil {
 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), err
 	}
@@ -123,7 +123,7 @@ func (vSvc Service) VerifyCode(ctx context.Context, identifier string, purpose m
 
 func (vSvc Service) DeleteExpired(ctx context.Context) error {
 	// if vSvc.Repo != nil {
-	return vSvc.Repo.DeleteExpired(ctx)
+	return vSvc.Repo.DeleteExpiredVerifications(ctx)
 
 	// if vSvc.GormDB != nil {
 	// 	if err := gormutil.GetDB(ctx, vSvc.GormDB).Where("expires_at < NOW()").Delete(&models.Verification{}).Error; err != nil {
@@ -136,7 +136,7 @@ func (vSvc Service) DeleteExpired(ctx context.Context) error {
 func (vSvc Service) DeleteByIdentifier(ctx context.Context, identifier string, purpose models.VerificationPurpose) error {
 	fullIdentifier := purpose.Make(identifier)
 
-	return vSvc.Repo.DeleteVerification(ctx, fullIdentifier)
+	return vSvc.Repo.DeleteVerificationByIdentifier(ctx, fullIdentifier)
 
 	// if vSvc.GormDB != nil {
 	// 	filter := models.Verification{Identifier: purpose.Make(identifier)}

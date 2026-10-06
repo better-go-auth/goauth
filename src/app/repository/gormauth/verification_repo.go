@@ -26,7 +26,7 @@ func NewVerificationRepo(db *gorm.DB) repo_interfaces.IVerificationRepo {
 	return &VerificationRepo{db: db}
 }
 
-func (r *VerificationRepo) UpsertVerification(ctx context.Context, verification *models.Verification) (*models.Verification, error) {
+func (r *VerificationRepo) UpsertVerificationValue(ctx context.Context, verification *models.Verification) (*models.Verification, error) {
 	if verification.ID == "" {
 		verification.ID = models.NewID()
 	}
@@ -43,7 +43,7 @@ func (r *VerificationRepo) UpsertVerification(ctx context.Context, verification 
 	return verification, nil
 }
 
-func (r *VerificationRepo) GetVerification(ctx context.Context, identifier string) (*models.Verification, error) {
+func (r *VerificationRepo) FindVerificationValue(ctx context.Context, identifier string) (*models.Verification, error) {
 	var v models.Verification
 	err := gormutil.GetDB(ctx, r.db).
 		Where(byIdentifier(identifier), "Identifier").
@@ -58,7 +58,7 @@ func (r *VerificationRepo) GetVerification(ctx context.Context, identifier strin
 	return &v, nil
 }
 
-func (r *VerificationRepo) DeleteVerification(ctx context.Context, identifier string) error {
+func (r *VerificationRepo) DeleteVerificationByIdentifier(ctx context.Context, identifier string) error {
 	result := gormutil.GetDB(ctx, r.db).Where(byIdentifier(identifier), "Identifier").Delete(&models.Verification{})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/verification: delete: %w", result.Error)
@@ -66,7 +66,7 @@ func (r *VerificationRepo) DeleteVerification(ctx context.Context, identifier st
 	return nil
 }
 
-func (r *VerificationRepo) DeleteExpired(ctx context.Context) error {
+func (r *VerificationRepo) DeleteExpiredVerifications(ctx context.Context) error {
 	result := gormutil.GetDB(ctx, r.db).
 		Where(clause.Lt{Column: gormutil.Col(r.db, &models.Verification{}, "ExpiresAt"), Value: time.Now().UTC()}).
 		Delete(&models.Verification{})
