@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/better-go-auth/goauth/compat"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 )
 
 type getSessionInput struct {
@@ -15,7 +15,7 @@ type getSessionInput struct {
 }
 
 type getSessionBody struct {
-	compat.SessionWithUser
+	dtos.SessionWithUser
 	NeedsRefresh *bool `json:"needsRefresh,omitempty"`
 }
 

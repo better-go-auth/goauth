@@ -1,11 +1,12 @@
-package sessions
+package humaadapter
 
 import (
 	"context"
 	"encoding/json"
 
-	"github.com/better-go-auth/goauth/compat"
+	session "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -13,28 +14,28 @@ import (
 type ctxKey struct{}
 
 // WithSession stores the resolved session in ctx.
-func WithSession(ctx context.Context, sw *compat.SessionWithUser) context.Context {
+func WithSession(ctx context.Context, sw *dtos.SessionWithUser) context.Context {
 	return context.WithValue(ctx, ctxKey{}, sw)
 }
 
 // FromContext returns the session put in ctx by a Resolver middleware.
-func FromContext(ctx context.Context) (*compat.SessionWithUser, bool) {
-	sw, ok := ctx.Value(ctxKey{}).(*compat.SessionWithUser)
+func FromContext(ctx context.Context) (*dtos.SessionWithUser, bool) {
+	sw, ok := ctx.Value(ctxKey{}).(*dtos.SessionWithUser)
 	return sw, ok && sw != nil
 }
 
 // Resolver turns the signed session cookie into a session for Huma operations.
 type Resolver struct {
-	mgr     *Manager
+	mgr     *session.Manager
 	cookies *cookies.Manager
 }
 
-func NewResolver(mgr *Manager, cm *cookies.Manager) *Resolver {
+func NewResolver(mgr *session.Manager, cm *cookies.Manager) *Resolver {
 	return &Resolver{mgr: mgr, cookies: cm}
 }
 
 // Resolve returns the session for a Cookie header, or nil when there is none.
-func (r *Resolver) Resolve(ctx context.Context, cookieHeader string) (*compat.SessionWithUser, error) {
+func (r *Resolver) Resolve(ctx context.Context, cookieHeader string) (*dtos.SessionWithUser, error) {
 	tok, ok := r.cookies.SessionToken(cookieHeader)
 	if !ok {
 		return nil, nil

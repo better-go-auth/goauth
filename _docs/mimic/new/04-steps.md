@@ -61,15 +61,19 @@ empty value matches nothing), `gormutil.Col/OrderBy/ILike/IEq` for non-equality 
 - Keep the old methods as thin wrappers until step 7 removes their last callers.
 - **Done when:** a repository contract test suite runs against `gormauth` (SQLite) and an in-memory fake.
 
-## Step 4 – Shared foundations (S)
+## Step 4 – Shared foundations (S) ✅
 
-Done: `compat/errors.go` + `apierror.go` merged into `src/common/errors` (`AuthError` + registry `Err/Register/Lookup/Codes`).
-
-- `src/sessions` → `src/app/services/session` (manager) and `src/app/adapters/huma` (middlewares).
-- `compat/errors.go` + `apierror.go` → `src/common/errors`; merge with `AuthError` into one type.
-- Delete `compat/dto.go`: the session manager returns `models.Session` / `models.User`, which now marshal correctly.
-- Fold `src/providers/hasher` into `authcrypto`.
-- Delete the `compat/` package.
+Done:
+- `compat/errors.go` + `apierror.go` merged into `src/common/errors` (`AuthError` + registry `Err/Register/Lookup/Codes`).
+- `src/sessions/manager.go` → `src/app/services/session` (package `session`); `middleware.go` → `src/app/adapters/huma`
+  (package `humaadapter`, `Resolver`, `WithSession`, `FromContext`).
+- `compat/dto.go` → `src/models/dtos/better_auth.go` (`dtos.SessionWithUser`, `BetterAuthSession`, `BetterAuthUser`, `dtos.Time`).
+  Kept as wire types instead of marshalling the models directly: `models.Session.Token` is `json:"-"` (legacy rows hold a
+  refresh hash), better-auth needs millisecond ISO timestamps, and the user model carries goauth-only fields.
+  Merging them with `dtos.SessionResponse` / `SessionData` / `UserResponse` is part of step 6.
+- `src/providers/hasher` folded into `authcrypto` (`TokenHash`, `TokenMatches`; verification codes use
+  `HashPasswordBcrypt` / `VerifyPassword`). Argon2 refresh-token hashes are no longer accepted.
+- `compat/` deleted.
 
 ## Step 5 – Auth services (L)
 

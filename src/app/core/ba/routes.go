@@ -9,19 +9,20 @@ import (
 	"slices"
 	"strings"
 
+	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
-	"github.com/better-go-auth/goauth/src/sessions"
 	"github.com/danielgtaylor/huma/v2"
 )
 
 // Deps are the shared services compat endpoints use.
 type Deps struct {
 	Conf     config.AuthConfig
-	Sessions *sessions.Manager
+	Sessions *sessionsvc.Manager
 	Cookies  *cookies.Manager
-	Resolver *sessions.Resolver
+	Resolver *humaadapter.Resolver
 }
 
 // RegisterRoutes mounts the compat endpoints implemented so far under Conf.BasePath.

@@ -1,4 +1,4 @@
-package compat
+package dtos
 
 import (
 	"strings"
@@ -93,5 +93,3 @@ func SessionFromModel(s *models.Session) BetterAuthSession {
 	}
 	return out
 }
-
-

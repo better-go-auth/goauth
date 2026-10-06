@@ -7,11 +7,13 @@ import (
 	"log/slog"
 	"time"
 
+	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/better-go-auth/goauth/src/app/core"
 	"github.com/better-go-auth/goauth/src/app/core/ba"
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
@@ -22,7 +24,6 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
-	"github.com/better-go-auth/goauth/src/sessions"
 	"gorm.io/gorm"
 
 	"github.com/better-go-auth/goauth/src/common/middleware"
@@ -45,9 +46,9 @@ type GoAuth struct {
 	Repositories repo_interfaces.IAuthRepos
 
 	// Sessions manages better-auth style cookie sessions.
-	Sessions *sessions.Manager
+	Sessions *sessionsvc.Manager
 	// SessionResolver provides Huma middlewares that load the cookie session.
-	SessionResolver *sessions.Resolver
+	SessionResolver *humaadapter.Resolver
 	Cookies         *cookies.Manager
 }
 type GoAuthOptions struct {
@@ -155,8 +156,8 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	authSvc := core.SetupAllAuthRoutesWithRepos(api, opts.AuthConfig, opts.EmailVerification, providerService, repos, hooks)
 
 	cookieMgr := cookies.New(opts.AuthConfig)
-	sessionMgr := sessions.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks)
-	resolver := sessions.NewResolver(sessionMgr, cookieMgr)
+	sessionMgr := sessionsvc.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks)
+	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
 	if opts.GoAuth.Mode == config.ModeCompat {
 		ba.RegisterRoutes(api, ba.Deps{Conf: opts.AuthConfig, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver})
 	}

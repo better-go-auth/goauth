@@ -1,10 +1,9 @@
-package hasher
+package authcrypto
 
 import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
-	"strings"
 )
 
 // TokenHash hashes a high-entropy token (e.g. a refresh token) for storage.
@@ -15,10 +14,6 @@ func TokenHash(token string) string {
 }
 
 // TokenMatches compares a token against a stored hash in constant time.
-// Hashes created by older versions with argon2 are still accepted.
 func TokenMatches(token, storedHash string) bool {
-	if strings.HasPrefix(storedHash, "$argon2") {
-		return ArgonPasswordsMatch(token, storedHash)
-	}
 	return subtle.ConstantTimeCompare([]byte(TokenHash(token)), []byte(storedHash)) == 1
 }

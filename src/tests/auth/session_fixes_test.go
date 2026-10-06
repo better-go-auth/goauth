@@ -9,7 +9,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
-	"github.com/better-go-auth/goauth/src/providers/hasher"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 )
@@ -25,7 +25,7 @@ func createActiveUser(t *testing.T, env *helpers.TestEnv, email, password string
 	if err := env.DB.Create(usr).Error; err != nil {
 		t.Fatalf("create user: %v", err)
 	}
-	hash, err := hasher.BcryptCreateHash(password)
+	hash, err := authcrypto.HashPasswordBcrypt(password)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,4 +1,4 @@
-package compat
+package dtos
 
 import (
 	"encoding/json"
@@ -23,8 +23,10 @@ func TestTimeJSON(t *testing.T) {
 func TestFromModels(t *testing.T) {
 	email := "a@example.com"
 	now := time.Now()
-	u := &models.User{Base: models.Base{ID: "u1", CreatedAt: now, UpdatedAt: now},
-		UserDto: models.UserDto{FirstName: "Ada", LastName: "Lovelace", Email: email}}
+	u := &models.User{
+		Base:    models.Base{ID: "u1", CreatedAt: now, UpdatedAt: now},
+		UserDto: models.UserDto{FirstName: "Ada", LastName: "Lovelace", Email: email},
+	}
 	du := UserFromModel(u)
 	if du.Name != "Ada Lovelace" || du.Image != nil || du.Email != email {
 		t.Fatalf("unexpected user %+v", du)

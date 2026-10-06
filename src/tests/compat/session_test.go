@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
-	"github.com/better-go-auth/goauth/src/sessions"
 )
 
 func compatMode(c *config.AuthConfig) {
@@ -36,9 +36,9 @@ func createUser(t *testing.T, s *Server, email, passwordHash string) *models.Use
 }
 
 // signIn mints a cookie session directly (no sign-in endpoint yet) and stores its cookies in the client jar.
-func signIn(t *testing.T, s *Server, u *models.User, opt sessions.CreateOptions) string {
+func signIn(t *testing.T, s *Server, u *models.User, opt sessionsvc.CreateOptions) string {
 	t.Helper()
-	sw, err := s.Auth.Sessions.Create(context.Background(), u, sessions.Meta{IPAddress: "127.0.0.1", UserAgent: "compattest"}, opt)
+	sw, err := s.Auth.Sessions.Create(context.Background(), u, sessionsvc.Meta{IPAddress: "127.0.0.1", UserAgent: "compattest"}, opt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,7 +91,7 @@ func TestGetSession(t *testing.T) {
 	})
 
 	u := createUser(t, s, "grace@example.com", "")
-	tok := signIn(t, s, u, sessions.CreateOptions{})
+	tok := signIn(t, s, u, sessionsvc.CreateOptions{})
 
 	t.Run("valid cookie returns session and user", func(t *testing.T) {
 		r := s.Get(t, "/api/auth/get-session")
@@ -164,7 +164,7 @@ func TestGetSessionDeferredRefresh(t *testing.T) {
 		c.Session.DeferSessionRefresh = true
 	}), WithoutSecondaryStorage())
 	u := createUser(t, s, "defer@example.com", "")
-	tok := signIn(t, s, u, sessions.CreateOptions{})
+	tok := signIn(t, s, u, sessionsvc.CreateOptions{})
 	s.DB.Model(&models.Session{}).Where("token = ?", tok).Update("expires_at", time.Now().UTC().Add(5*24*time.Hour))
 
 	r := s.Get(t, "/api/auth/get-session")
@@ -183,7 +183,7 @@ func TestGetSessionDeferredRefresh(t *testing.T) {
 func TestDontRememberSessionIsNotRefreshed(t *testing.T) {
 	s := NewServer(t, WithConfig(compatMode), WithoutSecondaryStorage())
 	u := createUser(t, s, "nr@example.com", "")
-	tok := signIn(t, s, u, sessions.CreateOptions{DontRemember: true})
+	tok := signIn(t, s, u, sessionsvc.CreateOptions{DontRemember: true})
 	s.DB.Model(&models.Session{}).Where("token = ?", tok).Update("expires_at", time.Now().UTC().Add(time.Hour))
 
 	r := s.Get(t, "/api/auth/get-session")

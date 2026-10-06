@@ -10,7 +10,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins"
-	"github.com/better-go-auth/goauth/src/providers/hasher"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
@@ -86,7 +86,7 @@ func (aus Service) CreateSession(ctx context.Context, sessionId, role, userId st
 		return nil, err
 	}
 	// 4. hash the refresh token
-	refreshHash := hasher.TokenHash(tokens.RefreshToken)
+	refreshHash := authcrypto.TokenHash(tokens.RefreshToken)
 	if opt != nil && opt.ClearSession {
 		// TODO: make sure the repo
 		if aus.SessionRepo != nil {

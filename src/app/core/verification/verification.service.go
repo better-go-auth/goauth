@@ -13,7 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/util"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/better-go-auth/goauth/src/providers/hasher"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"gorm.io/gorm"
 )
 
@@ -61,7 +61,7 @@ func (vSvc Service) SendVerification(ctx context.Context, identifier string, pur
 		verificationCode = util.GenerateRandomString(6)
 	}
 
-	codeHash, err := hasher.BcryptCreateHash(verificationCode)
+	codeHash, err := authcrypto.HashPasswordBcrypt(verificationCode)
 	if err != nil {
 		return dtos.InternalErrMS[bool]("Hashing Error"), err
 	}
@@ -114,7 +114,7 @@ func (vSvc Service) VerifyCode(ctx context.Context, identifier string, purpose m
 	if v.ExpiresAt.Before(time.Now()) {
 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("code expired")
 	}
-	valid := hasher.BcryptPasswordsMatch(code, v.Value)
+	valid, _ := authcrypto.VerifyPassword(v.Value, code)
 	if !valid {
 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("invalid verification code")
 	}

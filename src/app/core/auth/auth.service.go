@@ -12,7 +12,7 @@ import (
 	errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	"github.com/better-go-auth/goauth/src/providers/hasher"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
@@ -244,7 +244,7 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 	}
 
 	// 4. validate the refresh token matches
-	if !hasher.TokenMatches(refreshToken, session.Token) {
+	if !authcrypto.TokenMatches(refreshToken, session.Token) {
 		return dtos.BadReqC[TokenResponse](errors.TokenDontMatch), errors.TokenDontMatchError
 	}
 
@@ -287,7 +287,7 @@ func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[
 		return dtos.BadReqC[bool](errors.DataNotFound), errors.UserNotFoundError
 	}
 
-	if !hasher.TokenMatches(refreshToken, session.Token) {
+	if !authcrypto.TokenMatches(refreshToken, session.Token) {
 		return dtos.BadReqC[bool](errors.TokenDontMatch), errors.TokenDontMatchError
 	}
 

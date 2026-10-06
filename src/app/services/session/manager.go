@@ -1,6 +1,6 @@
-// Package sessions implements better-auth style sessions: an opaque token in a signed cookie,
+// Package session implements better-auth style sessions: an opaque token in a signed cookie,
 // stored in the database and/or secondary storage, with sliding expiry.
-package sessions
+package session
 
 import (
 	"context"
@@ -11,11 +11,11 @@ import (
 	"sort"
 	"time"
 
-	"github.com/better-go-auth/goauth/compat"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
@@ -63,7 +63,7 @@ func (m *Manager) storeInDB() bool {
 }
 
 // Create starts a new session for user.
-func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt CreateOptions) (*compat.SessionWithUser, error) {
+func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt CreateOptions) (*dtos.SessionWithUser, error) {
 	if user == nil || user.ID == "" {
 		return nil, errors.New("sessions: user is required")
 	}
@@ -99,7 +99,7 @@ func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt 
 		}
 	}
 
-	sw := &compat.SessionWithUser{Session: compat.SessionFromModel(s), User: compat.UserFromModel(user)}
+	sw := &dtos.SessionWithUser{Session: dtos.SessionFromModel(s), User: dtos.UserFromModel(user)}
 	if m.store != nil {
 		if err := m.cache(ctx, sw); err != nil {
 			return nil, err
@@ -110,7 +110,7 @@ func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt 
 }
 
 // Get returns the live session for tok, or nil when it does not exist or has expired.
-func (m *Manager) Get(ctx context.Context, tok string) (*compat.SessionWithUser, error) {
+func (m *Manager) Get(ctx context.Context, tok string) (*dtos.SessionWithUser, error) {
 	if tok == "" {
 		return nil, nil
 	}
@@ -148,7 +148,7 @@ func (m *Manager) Get(ctx context.Context, tok string) (*compat.SessionWithUser,
 	if err != nil || user == nil {
 		return nil, nil
 	}
-	sw := &compat.SessionWithUser{Session: compat.SessionFromModel(s), User: compat.UserFromModel(user)}
+	sw := &dtos.SessionWithUser{Session: dtos.SessionFromModel(s), User: dtos.UserFromModel(user)}
 	if m.store != nil {
 		_ = m.cache(ctx, sw)
 	}
@@ -156,7 +156,7 @@ func (m *Manager) Get(ctx context.Context, tok string) (*compat.SessionWithUser,
 }
 
 // ShouldRefresh applies better-auth's rule: refresh once UpdateAge has passed since expiresAt was last set.
-func (m *Manager) ShouldRefresh(sw *compat.SessionWithUser, dontRemember bool) bool {
+func (m *Manager) ShouldRefresh(sw *dtos.SessionWithUser, dontRemember bool) bool {
 	if sw == nil || dontRemember || m.conf.DisableSessionRefresh {
 		return false
 	}
@@ -165,7 +165,7 @@ func (m *Manager) ShouldRefresh(sw *compat.SessionWithUser, dontRemember bool) b
 }
 
 // Refresh extends the session to now+ExpiresIn.
-func (m *Manager) Refresh(ctx context.Context, sw *compat.SessionWithUser) (*compat.SessionWithUser, error) {
+func (m *Manager) Refresh(ctx context.Context, sw *dtos.SessionWithUser) (*dtos.SessionWithUser, error) {
 	now := m.now().UTC()
 	expiresAt := now.Add(m.conf.ExpiresIn)
 	if m.storeInDB() {
@@ -180,8 +180,8 @@ func (m *Manager) Refresh(ctx context.Context, sw *compat.SessionWithUser) (*com
 		}
 	}
 	out := *sw
-	out.Session.ExpiresAt = compat.Time(expiresAt)
-	out.Session.UpdatedAt = compat.Time(now)
+	out.Session.ExpiresAt = dtos.Time(expiresAt)
+	out.Session.UpdatedAt = dtos.Time(now)
 	if m.store != nil {
 		if err := m.cache(ctx, &out); err != nil {
 			return nil, err
@@ -192,7 +192,7 @@ func (m *Manager) Refresh(ctx context.Context, sw *compat.SessionWithUser) (*com
 }
 
 // IsFresh reports whether the session was created within FreshAge (negative FreshAge disables the check).
-func (m *Manager) IsFresh(sw *compat.SessionWithUser) bool {
+func (m *Manager) IsFresh(sw *dtos.SessionWithUser) bool {
 	if m.conf.FreshAge < 0 {
 		return true
 	}
@@ -241,9 +241,9 @@ func (m *Manager) DeleteUserSessions(ctx context.Context, userID string) error {
 }
 
 // List returns the live sessions of userID.
-func (m *Manager) List(ctx context.Context, userID string) ([]compat.BetterAuthSession, error) {
+func (m *Manager) List(ctx context.Context, userID string) ([]dtos.BetterAuthSession, error) {
 	now := m.now()
-	out := []compat.BetterAuthSession{}
+	out := []dtos.BetterAuthSession{}
 	if !m.storeInDB() {
 		for _, e := range m.activeList(ctx, userID) {
 			if sw, _ := m.fromStore(ctx, e.Token); sw != nil && time.Time(sw.Session.ExpiresAt).After(now) {
@@ -258,7 +258,7 @@ func (m *Manager) List(ctx context.Context, userID string) ([]compat.BetterAuthS
 	}
 	for i := range rows {
 		if idgen.IsToken(rows[i].Token) && rows[i].ExpiresAt.After(now) {
-			out = append(out, compat.SessionFromModel(&rows[i]))
+			out = append(out, dtos.SessionFromModel(&rows[i]))
 		}
 	}
 	return out, nil
@@ -269,12 +269,12 @@ func (m *Manager) CleanupExpired(ctx context.Context) error {
 	return m.sessions.DeleteExpiredSessions(ctx)
 }
 
-func (m *Manager) expired(sw *compat.SessionWithUser) bool {
+func (m *Manager) expired(sw *dtos.SessionWithUser) bool {
 	return !time.Time(sw.Session.ExpiresAt).After(m.now())
 }
 
 // cache stores the session under its token, as better-auth does: key <token> -> {"session","user"}.
-func (m *Manager) cache(ctx context.Context, sw *compat.SessionWithUser) error {
+func (m *Manager) cache(ctx context.Context, sw *dtos.SessionWithUser) error {
 	ttl := time.Time(sw.Session.ExpiresAt).Sub(m.now())
 	if ttl <= 0 {
 		return nil
@@ -289,7 +289,7 @@ func (m *Manager) cache(ctx context.Context, sw *compat.SessionWithUser) error {
 	return nil
 }
 
-func (m *Manager) fromStore(ctx context.Context, tok string) (*compat.SessionWithUser, error) {
+func (m *Manager) fromStore(ctx context.Context, tok string) (*dtos.SessionWithUser, error) {
 	v, ok, err := m.store.Get(ctx, tok)
 	if err != nil {
 		return nil, fmt.Errorf("sessions: read cache: %w", err)
@@ -298,7 +298,7 @@ func (m *Manager) fromStore(ctx context.Context, tok string) (*compat.SessionWit
 	if !ok || !isText {
 		return nil, nil
 	}
-	var sw compat.SessionWithUser
+	var sw dtos.SessionWithUser
 	if err := json.Unmarshal(raw, &sw); err != nil || sw.Session.Token != tok {
 		return nil, nil
 	}
