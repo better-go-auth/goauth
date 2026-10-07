@@ -398,6 +398,10 @@ func (r *Repos) DeleteAccountByUserAndProvider(_ context.Context, userID, provid
 	})
 }
 
+func (r *Repos) DeleteAccount(_ context.Context, id string) error {
+	return r.deleteAccountsWhere(func(a *models.Account) bool { return id != "" && a.ID == id })
+}
+
 func (r *Repos) deleteAccountsWhere(match func(*models.Account) bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -458,6 +462,40 @@ func (r *Repos) DeleteVerificationByIdentifier(_ context.Context, identifier str
 	defer r.mu.Unlock()
 	for id, v := range r.verifications {
 		if identifier != "" && v.Identifier == identifier {
+			delete(r.verifications, id)
+		}
+	}
+	return nil
+}
+
+func (r *Repos) ConsumeVerificationValue(_ context.Context, identifier string) (*models.Verification, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var newest *models.Verification
+	for _, v := range r.verifications {
+		if identifier != "" && v.Identifier == identifier && (newest == nil || v.CreatedAt.After(newest.CreatedAt)) {
+			newest = v
+		}
+	}
+	if newest == nil {
+		return nil, notFound("verification")
+	}
+	delete(r.verifications, newest.ID)
+	if newest.IsExpired() {
+		return nil, notFound("verification")
+	}
+	c := *newest
+	return &c, nil
+}
+
+func (r *Repos) DeleteVerificationsByValue(_ context.Context, identifierPrefix, value string) error {
+	if identifierPrefix == "" || value == "" {
+		return nil
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for id, v := range r.verifications {
+		if v.Value == value && strings.HasPrefix(v.Identifier, identifierPrefix) {
 			delete(r.verifications, id)
 		}
 	}

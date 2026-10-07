@@ -1,0 +1,14 @@
+{
+  "session": {
+    "createdAt": "<date>",
+    "deviceName": "<string>",
+    "deviceToken": "<string>",
+    "expiresAt": "<date>",
+    "id": "<string>",
+    "ipAddress": "<string|null>",
+    "token": "<string>",
+    "updatedAt": "<date>",
+    "userAgent": "<string|null>",
+    "userId": "<string>"
+  }
+}

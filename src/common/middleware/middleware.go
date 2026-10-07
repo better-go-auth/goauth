@@ -38,10 +38,17 @@ type DynamicRoleResolver interface {
 	HasPermission(ctx context.Context, companyID, userID string, operationID string) (bool, error)
 }
 
+// SessionClaimsResolver turns a better-auth session token (opaque bearer token or the signed session cookie)
+// into claims, so cookie and bearer clients pass the same middleware as legacy JWT clients.
+type SessionClaimsResolver interface {
+	ClaimsFromSession(ctx context.Context, bearer, cookieHeader string) (*token.CustomClaims, error)
+}
+
 type AuthMiddleware struct {
 	verifier   TokenVerifier
-	revocation RevocationStore     // Optional
-	roles      DynamicRoleResolver // Optional
+	revocation RevocationStore       // Optional
+	roles      DynamicRoleResolver   // Optional
+	sessions   SessionClaimsResolver // Optional
 }
 
 func NewAuthMiddleware(verifier TokenVerifier, revocation RevocationStore, roles DynamicRoleResolver) *AuthMiddleware {
@@ -51,6 +58,11 @@ func NewAuthMiddleware(verifier TokenVerifier, revocation RevocationStore, roles
 		roles:      roles,
 	}
 }
+
+// WithSessions enables session-token authentication next to access JWTs.
+func (m *AuthMiddleware) WithSessions(r SessionClaimsResolver) { m.sessions = r }
+
+func isJWT(tok string) bool { return strings.Count(tok, ".") == 2 }
 
 type ICoreMiddleWareFunc interface {
 	TokenVerifier
@@ -98,33 +110,47 @@ func (m *AuthMiddleware) Trace(operationID string) func(huma.Context, func(huma.
 	}
 }
 
-// Authenticate Middleware (Handles Token Verification + Revocation Check)
+// Authenticate Middleware (Handles Token Verification + Revocation Check).
+// It accepts a legacy access JWT, or, when WithSessions is set, a session token as bearer or cookie.
 func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		authHeader := ctx.Header("Authorization")
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[1] == "" || parts[1] == "undefined" || parts[1] == "null" {
-			ctx.SetStatus(http.StatusForbidden)
-			_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
-			return
+		bearer := ""
+		if parts := strings.Split(ctx.Header("Authorization"), " "); len(parts) == 2 && parts[1] != "undefined" && parts[1] != "null" {
+			bearer = parts[1]
 		}
-		// todo if the authorization header doesn't exists check the cookie header
-		claims, err := m.verifier.VerifyToken(parts[1])
-		if err != nil {
-			ctx.SetStatus(http.StatusForbidden)
-			_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
-			return
-		}
-		// Revocation Check
-		if m.revocation != nil && claims.SessionID != "" {
-			revoked, _ := m.revocation.IsRevoked(ctx.Context(), claims.SessionID)
-			if revoked {
-				ctx.SetStatus(http.StatusUnauthorized)
-				_, _ = ctx.BodyWriter().Write([]byte("Session Revoked"))
+		var claims token.CustomClaims
+		switch {
+		case bearer != "" && isJWT(bearer):
+			c, err := m.verifier.VerifyToken(bearer)
+			if err != nil {
+				ctx.SetStatus(http.StatusForbidden)
+				_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
 				return
 			}
+			// Revocation Check
+			if m.revocation != nil && c.SessionID != "" {
+				revoked, _ := m.revocation.IsRevoked(ctx.Context(), c.SessionID)
+				if revoked {
+					ctx.SetStatus(http.StatusUnauthorized)
+					_, _ = ctx.BodyWriter().Write([]byte("Session Revoked"))
+					return
+				}
+			}
+			claims = c
+		case m.sessions != nil && (bearer != "" || ctx.Header("Cookie") != ""):
+			// the session lookup itself is the revocation check
+			c, err := m.sessions.ClaimsFromSession(ctx.Context(), bearer, ctx.Header("Cookie"))
+			if err != nil || c == nil {
+				ctx.SetStatus(http.StatusForbidden)
+				_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
+				return
+			}
+			claims = *c
+		default:
+			ctx.SetStatus(http.StatusForbidden)
+			_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
+			return
 		}
-		// todo based on the config, check db and etc. and refresh the token
 		ctx = huma.WithValue(ctx, consts.CtxClaims.Str(), claims)
 		ctx = huma.WithValue(ctx, consts.CTXCompany_ID.Str(), claims.ActiveOrgId)
 		ctx = huma.WithValue(ctx, consts.CTXUser_ID.Str(), claims.UserID)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
@@ -64,6 +65,55 @@ func (r *VerificationRepo) DeleteVerificationByIdentifier(ctx context.Context, i
 		return fmt.Errorf("gorm/verification: delete: %w", result.Error)
 	}
 	return nil
+}
+
+func (r *VerificationRepo) ConsumeVerificationValue(ctx context.Context, identifier string) (*models.Verification, error) {
+	v, err := r.FindVerificationValue(ctx, identifier)
+	if err != nil {
+		return nil, err
+	}
+	// deleting by id makes the read-then-delete safe: only the caller whose delete hits the row wins
+	res := gormutil.GetDB(ctx, r.db).Where(&models.Verification{Base: models.Base{ID: v.ID}}, "ID").Delete(&models.Verification{})
+	if res.Error != nil {
+		return nil, fmt.Errorf("gorm/verification: consume: %w", res.Error)
+	}
+	if res.RowsAffected == 0 || v.IsExpired() {
+		return nil, loc_errors.NotFoundErr("gorm/verification: not found")
+	}
+	return v, nil
+}
+
+func (r *VerificationRepo) DeleteVerificationsByValue(ctx context.Context, identifierPrefix, value string) error {
+	if identifierPrefix == "" || value == "" {
+		return nil
+	}
+	var rows []models.Verification
+	db := gormutil.GetDB(ctx, r.db)
+	// filter the prefix in Go instead of LIKE, so identifiers containing % or _ need no escaping
+	if err := db.Where(&models.Verification{Value: value}, "Value").Find(&rows).Error; err != nil {
+		return fmt.Errorf("gorm/verification: find by value: %w", err)
+	}
+	var ids []string
+	for _, v := range rows {
+		if strings.HasPrefix(v.Identifier, identifierPrefix) {
+			ids = append(ids, v.ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	if err := db.Where(clause.IN{Column: gormutil.Col(r.db, &models.Verification{}, "ID"), Values: toAny(ids)}).Delete(&models.Verification{}).Error; err != nil {
+		return fmt.Errorf("gorm/verification: delete by value: %w", err)
+	}
+	return nil
+}
+
+func toAny(ss []string) []any {
+	out := make([]any, len(ss))
+	for i, s := range ss {
+		out[i] = s
+	}
+	return out
 }
 
 func (r *VerificationRepo) DeleteExpiredVerifications(ctx context.Context) error {

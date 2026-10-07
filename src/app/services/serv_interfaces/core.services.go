@@ -3,8 +3,8 @@ package serv_interfaces
 import (
 	"context"
 
-	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/common/dtos"
+	"github.com/better-go-auth/goauth/src/models"
 )
 
 type VerOpt struct {
@@ -21,6 +21,10 @@ type ISessionService interface {
 	DeleteSession(ctx context.Context, sessionId string) error
 	DeleteAllUserSessions(ctx context.Context, userId string) error
 	BlacklistSession(ctx context.Context, sessionId string) error
+	// FindByRefreshToken returns the live session behind a refresh (session) token, or nil.
+	FindByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error)
+	// RefreshTokens slides the session, optionally rotates its token and signs a new access token.
+	RefreshTokens(ctx context.Context, s *models.Session, role string) (*models.AuthTokens, error)
 }
 
 type IAuthServices interface {

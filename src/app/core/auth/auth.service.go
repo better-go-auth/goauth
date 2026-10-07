@@ -12,8 +12,6 @@ import (
 	errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	"github.com/better-go-auth/goauth/src/providers/authcrypto"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
 // RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
@@ -148,7 +146,8 @@ func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationI
 func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[TokenResponse], error) {
 	// 1. check the user exists and is active
 	usr, err := aus.userRepo.FindUserByEmail(ctx, input.LoginInfo)
-	if err != nil || usr == nil || usr.Active == nil || (usr.Active != nil && !*usr.Active) {
+	// Active is goauth-only: nil means the user came from better-auth's sign-up and is allowed; false blocks login
+	if err != nil || usr == nil || (usr.Active != nil && !*usr.Active) {
 		_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
 		return dtos.BadReqC[TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
 	}
@@ -219,37 +218,22 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 	}, 1), nil
 }
 
-// ResetToken (acc-04): FIXME to be update with redis: [Role, id]
+// ResetToken (acc-04) exchanges a refresh token (the session token) for new tokens.
 func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GResp[TokenResponse], error) {
-	// 1. validate the refresh token
-	claims, err := jwttoken.ValidateRefreshToken(refreshToken, aus.Config.JWT.RefreshSecret)
-	if err != nil {
+	// 1. the refresh token must name a live session
+	session, err := aus.SesSvc.FindByRefreshToken(ctx, refreshToken)
+	if err != nil || session == nil {
 		return dtos.BadReqC[TokenResponse](errors.InvalidToken), errors.InvalidTokenError
 	}
 
 	// 2. get the user
-	usr, err := aus.userRepo.FindUserByID(ctx, claims.UserID)
+	usr, err := aus.userRepo.FindUserByID(ctx, session.UserID)
 	if err != nil || usr == nil {
 		return dtos.BadReqC[TokenResponse](errors.DataNotFound), errors.UserNotFoundError
 	}
 
-	// 3. get the session that are not blacklisted
-	session, err := aus.sessionRepo.FindSessionByID(ctx, claims.SessionID)
-	if err != nil || session == nil || session.UserID != claims.UserID {
-		return dtos.BadReqC[TokenResponse](errors.DataNotFound), errors.UserNotFoundError
-	}
-	if time.Now().After(session.ExpiresAt) {
-		_ = aus.SesSvc.DeleteSession(ctx, session.ID)
-		return dtos.BadReqC[TokenResponse](errors.SessionExpired), errors.ErrSessionExpired.WithStatus(401)
-	}
-
-	// 4. validate the refresh token matches
-	if !authcrypto.TokenMatches(refreshToken, session.Token) {
-		return dtos.BadReqC[TokenResponse](errors.TokenDontMatch), errors.TokenDontMatchError
-	}
-
-	// 5. the user must still be allowed to sign in
-	if usr.Active == nil || !*usr.Active {
+	// 3. the user must still be allowed to sign in
+	if usr.Active != nil && !*usr.Active {
 		_ = aus.SesSvc.DeleteSession(ctx, session.ID)
 		return dtos.BadReqC[TokenResponse](errors.Unauthorized), errors.ErrUnauthorized
 	}
@@ -258,14 +242,10 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 		return dtos.BadReqM[TokenResponse](errors.ErrUserBanned.Message), errors.ErrUserBanned
 	}
 
-	// 6. recreate session tokens, keeping the session's org context and device
-	tokens, err := aus.SesSvc.CreateSession(ctx, claims.SessionID, usr.Role.S(), usr.ID, &models.SessionOpt{
-		ActiveOrgID: session.ActiveOrganizationID,
-		OrgRoleID:   session.ActiveOrganizationRole,
-		DeviceToken: session.DeviceToken,
-	})
+	// 4. slide the session, rotate the refresh token (if configured) and sign a new access token
+	tokens, err := aus.SesSvc.RefreshTokens(ctx, session, usr.Role.S())
 	if err != nil {
-		return dtos.InternalErrMS[TokenResponse](err.Error()), err
+		return dtos.BadReqC[TokenResponse](errors.InvalidToken), errors.InvalidTokenError
 	}
 
 	return dtos.SuccessCreated(TokenResponse{
@@ -274,23 +254,12 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 	}, 1), nil
 }
 
-// Logout [-]
+// Logout revokes the session behind the refresh token.
 func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[bool], error) {
-	// 1. the jwt token
-	claims, err := jwttoken.ValidateRefreshToken(refreshToken, aus.Config.JWT.RefreshSecret)
-	if err != nil {
+	session, err := aus.SesSvc.FindByRefreshToken(ctx, refreshToken)
+	if err != nil || session == nil {
 		return dtos.BadReqC[bool](errors.InvalidToken), errors.InvalidTokenError
 	}
-
-	session, err := aus.sessionRepo.FindSessionByID(ctx, claims.SessionID)
-	if err != nil || session == nil {
-		return dtos.BadReqC[bool](errors.DataNotFound), errors.UserNotFoundError
-	}
-
-	if !authcrypto.TokenMatches(refreshToken, session.Token) {
-		return dtos.BadReqC[bool](errors.TokenDontMatch), errors.TokenDontMatchError
-	}
-
 	if err := aus.SesSvc.DeleteSession(ctx, session.ID); err != nil {
 		return dtos.InternalErrMS[bool](err.Error()), err
 	}

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"reflect"
 	"sort"
 	"time"
 
@@ -38,28 +39,33 @@ type CreateOptions struct {
 	ExpiresIn            time.Duration
 	ImpersonatedBy       *string
 	ActiveOrganizationID *string
+	// ID sets the session id (legacy callers pick it before creating); empty generates one.
+	ID string
+	// goauth extras carried by legacy JWT sessions
+	ActiveOrganizationRole *string
+	DeviceToken            string
 }
 
 // Manager creates, reads, refreshes and revokes sessions.
 type Manager struct {
-	users    repo_interfaces.IUserRepo
-	sessions repo_interfaces.ISessionRepo
-	store    sec_storage.SecondaryStorage
-	conf     config.Session
-	hooks    plugins.HookRegistry
-	now      func() time.Time
+	usersRepo    repo_interfaces.IUserRepo
+	sessionsRepo repo_interfaces.ISessionRepo
+	secStore     sec_storage.SecondaryStorage
+	conf         config.Session
+	hooks        plugins.HookRegistry
+	now          func() time.Time
 }
 
 // NewManager builds a Manager; store and hooks may be nil.
 func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions repo_interfaces.ISessionRepo, store sec_storage.SecondaryStorage, hooks plugins.HookRegistry) *Manager {
-	return &Manager{users: users, sessions: sessions, store: store, conf: conf, hooks: hooks, now: time.Now}
+	return &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now}
 }
 
 // Config returns the session configuration.
 func (m *Manager) Config() config.Session { return m.conf }
 
 func (m *Manager) storeInDB() bool {
-	return m.store == nil || m.conf.StoreInDatabase()
+	return m.secStore == nil || m.conf.StoreInDatabase()
 }
 
 // Create starts a new session for user.
@@ -76,31 +82,37 @@ func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt 
 	}
 	now := m.now().UTC()
 	tok := idgen.GenerateToken()
+	id := opt.ID
+	if id == "" {
+		id = models.NewID()
+	}
 	s := &models.Session{
-		Base:                 models.Base{ID: models.NewID(), CreatedAt: now, UpdatedAt: now},
-		Token:                tok,
-		UserID:               user.ID,
-		ExpiresAt:            now.Add(expiresIn),
-		IPAddress:            optional(meta.IPAddress),
-		UserAgent:            optional(meta.UserAgent),
-		ImpersonatedBy:       opt.ImpersonatedBy,
-		ActiveOrganizationID: opt.ActiveOrganizationID,
+		Base:                   models.Base{ID: id, CreatedAt: now, UpdatedAt: now},
+		Token:                  tok,
+		UserID:                 user.ID,
+		ExpiresAt:              now.Add(expiresIn),
+		IPAddress:              optional(meta.IPAddress),
+		UserAgent:              optional(meta.UserAgent),
+		ImpersonatedBy:         opt.ImpersonatedBy,
+		ActiveOrganizationID:   opt.ActiveOrganizationID,
+		ActiveOrganizationRole: opt.ActiveOrganizationRole,
+		DeviceToken:            opt.DeviceToken,
 	}
 
 	if m.hooks != nil {
-		claims := token.CustomClaims{UserID: user.ID, SessionID: tok, Role: string(user.Role)}
+		claims := token.CustomClaims{UserID: user.ID, SessionID: s.ID, Role: string(user.Role)}
 		if err := m.hooks.TriggerBeforeSessionCreate(ctx, s, &claims); err != nil {
 			return nil, err
 		}
 	}
 	if m.storeInDB() {
-		if _, err := m.sessions.CreateSession(ctx, s); err != nil {
+		if _, err := m.sessionsRepo.CreateSession(ctx, s); err != nil {
 			return nil, fmt.Errorf("sessions: create: %w", err)
 		}
 	}
 
 	sw := &dtos.SessionWithUser{Session: dtos.SessionFromModel(s), User: dtos.UserFromModel(user)}
-	if m.store != nil {
+	if m.secStore != nil {
 		if err := m.cache(ctx, sw); err != nil {
 			return nil, err
 		}
@@ -114,7 +126,7 @@ func (m *Manager) Get(ctx context.Context, tok string) (*dtos.SessionWithUser, e
 	if tok == "" {
 		return nil, nil
 	}
-	if m.store != nil {
+	if m.secStore != nil {
 		sw, err := m.fromStore(ctx, tok)
 		if err != nil {
 			return nil, err
@@ -134,7 +146,7 @@ func (m *Manager) Get(ctx context.Context, tok string) (*dtos.SessionWithUser, e
 	if !idgen.IsToken(tok) {
 		return nil, nil
 	}
-	s, err := m.sessions.FindSession(ctx, tok)
+	s, err := m.sessionsRepo.FindSession(ctx, tok)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, nil
@@ -144,12 +156,12 @@ func (m *Manager) Get(ctx context.Context, tok string) (*dtos.SessionWithUser, e
 	if !s.ExpiresAt.After(m.now()) {
 		return nil, m.Delete(ctx, tok)
 	}
-	user, err := m.users.FindUserByID(ctx, s.UserID)
+	user, err := m.usersRepo.FindUserByID(ctx, s.UserID)
 	if err != nil || user == nil {
 		return nil, nil
 	}
 	sw := &dtos.SessionWithUser{Session: dtos.SessionFromModel(s), User: dtos.UserFromModel(user)}
-	if m.store != nil {
+	if m.secStore != nil {
 		_ = m.cache(ctx, sw)
 	}
 	return sw, nil
@@ -169,7 +181,7 @@ func (m *Manager) Refresh(ctx context.Context, sw *dtos.SessionWithUser) (*dtos.
 	now := m.now().UTC()
 	expiresAt := now.Add(m.conf.ExpiresIn)
 	if m.storeInDB() {
-		if _, err := m.sessions.UpdateSession(ctx, sw.Session.ID, map[string]interface{}{
+		if _, err := m.sessionsRepo.UpdateSession(ctx, sw.Session.ID, map[string]interface{}{
 			"ExpiresAt": expiresAt,
 			"UpdatedAt": now,
 		}); err != nil {
@@ -182,11 +194,44 @@ func (m *Manager) Refresh(ctx context.Context, sw *dtos.SessionWithUser) (*dtos.
 	out := *sw
 	out.Session.ExpiresAt = dtos.Time(expiresAt)
 	out.Session.UpdatedAt = dtos.Time(now)
-	if m.store != nil {
+	if m.secStore != nil {
 		if err := m.cache(ctx, &out); err != nil {
 			return nil, err
 		}
 		m.trackActive(ctx, sw.Session.UserID, sw.Session.Token, expiresAt)
+	}
+	return &out, nil
+}
+
+// RotateToken gives the session a new token and invalidates the old one (legacy refresh-token rotation).
+// It returns nil when the session no longer exists.
+func (m *Manager) RotateToken(ctx context.Context, sw *dtos.SessionWithUser) (*dtos.SessionWithUser, error) {
+	now := m.now().UTC()
+	oldTok, newTok := sw.Session.Token, idgen.GenerateToken()
+	out := *sw
+	if m.storeInDB() {
+		s, err := m.sessionsRepo.UpdateSession(ctx, sw.Session.ID, map[string]interface{}{"Token": newTok, "UpdatedAt": now})
+		if err != nil {
+			if isNotFound(err) {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("sessions: rotate: %w", err)
+		}
+		out.Session = dtos.SessionFromModel(s)
+	} else {
+		if cached, _ := m.fromStore(ctx, oldTok); cached == nil {
+			return nil, nil
+		}
+		out.Session.Token = newTok
+		out.Session.UpdatedAt = dtos.Time(now)
+	}
+	if m.secStore != nil {
+		_ = m.secStore.Delete(ctx, oldTok)
+		m.untrackActive(ctx, sw.Session.UserID, oldTok)
+		if err := m.cache(ctx, &out); err != nil {
+			return nil, err
+		}
+		m.trackActive(ctx, sw.Session.UserID, newTok, time.Time(out.Session.ExpiresAt))
 	}
 	return &out, nil
 }
@@ -202,19 +247,19 @@ func (m *Manager) IsFresh(sw *dtos.SessionWithUser) bool {
 // Delete revokes a single session.
 func (m *Manager) Delete(ctx context.Context, tok string) error {
 	var userID string
-	if m.store != nil {
+	if m.secStore != nil {
 		if sw, _ := m.fromStore(ctx, tok); sw != nil {
 			userID = sw.Session.UserID
 		}
-		if err := m.store.Delete(ctx, tok); err != nil {
+		if err := m.secStore.Delete(ctx, tok); err != nil {
 			return fmt.Errorf("sessions: delete cached: %w", err)
 		}
 		if userID != "" {
 			m.untrackActive(ctx, userID, tok)
 		}
 	}
-	if m.storeInDB() && !(m.store != nil && m.conf.PreserveSessionInDatabase) {
-		if err := m.sessions.DeleteSession(ctx, tok); err != nil {
+	if m.storeInDB() && !(m.secStore != nil && m.conf.PreserveSessionInDatabase) {
+		if err := m.sessionsRepo.DeleteSession(ctx, tok); err != nil {
 			return fmt.Errorf("sessions: delete: %w", err)
 		}
 	}
@@ -226,15 +271,75 @@ func (m *Manager) Delete(ctx context.Context, tok string) error {
 
 // DeleteUserSessions revokes every session of userID (including legacy JWT sessions in the database).
 func (m *Manager) DeleteUserSessions(ctx context.Context, userID string) error {
-	if m.store != nil {
+	if m.secStore != nil {
 		for _, e := range m.activeList(ctx, userID) {
-			_ = m.store.Delete(ctx, e.Token)
+			_ = m.secStore.Delete(ctx, e.Token)
 		}
-		_ = m.store.Delete(ctx, activeKey(userID))
+		_ = m.secStore.Delete(ctx, activeKey(userID))
 	}
-	if m.storeInDB() && !(m.store != nil && m.conf.PreserveSessionInDatabase) {
-		if err := m.sessions.DeleteUserSessions(ctx, userID); err != nil {
+	if m.storeInDB() && !(m.secStore != nil && m.conf.PreserveSessionInDatabase) {
+		if err := m.sessionsRepo.DeleteUserSessions(ctx, userID); err != nil {
 			return fmt.Errorf("sessions: delete user sessions: %w", err)
+		}
+	}
+	return nil
+}
+
+// Update writes session fields (keyed by Go field name) to the database and the cached copy.
+// It returns nil when the session no longer exists.
+func (m *Manager) Update(ctx context.Context, sw *dtos.SessionWithUser, data map[string]any) (*dtos.SessionWithUser, error) {
+	now := m.now().UTC()
+	fields := make(map[string]any, len(data)+1)
+	for k, v := range data {
+		fields[k] = v
+	}
+	fields["UpdatedAt"] = now
+
+	out := *sw
+	if m.storeInDB() {
+		s, err := m.sessionsRepo.UpdateSession(ctx, sw.Session.ID, fields)
+		if err != nil {
+			if isNotFound(err) {
+				return nil, nil
+			}
+			return nil, fmt.Errorf("sessions: update: %w", err)
+		}
+		out.Session = dtos.SessionFromModel(s)
+	} else {
+		if cached, _ := m.fromStore(ctx, sw.Session.Token); cached == nil {
+			return nil, nil
+		}
+		if err := setSessionFields(&out.Session, data); err != nil {
+			return nil, err
+		}
+		out.Session.UpdatedAt = dtos.Time(now)
+	}
+	if m.secStore != nil {
+		if err := m.cache(ctx, &out); err != nil {
+			return nil, err
+		}
+	}
+	return &out, nil
+}
+
+// setSessionFields applies string/nil values by Go field name to the cached session shape.
+func setSessionFields(s *dtos.BetterAuthSession, data map[string]any) error {
+	rv := reflect.ValueOf(s).Elem()
+	for name, val := range data {
+		f := rv.FieldByName(name)
+		if !f.IsValid() || !f.CanSet() {
+			return fmt.Errorf("sessions: unknown session field %q", name)
+		}
+		str, isString := val.(string)
+		switch {
+		case val == nil:
+			f.Set(reflect.Zero(f.Type()))
+		case isString && f.Kind() == reflect.Pointer && f.Type().Elem().Kind() == reflect.String:
+			f.Set(reflect.ValueOf(&str))
+		case isString && f.Kind() == reflect.String:
+			f.SetString(str)
+		default:
+			return fmt.Errorf("sessions: cannot set %s to %T", name, val)
 		}
 	}
 	return nil
@@ -242,7 +347,7 @@ func (m *Manager) DeleteUserSessions(ctx context.Context, userID string) error {
 
 // RefreshUser rewrites the user snapshot of every cached session of user (better-auth's refreshUserSessions).
 func (m *Manager) RefreshUser(ctx context.Context, user *models.User) {
-	if m.store == nil || user == nil {
+	if m.secStore == nil || user == nil {
 		return
 	}
 	for _, e := range m.activeList(ctx, user.ID) {
@@ -265,7 +370,7 @@ func (m *Manager) List(ctx context.Context, userID string) ([]dtos.BetterAuthSes
 		}
 		return out, nil
 	}
-	rows, err := m.sessions.ListSessions(ctx, userID)
+	rows, err := m.sessionsRepo.ListSessions(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("sessions: list: %w", err)
 	}
@@ -279,7 +384,7 @@ func (m *Manager) List(ctx context.Context, userID string) ([]dtos.BetterAuthSes
 
 // CleanupExpired deletes expired session rows.
 func (m *Manager) CleanupExpired(ctx context.Context) error {
-	return m.sessions.DeleteExpiredSessions(ctx)
+	return m.sessionsRepo.DeleteExpiredSessions(ctx)
 }
 
 func (m *Manager) expired(sw *dtos.SessionWithUser) bool {
@@ -296,14 +401,14 @@ func (m *Manager) cache(ctx context.Context, sw *dtos.SessionWithUser) error {
 	if err != nil {
 		return err
 	}
-	if err := m.store.Set(ctx, sw.Session.Token, string(b), ttl); err != nil {
+	if err := m.secStore.Set(ctx, sw.Session.Token, string(b), ttl); err != nil {
 		return fmt.Errorf("sessions: cache: %w", err)
 	}
 	return nil
 }
 
 func (m *Manager) fromStore(ctx context.Context, tok string) (*dtos.SessionWithUser, error) {
-	v, ok, err := m.store.Get(ctx, tok)
+	v, ok, err := m.secStore.Get(ctx, tok)
 	if err != nil {
 		return nil, fmt.Errorf("sessions: read cache: %w", err)
 	}
@@ -326,7 +431,7 @@ type activeEntry struct {
 func activeKey(userID string) string { return "active-sessions-" + userID }
 
 func (m *Manager) activeList(ctx context.Context, userID string) []activeEntry {
-	v, ok, err := m.store.Get(ctx, activeKey(userID))
+	v, ok, err := m.secStore.Get(ctx, activeKey(userID))
 	raw, isText := asBytes(v)
 	if err != nil || !ok || !isText {
 		return nil
@@ -358,7 +463,7 @@ func (m *Manager) untrackActive(ctx context.Context, userID, tok string) {
 		}
 	}
 	if len(list) == 0 {
-		_ = m.store.Delete(ctx, activeKey(userID))
+		_ = m.secStore.Delete(ctx, activeKey(userID))
 		return
 	}
 	m.saveActive(ctx, userID, list)
@@ -371,7 +476,7 @@ func (m *Manager) saveActive(ctx context.Context, userID string, list []activeEn
 		return
 	}
 	b, _ := json.Marshal(list)
-	_ = m.store.Set(ctx, activeKey(userID), string(b), ttl)
+	_ = m.secStore.Set(ctx, activeKey(userID), string(b), ttl)
 }
 
 func asBytes(v any) ([]byte, bool) {

@@ -11,7 +11,7 @@ type Mode string
 const (
 	// ModeLegacy keeps the original goauth routes and JWT access/refresh flow.
 	ModeLegacy Mode = "legacy"
-	// ModeCompat targets wire compatibility with better-auth (see _docs/mimic).
+	// ModeCompat targets wire compatibility with better-auth (see _docs/README.md).
 	ModeCompat Mode = "compat"
 )
 

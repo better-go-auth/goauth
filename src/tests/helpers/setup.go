@@ -251,7 +251,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)
 	profileServ := profile.NewProfileServH(auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)
 	// Handlers
-	sSvc := session.NewServiceWithRepo(sConf, auth.Repositories, secStorage)
+	sSvc := session.NewService(sConf, auth.Repositories, auth.Sessions, secStorage)
 	authHandler := coreauth.NewAuthHandler(auth.Provider, authSvc)
 	profileHandler := profile.NewProfileHandler(auth.Provider, profileServ)
 	sessionHandler := session.NewSessionHandler(sSvc)

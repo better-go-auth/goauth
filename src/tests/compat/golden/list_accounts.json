@@ -1,0 +1,11 @@
+[
+  {
+    "accountId": "<string>",
+    "createdAt": "<date>",
+    "id": "<string>",
+    "providerId": "<string>",
+    "scopes": [],
+    "updatedAt": "<date>",
+    "userId": "<string>"
+  }
+]

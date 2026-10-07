@@ -33,6 +33,8 @@ type Server struct {
 	API    huma.API
 	Client *http.Client
 	Jar    *cookiejar.Jar
+	// Origin is sent on every request: the configured BaseURL, or the test server URL.
+	Origin string
 }
 
 // Option customises the goauth options before setup.
@@ -82,8 +84,13 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 	t.Cleanup(ts.Close)
 
 	jar, _ := cookiejar.New(nil)
+	origin := o.BaseURL
+	if origin == "" {
+		origin = ts.URL
+	}
 	return &Server{
 		URL:    ts.URL,
+		Origin: origin,
 		Auth:   a,
 		DB:     db,
 		API:    api,
@@ -139,7 +146,7 @@ func (s *Server) Do(t testing.TB, method, path string, body any, headers ...map[
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	req.Header.Set("Origin", s.URL)
+	req.Header.Set("Origin", s.Origin)
 	for _, h := range headers {
 		for k, v := range h {
 			req.Header.Set(k, v)

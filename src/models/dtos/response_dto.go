@@ -89,29 +89,6 @@ type VerifyEmailResponse struct {
 	Status bool          `json:"status"`
 }
 
-// DeleteUserResponse matches POST /delete-user response shape.
-type DeleteUserResponse struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-}
-
-// UserWrapperResponse matches endpoints that return { user: User }.
-type UserWrapperResponse struct {
-	User *UserResponse `json:"user"`
-}
-
-// ChangeEmailResponse matches POST /change-email response shape.
-type ChangeEmailResponse struct {
-	User    *UserResponse `json:"user,omitempty"`
-	Status  bool          `json:"status"`
-	Message string        `json:"message,omitempty"`
-}
-
-type ChangePasswordResponse struct {
-	Token *string       `json:"token"`
-	User  *UserResponse `json:"user"`
-}
-
 // AccountResponse matches better-auth GET /list-accounts item shape.
 type AccountResponse struct {
 	ID         string   `json:"id"`
@@ -119,39 +96,14 @@ type AccountResponse struct {
 	AccountID  string   `json:"accountId"`
 	UserID     string   `json:"userId"`
 	Scopes     []string `json:"scopes"`
-	CreatedAt  string   `json:"createdAt"`
-	UpdatedAt  string   `json:"updatedAt"`
-}
-
-// UpdateSessionResponse matches better-auth POST /update-session response.
-type UpdateSessionResponse struct {
-	Session *SessionData `json:"session"`
-}
-
-// LinkSocialResponse matches better-auth POST /link-social response.
-type LinkSocialResponse struct {
-	URL      string `json:"url"`
-	Redirect bool   `json:"redirect"`
+	CreatedAt  Time     `json:"createdAt"`
+	UpdatedAt  Time     `json:"updatedAt"`
 }
 
 // SuccessResponse is standard response payload for success actions in Better Auth (e.g. sign-out).
 type SuccessResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message,omitempty"`
-}
-
-// OkResponse matches endpoints that return { ok: true }.
-type OkResponse struct {
-	OK bool `json:"ok"`
-}
-
-// ListResponse is a generic paginated list response.
-type ListResponse[T any] struct {
-	Data    []T   `json:"data"`
-	Total   int64 `json:"total"`
-	HasMore bool  `json:"hasMore"`
-	Limit   int   `json:"limit"`
-	Offset  int   `json:"offset"`
 }
 
 // ─── Converters ──────────────────────────────────────────────────────────────
@@ -277,16 +229,4 @@ func normalizeNilable(v *string) *string {
 		return nil
 	}
 	return v
-}
-
-// ResolveOptions mirrors better-auth getSessionFromCtx config knobs.
-type ResolveOptions struct {
-	DeferRefresh   bool // defer mode + GET: read-only, report needsRefresh
-	DisableRefresh bool // dont-remember cookie or ?disableRefresh
-}
-
-// SessionState reports what the resolver did for this request.
-type SessionState struct {
-	Refreshed    bool // expiry was slid forward (writes performed)
-	NeedsRefresh bool // refresh was due but deferred
 }

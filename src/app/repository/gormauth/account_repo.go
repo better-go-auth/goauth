@@ -92,6 +92,13 @@ func (r *AccountRepo) DeleteAccountByUserAndProvider(ctx context.Context, userID
 	return nil
 }
 
+func (r *AccountRepo) DeleteAccount(ctx context.Context, id string) error {
+	if err := gormutil.GetDB(ctx, r.db).Where(&models.Account{Base: models.Base{ID: id}}, "ID").Delete(&models.Account{}).Error; err != nil {
+		return fmt.Errorf("gorm/account: delete: %w", err)
+	}
+	return nil
+}
+
 func (r *AccountRepo) FindAccounts(ctx context.Context, userID string) ([]models.Account, error) {
 	var accounts []models.Account
 	if err := gormutil.GetDB(ctx, r.db).Where(&models.Account{UserID: userID}, "UserID").Find(&accounts).Error; err != nil {

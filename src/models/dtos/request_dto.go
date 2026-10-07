@@ -89,6 +89,7 @@ type LinkSocialInput struct {
 // DeleteUserInput for POST /delete-user
 type DeleteUserInput struct {
 	Password    *string `json:"password,omitempty"` // optional if OAuth-only account
+	Token       *string `json:"token,omitempty"`    // confirmation token from the delete-account email
 	CallbackURL *string `json:"callbackURL,omitempty"`
 }
 

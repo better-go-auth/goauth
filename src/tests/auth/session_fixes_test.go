@@ -10,6 +10,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/enums"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 )
@@ -45,13 +46,14 @@ func login(t *testing.T, env *helpers.TestEnv, email, password string) *models.A
 	return res.Body.AuthTokens
 }
 
-func sessionIDOf(t *testing.T, refresh string) string {
+// sessionIDOf finds the session row behind a refresh token, which is now the session token itself.
+func sessionIDOf(t *testing.T, env *helpers.TestEnv, refresh string) string {
 	t.Helper()
-	claims, err := jwttoken.ValidateToken(refresh, helpers.TestRefreshSecret)
-	if err != nil {
-		t.Fatalf("parse refresh token: %v", err)
+	var s models.Session
+	if err := env.DB.Where("token = ?", refresh).Take(&s).Error; err != nil {
+		t.Fatalf("find session for refresh token: %v", err)
 	}
-	return claims.SessionID
+	return s.ID
 }
 
 func TestLoginKeepsOtherSessions(t *testing.T) {
@@ -92,8 +94,8 @@ func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
 
 	var stored models.Session
 	env.DB.Where("id = ?", sessionID).Take(&stored)
-	if len(stored.Token) != 64 {
-		t.Fatalf("expected sha256 hex refresh hash, got %q", stored.Token)
+	if stored.Token != tokens.RefreshToken || !idgen.IsToken(stored.Token) {
+		t.Fatalf("refresh token must be the session's opaque token, got %q (row %q)", tokens.RefreshToken, stored.Token)
 	}
 
 	res, err := env.AuthService.ResetToken(ctx, tokens.RefreshToken)
@@ -104,8 +106,8 @@ func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if claims.ActiveOrgId != orgID || claims.ActiveOrgRole != orgRole {
-		t.Fatalf("org context lost on refresh: org=%q role=%q", claims.ActiveOrgId, claims.ActiveOrgRole)
+	if claims.ActiveOrgId != orgID || claims.ActiveOrgRole != orgRole || claims.SessionID != sessionID {
+		t.Fatalf("org context lost on refresh: org=%q role=%q sid=%q", claims.ActiveOrgId, claims.ActiveOrgRole, claims.SessionID)
 	}
 	env.DB.Where("id = ?", sessionID).Take(&stored)
 	if stored.DeviceToken != "device-1" {
@@ -114,6 +116,9 @@ func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
 
 	if _, err := env.AuthService.ResetToken(ctx, tokens.RefreshToken); err == nil {
 		t.Fatal("old refresh token must be rejected after rotation")
+	}
+	if _, err := env.AuthService.ResetToken(ctx, res.Body.AuthTokens.RefreshToken); err != nil {
+		t.Fatalf("rotated refresh token must work: %v", err)
 	}
 }
 
@@ -145,8 +150,10 @@ func TestRefreshRejectsBlockedUsersAndExpiredSessions(t *testing.T) {
 		email, pwd := "expired_refresh@example.com", "password123!"
 		createActiveUser(t, env, email, pwd)
 		tokens := login(t, env, email, pwd)
-		env.DB.Model(&models.Session{}).Where("id = ?", sessionIDOf(t, tokens.RefreshToken)).
+		env.DB.Model(&models.Session{}).Where("id = ?", sessionIDOf(t, env, tokens.RefreshToken)).
 			Update("expires_at", time.Now().Add(-time.Hour))
+		// the cached copy (keyed by token, TTL = expiry) is read first; drop it as its TTL would have
+		_ = env.SecondaryStorage.Delete(ctx, tokens.RefreshToken)
 		if _, err := env.AuthService.ResetToken(ctx, tokens.RefreshToken); err == nil {
 			t.Fatal("expired session must not refresh")
 		}

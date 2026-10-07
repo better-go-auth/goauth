@@ -83,7 +83,7 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 	ctx := context.Background()
 
 	vSvc := verification.NewVerificationServiceWithRepo(mockRepos, opts.EmailVerification)
-	sSvc := session.NewServiceWithRepo(opts.GoAuth.Session, mockRepos, nil, app.Hooks)
+	sSvc := session.NewService(opts.GoAuth.Session, mockRepos, app.Sessions, nil, app.Hooks)
 	authSvc := auth.NewAuthService(&opts.GoAuth.Session, app.Provider, vSvc, sSvc, mockRepos, app.Hooks)
 	profileSvc := profile.NewProfileServH(app.Provider, vSvc, sSvc, mockRepos)
 

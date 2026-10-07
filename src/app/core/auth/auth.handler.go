@@ -17,6 +17,8 @@ import (
 type CookieAttrs struct {
 	Secure bool
 	Domain string
+	// RefreshMaxAge is the refresh cookie lifetime: the session lifetime (Session.ExpiresIn).
+	RefreshMaxAge time.Duration
 }
 
 func CreateCookie(Name, Value string, maxAge time.Duration, attrs CookieAttrs) http.Cookie {
@@ -53,9 +55,13 @@ func (ah *GinAuthHandler) tokenCookies(tokens *models.AuthTokens) []http.Cookie 
 		return nil
 	}
 	jwtConf := ah.AdminAuthServ.Config.JWT
+	refreshMaxAge := ah.Cookies.RefreshMaxAge
+	if refreshMaxAge <= 0 {
+		refreshMaxAge = jwtConf.RefreshExpiresIn
+	}
 	return []http.Cookie{
 		CreateCookie(Icnst.AccessToken, tokens.AccessToken, jwtConf.AccessExpiresIn, ah.Cookies),
-		CreateCookie(Icnst.RefreshToken, tokens.RefreshToken, jwtConf.RefreshExpiresIn, ah.Cookies),
+		CreateCookie(Icnst.RefreshToken, tokens.RefreshToken, refreshMaxAge, ah.Cookies),
 	}
 }
 

@@ -75,6 +75,9 @@ func (opts *AuthConfig) SetDefaults() {
 	if jwt.AccessExpiresIn <= 0 {
 		jwt.AccessExpiresIn = time.Hour
 	}
+	if opts.GoAuth.Session.UpdatableFields == nil {
+		opts.GoAuth.Session.UpdatableFields = DefaultUpdatableSessionFields
+	}
 	if jwt.RefreshExpiresIn <= 0 {
 		jwt.RefreshExpiresIn = 7 * 24 * time.Hour
 	}
@@ -104,6 +107,9 @@ func (opts *AuthConfig) SetDefaults() {
 	}
 	if opts.EmailVerification.ExpiresIn <= 0 {
 		opts.EmailVerification.ExpiresIn = time.Hour
+	}
+	if opts.User.DeleteUser.DeleteTokenExpiresIn <= 0 {
+		opts.User.DeleteUser.DeleteTokenExpiresIn = 24 * time.Hour
 	}
 	if opts.EmailVerification.GoAuth.CodeExpiresIn <= 0 {
 		opts.EmailVerification.GoAuth.CodeExpiresIn = 15 * time.Minute

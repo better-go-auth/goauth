@@ -7,15 +7,16 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core/verification"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
-	"github.com/better-go-auth/goauth/src/providers/authcrypto"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg config.EmailVerification, provServ *providers.IProviderS, repos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) serv_interfaces.IAuthServices {
+func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg config.EmailVerification, provServ *providers.IProviderS, repos repo_interfaces.IAuthRepos, sessions *sessionsvc.Manager, hooks ...plugins.HookRegistry) serv_interfaces.IAuthServices {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]
@@ -30,7 +31,7 @@ func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg conf
 	if provServ != nil {
 		secondaryStorage = provServ.SecondaryStorage
 	}
-	sSvc := session.NewServiceWithRepo(conf.GoAuth.Session, repos, secondaryStorage, h)
+	sSvc := session.NewService(conf.GoAuth.Session, repos, sessions, secondaryStorage, h)
 
 	authSvc := auth.NewAuthService(&conf.GoAuth.Session, provServ, vSvc, sSvc, repos, h)
 	profileServ := profile.NewProfileServH(provServ, vSvc, sSvc, repos)

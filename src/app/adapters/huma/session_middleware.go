@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 
-	session "github.com/better-go-auth/goauth/src/app/services/session"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
@@ -26,11 +26,11 @@ func FromContext(ctx context.Context) (*dtos.SessionWithUser, bool) {
 
 // Resolver turns the signed session cookie into a session for Huma operations.
 type Resolver struct {
-	mgr     *session.Manager
+	mgr     *sessionsvc.Manager
 	cookies *cookies.Manager
 }
 
-func NewResolver(mgr *session.Manager, cm *cookies.Manager) *Resolver {
+func NewResolver(mgr *sessionsvc.Manager, cm *cookies.Manager) *Resolver {
 	return &Resolver{mgr: mgr, cookies: cm}
 }
 

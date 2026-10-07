@@ -57,4 +57,7 @@ var (
 
 	// ErrUnauthorized is thrown inline by better-auth's session middlewares, not part of BASE_ERROR_CODES.
 	ErrUnauthorized = Err(http.StatusUnauthorized, "UNAUTHORIZED", "Unauthorized")
+
+	// ErrBannedUser is the admin plugin's BANNED_USER, returned when a banned user tries to start a session.
+	ErrBannedUser = Err(http.StatusForbidden, "BANNED_USER", "You have been banned from this application")
 )

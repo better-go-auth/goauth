@@ -15,8 +15,10 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/plugins"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	memstore "github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
+	"github.com/better-go-auth/goauth/src/providers/token"
 )
 
 const secret = "test-secret-at-least-32-characters-long"
@@ -414,7 +416,7 @@ func TestDeleteUserAndAccounts(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, nil, nil)
 	res := e.signUp(t, "kim@example.com", "password123")
-	if err := e.svc.DeleteUser(ctx, res.Session, nil); errCode(err) != "NOT_FOUND" {
+	if _, err := e.svc.DeleteUser(ctx, res.Session, dtos.DeleteUserInput{}); errCode(err) != "NOT_FOUND" {
 		t.Fatalf("delete should be disabled by default: %v", err)
 	}
 
@@ -424,6 +426,17 @@ func TestDeleteUserAndAccounts(t *testing.T) {
 	}
 	if err := e.svc.UnlinkAccount(ctx, res.Session, dtos.UnlinkAccountInput{ProviderID: "credential"}); errCode(err) != "FAILED_TO_UNLINK_LAST_ACCOUNT" {
 		t.Fatalf("got %v", err)
+	}
+	for _, id := range []string{"gh-1", "gh-2"} {
+		if _, err := e.repos.CreateAccount(ctx, &models.Account{UserID: res.User.ID, AccountID: id, ProviderID: models.ProvGithub}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := e.svc.UnlinkAccount(ctx, res.Session, dtos.UnlinkAccountInput{ProviderID: "github", AccountID: "gh-2"}); err != nil {
+		t.Fatal(err)
+	}
+	if accounts, _ := e.svc.ListAccounts(ctx, res.Session); len(accounts) != 2 {
+		t.Fatalf("unlink must remove only the matching account, left %d", len(accounts))
 	}
 
 	var deleted []string
@@ -435,11 +448,11 @@ func TestDeleteUserAndAccounts(t *testing.T) {
 		}
 	}, nil)
 	res = e.signUp(t, "kim@example.com", "password123")
-	if err := e.svc.DeleteUser(ctx, res.Session, ptr("wrong")); errCode(err) != "INVALID_PASSWORD" {
+	if _, err := e.svc.DeleteUser(ctx, res.Session, dtos.DeleteUserInput{Password: ptr("wrong")}); errCode(err) != "INVALID_PASSWORD" {
 		t.Fatalf("got %v", err)
 	}
-	if err := e.svc.DeleteUser(ctx, res.Session, ptr("password123")); err != nil {
-		t.Fatal(err)
+	if msg, err := e.svc.DeleteUser(ctx, res.Session, dtos.DeleteUserInput{Password: ptr("password123")}); err != nil || msg != authsvc.MsgUserDeleted {
+		t.Fatal(msg, err)
 	}
 	if _, err := e.repos.FindUserByID(ctx, res.User.ID); err == nil {
 		t.Fatal("user should be deleted")
@@ -449,16 +462,169 @@ func TestDeleteUserAndAccounts(t *testing.T) {
 	}
 }
 
-func TestBannedUserCannotSignIn(t *testing.T) {
+func TestDeleteUserWithEmailConfirmation(t *testing.T) {
+	ctx := context.Background()
+	var links []config.DeleteAccountVerificationData
+	e := newEnv(t, func(c *config.AuthConfig) {
+		c.User.DeleteUser.Enabled = true
+		c.User.DeleteUser.SendDeleteAccountVerification = func(d config.DeleteAccountVerificationData, _ *httpRequest) error {
+			links = append(links, d)
+			return nil
+		}
+	}, nil)
+	res := e.signUp(t, "mia@example.com", "password123")
+	other := e.signUp(t, "noa@example.com", "password123")
+
+	msg, err := e.svc.DeleteUser(ctx, res.Session, dtos.DeleteUserInput{CallbackURL: ptr("/bye")})
+	if err != nil || msg != authsvc.MsgVerificationEmailSent || len(links) != 1 {
+		t.Fatalf("expected a confirmation email: %q %v", msg, err)
+	}
+	if !strings.Contains(links[0].URL, "/api/auth/delete-user/callback?token="+links[0].Token+"&callbackURL=%2Fbye") {
+		t.Fatalf("unexpected url %s", links[0].URL)
+	}
+	if _, err := e.repos.FindUserByID(ctx, res.User.ID); err != nil {
+		t.Fatal("nothing is deleted before confirmation")
+	}
+	if err := e.svc.DeleteUserCallback(ctx, other.Session, links[0].Token); errCode(err) != "INVALID_TOKEN" {
+		t.Fatalf("another user's session must not use the token: %v", err)
+	}
+	// the wrong-owner attempt burned the token, like better-auth
+	if err := e.svc.DeleteUserCallback(ctx, res.Session, links[0].Token); errCode(err) != "INVALID_TOKEN" {
+		t.Fatalf("token must be single use: %v", err)
+	}
+
+	if _, err := e.svc.DeleteUser(ctx, res.Session, dtos.DeleteUserInput{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.DeleteUserCallback(ctx, res.Session, links[1].Token); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.repos.FindUserByID(ctx, res.User.ID); err == nil {
+		t.Fatal("user should be deleted after confirmation")
+	}
+}
+
+func TestSetPassword(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, nil, nil)
-	res := e.signUp(t, "leo@example.com", "password123")
-	_, _ = e.repos.UpdateUser(ctx, res.User.ID, map[string]interface{}{"Banned": true})
-	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "leo@example.com", Password: "password123"}, authsvc.Meta{}); errCode(err) != "BANNED_USER" {
+	res := e.signUp(t, "oli@example.com", "password123")
+	if err := e.svc.SetPassword(ctx, res.User.ID, "another-password"); errCode(err) != "PASSWORD_ALREADY_SET" {
 		t.Fatalf("got %v", err)
 	}
-	_, _ = e.repos.UpdateUser(ctx, res.User.ID, map[string]interface{}{"BanExpires": time.Now().Add(-time.Minute)})
-	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "leo@example.com", Password: "password123"}, authsvc.Meta{}); err != nil {
-		t.Fatalf("expired ban should be lifted: %v", err)
+	if err := e.repos.DeleteAccounts(ctx, res.User.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.svc.SetPassword(ctx, res.User.ID, "short"); errCode(err) != "PASSWORD_TOO_SHORT" {
+		t.Fatalf("got %v", err)
+	}
+	if err := e.svc.SetPassword(ctx, res.User.ID, "another-password"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "oli@example.com", Password: "another-password"}, authsvc.Meta{}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSessionHookCanRejectSignIn(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, nil, nil)
+	hooks := plugins.NewHookRegistry()
+	hooks.OnBeforeSessionCreate(func(context.Context, *models.Session, *token.CustomClaims) error {
+		return autherr.ErrBannedUser
+	})
+	cfg := config.AuthConfig{Secret: secret, BaseURL: "http://localhost:3000"}
+	cfg.SetDefaults()
+	mgr := sessionsvc.NewManager(cfg.Session, e.repos, e.repos, nil, hooks)
+	svc := authsvc.New(authsvc.Deps{Config: cfg, Repos: e.repos, Sessions: mgr})
+
+	e.signUp(t, "leo@example.com", "password123")
+	if _, err := svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "leo@example.com", Password: "password123"}, authsvc.Meta{}); errCode(err) != "BANNED_USER" {
+		t.Fatalf("hook error must be returned as-is: %v", err)
+	}
+}
+
+func TestUpdateSessionDeviceFields(t *testing.T) {
+	ctx := context.Background()
+	for name, mutate := range map[string]func(*config.AuthConfig){
+		"database + cache": nil,
+		"cache only":       func(c *config.AuthConfig) { c.Session.StoreSessionInDatabase = ptr(false) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			e := newEnv(t, mutate, memstore.New())
+			res := e.signUp(t, "dev@example.com", "password123")
+
+			sw, err := e.svc.UpdateSession(ctx, res.Session, map[string]any{"deviceName": "Pixel", "deviceToken": "fcm:1", "unknown": 1})
+			if err != nil || sw.Session.DeviceName == nil || *sw.Session.DeviceName != "Pixel" || *sw.Session.DeviceToken != "fcm:1" {
+				t.Fatalf("update: %+v %v", sw, err)
+			}
+			got, _ := e.sessions.Get(ctx, *res.Token)
+			if got == nil || got.Session.DeviceName == nil || *got.Session.DeviceName != "Pixel" {
+				t.Fatalf("stored session must carry the update: %+v", got)
+			}
+			if sw, err = e.svc.UpdateSession(ctx, got, map[string]any{"deviceName": nil}); err != nil || sw.Session.DeviceName != nil {
+				t.Fatalf("null clears the field: %+v %v", sw, err)
+			}
+
+			for want, body := range map[string]map[string]any{
+				"FIELD_NOT_ALLOWED":   {"activeOrganizationId": "org-1"},
+				"VALIDATION_ERROR":    {"deviceName": 42},
+				"NO_FIELDS_TO_UPDATE": {"unknown": "x"},
+			} {
+				if _, err := e.svc.UpdateSession(ctx, res.Session, body); errCode(err) != want {
+					t.Fatalf("%v: want %s, got %v", body, want, err)
+				}
+			}
+
+			if err := e.sessions.Delete(ctx, *res.Token); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := e.svc.UpdateSession(ctx, res.Session, map[string]any{"deviceName": "x"}); errCode(err) != "FAILED_TO_GET_SESSION" {
+				t.Fatalf("revoked session must fail closed: %v", err)
+			}
+		})
+	}
+}
+
+func TestUpdatableSessionFieldsConfig(t *testing.T) {
+	for _, fields := range [][]string{{"activeOrganizationId"}, {"token"}, {"nope"}} {
+		cfg := config.AuthConfig{}
+		cfg.GoAuth.Session.UpdatableFields = fields
+		if authsvc.ValidateConfig(cfg) == nil {
+			t.Fatalf("%v must be rejected", fields)
+		}
+	}
+	cfg := config.AuthConfig{}
+	cfg.GoAuth.Session.UpdatableFields = config.DefaultUpdatableSessionFields
+	if err := authsvc.ValidateConfig(cfg); err != nil {
+		t.Fatal(err)
+	}
+
+	e := newEnv(t, func(c *config.AuthConfig) { c.GoAuth.Session.UpdatableFields = []string{} }, nil)
+	res := e.signUp(t, "none@example.com", "password123")
+	if _, err := e.svc.UpdateSession(context.Background(), res.Session, map[string]any{"deviceName": "x"}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
+		t.Fatalf("an empty allowlist disables update-session: %v", err)
+	}
+}
+
+func TestSingleResetLink(t *testing.T) {
+	ctx := context.Background()
+	for _, single := range []bool{false, true} {
+		e := newEnv(t, func(c *config.AuthConfig) { c.EmailAndPassword.GoAuth.SingleResetLink = single }, nil)
+		e.signUp(t, "link@example.com", "password123")
+		for range 3 {
+			if err := e.svc.RequestPasswordReset(ctx, dtos.RequestPasswordResetInput{Email: "link@example.com"}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		first, second, last := e.resets[0].Token, e.resets[1].Token, e.resets[2].Token
+		if got := e.svc.ValidateResetToken(ctx, first) == nil; got == single {
+			t.Fatalf("single=%v: first link valid=%v", single, got)
+		}
+		if err := e.svc.ResetPassword(ctx, dtos.ResetPasswordInput{Token: last, NewPassword: "new-password"}); err != nil {
+			t.Fatal(err)
+		}
+		if got := e.svc.ValidateResetToken(ctx, second) == nil; got == single {
+			t.Fatalf("single=%v: older link valid after reset=%v", single, got)
+		}
 	}
 }

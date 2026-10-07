@@ -14,7 +14,10 @@ import (
 	"time"
 )
 
-var update = flag.Bool("update-golden", false, "rewrite golden files from the current responses")
+var (
+	update    = flag.Bool("update-golden", false, "create missing golden files from the current responses")
+	overwrite = flag.Bool("overwrite-golden", false, "rewrite existing golden files too (loses hand-edited placeholders like <string|null>)")
+)
 
 // GoldenDir is src/tests/compat/golden, resolved from this source file.
 var GoldenDir = func() string {
@@ -36,8 +39,15 @@ func AssertJSONShape(t testing.TB, got []byte, name string) {
 		t.Fatalf("compattest: response is not JSON: %v\n%s", err, got)
 	}
 
-	if *update {
-		out, _ := json.MarshalIndent(Shape(gotV), "", "  ")
+	_, statErr := os.Stat(path)
+	if *overwrite || (*update && os.IsNotExist(statErr)) {
+		var buf bytes.Buffer
+		enc := json.NewEncoder(&buf)
+		// keep "<string>" placeholders readable instead of \u003cstring\u003e
+		enc.SetEscapeHTML(false)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(Shape(gotV))
+		out := bytes.TrimRight(buf.Bytes(), "\n")
 		if err := os.MkdirAll(GoldenDir, 0o755); err != nil {
 			t.Fatal(err)
 		}

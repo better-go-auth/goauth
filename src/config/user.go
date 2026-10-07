@@ -2,6 +2,7 @@ package config
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/better-go-auth/goauth/src/models"
 )
@@ -28,11 +29,21 @@ type ChangeEmailConfirmationData struct {
 	Token    string
 }
 
-// DeleteUserOptions mirrors better-auth's `user.deleteUser` (without the email confirmation flow).
+// DeleteUserOptions mirrors better-auth's `user.deleteUser`.
 type DeleteUserOptions struct {
-	Enabled      bool
-	BeforeDelete func(user models.User, request *http.Request) error
-	AfterDelete  func(user models.User, request *http.Request) error
+	Enabled bool
+	// SendDeleteAccountVerification makes delete-user email a confirmation link instead of deleting immediately.
+	SendDeleteAccountVerification func(data DeleteAccountVerificationData, request *http.Request) error
+	// DeleteTokenExpiresIn is how long the confirmation link is valid (default 24 hours).
+	DeleteTokenExpiresIn time.Duration
+	BeforeDelete         func(user models.User, request *http.Request) error
+	AfterDelete          func(user models.User, request *http.Request) error
+}
+
+type DeleteAccountVerificationData struct {
+	User  models.User
+	URL   string
+	Token string
 }
 
 // AccountOptions mirrors better-auth's `account` options.

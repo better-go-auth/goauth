@@ -32,6 +32,12 @@ type IVerificationRepo interface {
 	FindVerificationValue(ctx context.Context, identifier string) (*models.Verification, error)
 	// DeleteVerificationByIdentifier deletes every verification with identifier.
 	DeleteVerificationByIdentifier(ctx context.Context, identifier string) error
+	// ConsumeVerificationValue deletes and returns the newest live verification for identifier.
+	// Only one concurrent caller gets it; the others (and expired rows) get a not-found error.
+	ConsumeVerificationValue(ctx context.Context, identifier string) (*models.Verification, error)
+	// DeleteVerificationsByValue deletes the verifications holding value whose identifier starts with identifierPrefix
+	// (e.g. every "reset-password:" token of one user). Empty arguments delete nothing.
+	DeleteVerificationsByValue(ctx context.Context, identifierPrefix, value string) error
 	// DeleteExpiredVerifications removes all expired verification records.
 	DeleteExpiredVerifications(ctx context.Context) error
 }
@@ -53,6 +59,8 @@ type IOAuthAccountRepo interface {
 	// DeleteAccountByUserAndProvider removes a user's account for a specific provider
 	// (used by Better Auth's /unlink-account).
 	DeleteAccountByUserAndProvider(ctx context.Context, userID, providerID string) error
+	// DeleteAccount removes one account by id.
+	DeleteAccount(ctx context.Context, id string) error
 }
 
 // UserFilter allows filtering user list queries.

@@ -34,12 +34,15 @@ type ISessionService interface {
 	RevokeSession(ctx context.Context, current *dtos.SessionWithUser, token string) error
 	RevokeSessions(ctx context.Context, current *dtos.SessionWithUser) error
 	RevokeOtherSessions(ctx context.Context, current *dtos.SessionWithUser) error
+	UpdateSession(ctx context.Context, current *dtos.SessionWithUser, fields map[string]any) (*dtos.SessionWithUser, error)
 }
 
 // IUserService covers the user self-service endpoints (admin actions live in the admin plugin).
 type IUserService interface {
 	UpdateUser(ctx context.Context, current *dtos.SessionWithUser, in UpdateUserInput) (*dtos.SessionWithUser, error)
-	DeleteUser(ctx context.Context, current *dtos.SessionWithUser, password *string) error
+	DeleteUser(ctx context.Context, current *dtos.SessionWithUser, in dtos.DeleteUserInput) (string, error)
+	DeleteUserCallback(ctx context.Context, current *dtos.SessionWithUser, token string) error
+	SetPassword(ctx context.Context, userID, newPassword string) error
 	ListAccounts(ctx context.Context, current *dtos.SessionWithUser) ([]dtos.AccountResponse, error)
 	UnlinkAccount(ctx context.Context, current *dtos.SessionWithUser, in dtos.UnlinkAccountInput) error
 }

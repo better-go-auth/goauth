@@ -87,6 +87,8 @@ type EmailAndPassword struct {
 	 * This is only called when `requireEmailVerification: true` or `autoSignIn: false`.
 	 */
 	OnExistingUserSignUp OnExistingUserSignUpFunc
+
+	GoAuth EmailAndPasswordGoAuth
 	/**
 		 * Build a custom synthetic user for email enumeration
 		 * protection. When a sign-up attempt is made with an
@@ -114,6 +116,13 @@ type EmailAndPassword struct {
 }
 
 type SendResetPasswordFunc func(data ResetPasswordData, request *http.Request) error
+
+// EmailAndPasswordGoAuth holds email/password options better-auth doesn't have.
+type EmailAndPasswordGoAuth struct {
+	// SingleResetLink keeps only the newest password reset link valid: requesting a new one or resetting
+	// the password deletes the user's other reset tokens. better-auth keeps every link valid until it expires.
+	SingleResetLink bool
+}
 
 type ResetPasswordData struct {
 	User  models.User

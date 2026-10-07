@@ -236,7 +236,7 @@ func TestStorageWithDatabaseFallsBackAndRecaches(t *testing.T) {
 	if f.rows(t) != 1 {
 		t.Fatal("default must also store sessions in the database")
 	}
-	_ = f.mgr.store.Delete(ctx, sw.Session.Token)
+	_ = f.mgr.secStore.Delete(ctx, sw.Session.Token)
 	if got, _ := f.mgr.Get(ctx, sw.Session.Token); got == nil {
 		t.Fatal("database fallback failed")
 	}

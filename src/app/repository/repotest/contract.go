@@ -272,6 +272,17 @@ func testAccounts(t *testing.T, r repo_interfaces.IAuthRepos) {
 	require.NoError(t, r.DeleteAccountByUserAndProvider(ctx, u.ID, string(models.ProvGithub)))
 	all, _ = r.FindAccounts(ctx, u.ID)
 	require.Len(t, all, 1)
+
+	other, err := r.CreateAccount(ctx, &models.Account{UserID: u.ID, AccountID: "gh-2", ProviderID: models.ProvGithub})
+	require.NoError(t, err)
+	_, err = r.CreateAccount(ctx, &models.Account{UserID: u.ID, AccountID: "gh-3", ProviderID: models.ProvGithub})
+	require.NoError(t, err)
+	require.NoError(t, r.DeleteAccount(ctx, other.ID))
+	all, _ = r.FindAccounts(ctx, u.ID)
+	require.Len(t, all, 2, "DeleteAccount removes only that account")
+	require.NoError(t, r.DeleteAccountByUserAndProvider(ctx, u.ID, string(models.ProvGithub)))
+	all, _ = r.FindAccounts(ctx, u.ID)
+	require.Len(t, all, 1)
 	require.NoError(t, r.DeleteAccounts(ctx, ""))
 	all, _ = r.FindAccounts(ctx, u.ID)
 	require.Len(t, all, 1, "an empty user id deletes nothing")
@@ -307,4 +318,38 @@ func testVerifications(t *testing.T, r repo_interfaces.IAuthRepos) {
 	require.NoError(t, r.DeleteVerificationByIdentifier(ctx, id))
 	_, err = r.FindVerificationValue(ctx, id)
 	require.Error(t, err)
+
+	consume := "reset-password:tok"
+	_, err = r.UpsertVerificationValue(ctx, &models.Verification{Identifier: consume, Value: "user-1", ExpiresAt: time.Now().Add(time.Hour)})
+	require.NoError(t, err)
+	got, err = r.ConsumeVerificationValue(ctx, consume)
+	require.NoError(t, err)
+	require.Equal(t, "user-1", got.Value)
+	_, err = r.ConsumeVerificationValue(ctx, consume)
+	require.Error(t, err, "a verification can be consumed once")
+	_, err = r.UpsertVerificationValue(ctx, &models.Verification{Identifier: consume, Value: "user-1", ExpiresAt: time.Now().Add(-time.Minute)})
+	require.NoError(t, err)
+	_, err = r.ConsumeVerificationValue(ctx, consume)
+	require.Error(t, err, "expired verifications are not returned")
+	_, err = r.FindVerificationValue(ctx, consume)
+	require.Error(t, err, "consuming an expired verification still deletes it")
+	_, err = r.ConsumeVerificationValue(ctx, "")
+	require.Error(t, err)
+
+	for _, v := range []models.Verification{
+		{Identifier: "reset-password:a", Value: "user-1"},
+		{Identifier: "reset-password:b", Value: "user-1"},
+		{Identifier: "reset-password:c", Value: "user-2"},
+		{Identifier: "delete-account-d", Value: "user-1"},
+	} {
+		v.ExpiresAt = time.Now().Add(time.Hour)
+		_, err = r.UpsertVerificationValue(ctx, &v)
+		require.NoError(t, err)
+	}
+	require.NoError(t, r.DeleteVerificationsByValue(ctx, "reset-password:", ""), "an empty value deletes nothing")
+	require.NoError(t, r.DeleteVerificationsByValue(ctx, "reset-password:", "user-1"))
+	for id, kept := range map[string]bool{"reset-password:a": false, "reset-password:b": false, "reset-password:c": true, "delete-account-d": true} {
+		_, err = r.FindVerificationValue(ctx, id)
+		require.Equal(t, kept, err == nil, id)
+	}
 }

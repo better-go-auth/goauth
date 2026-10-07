@@ -54,6 +54,11 @@ type BetterAuthSession struct {
 	ImpersonatedBy       *string `json:"impersonatedBy,omitempty"`
 	ActiveOrganizationID *string `json:"activeOrganizationId,omitempty"`
 	ActiveTeamID         *string `json:"activeTeamId,omitempty"`
+	// goauth device fields, settable through update-session
+	DeviceToken *string `json:"deviceToken,omitempty"`
+	DeviceID    *string `json:"deviceId,omitempty"`
+	DeviceName  *string `json:"deviceName,omitempty"`
+	DeviceType  *string `json:"deviceType,omitempty"`
 }
 
 // SessionWithUser is the body of GET /get-session.
@@ -90,6 +95,12 @@ func SessionFromModel(s *models.Session) BetterAuthSession {
 		Token:                s.Token,
 		CreatedAt:            Time(s.CreatedAt),
 		UpdatedAt:            Time(s.UpdatedAt),
+		DeviceID:             s.DeviceID,
+		DeviceName:           s.DeviceName,
+		DeviceType:           s.DeviceType,
+	}
+	if s.DeviceToken != "" {
+		out.DeviceToken = &s.DeviceToken
 	}
 	return out
 }

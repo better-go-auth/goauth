@@ -9,9 +9,9 @@ import (
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/better-go-auth/goauth/src/app/core"
-	"github.com/better-go-auth/goauth/src/app/core/ba"
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
@@ -23,6 +23,7 @@ import (
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/better-go-auth/goauth/src/providers/origin"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"gorm.io/gorm"
 
@@ -47,6 +48,8 @@ type GoAuth struct {
 
 	// Sessions manages better-auth style cookie sessions.
 	Sessions *sessionsvc.Manager
+	// Auth is the framework-agnostic better-auth service behind the compat endpoints.
+	Auth *authsvc.Service
 	// SessionResolver provides Huma middlewares that load the cookie session.
 	SessionResolver *humaadapter.Resolver
 	Cookies         *cookies.Manager
@@ -92,6 +95,9 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	opts.SetDefaults()
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("goauth: invalid options: %w", err)
+	}
+	if err := authsvc.ValidateConfig(opts.AuthConfig); err != nil {
+		return nil, err
 	}
 
 	types.InstallScopedErrorHandler()
@@ -152,14 +158,22 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	// Initialize lifecycle hooks
 	hooks := plugin.NewHookRegistry()
 
-	// setup the auth routes
-	authSvc := core.SetupAllAuthRoutesWithRepos(api, opts.AuthConfig, opts.EmailVerification, providerService, repos, hooks)
-
+	// one session store for cookie, bearer and legacy JWT clients
 	cookieMgr := cookies.New(opts.AuthConfig)
 	sessionMgr := sessionsvc.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks)
+	mdlWare.WithSessions(humaadapter.NewSessionClaims(sessionMgr, cookieMgr, repos))
+
+	// setup the auth routes
+	authSvc := core.SetupAllAuthRoutesWithRepos(api, opts.AuthConfig, opts.EmailVerification, providerService, repos, sessionMgr, hooks)
+
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
+	//=============   Register the better-auth compatable routes
+	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager})
 	if opts.GoAuth.Mode == config.ModeCompat {
-		ba.RegisterRoutes(api, ba.Deps{Conf: opts.AuthConfig, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver})
+		humaadapter.RegisterRoutes(api, humaadapter.Deps{
+			Conf: opts.AuthConfig, Auth: authService, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver,
+			Origins: origin.New(opts.AuthConfig),
+		})
 	}
 
 	// Initialize plugins
@@ -218,6 +232,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		Repositories:       repos,
 		MiddlewareInt:      mdlWare,
 		Sessions:           sessionMgr,
+		Auth:               authService,
 		SessionResolver:    resolver,
 		Cookies:            cookieMgr,
 	}, nil
