@@ -54,7 +54,7 @@ func (ah *GinAuthHandler) tokenCookies(tokens *models.AuthTokens) []http.Cookie 
 	if tokens == nil {
 		return nil
 	}
-	jwtConf := ah.AdminAuthServ.Config.JWT
+	jwtConf := ah.AuthServ.Config.JWT
 	refreshMaxAge := ah.Cookies.RefreshMaxAge
 	if refreshMaxAge <= 0 {
 		refreshMaxAge = jwtConf.RefreshExpiresIn
@@ -66,7 +66,7 @@ func (ah *GinAuthHandler) tokenCookies(tokens *models.AuthTokens) []http.Cookie 
 }
 
 func (ah *GinAuthHandler) Register(ctx context.Context, inputs *humatypes.HumaReqBody[models.RegisterClientInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignUpResponse]], error) {
-	usr, err := ah.AdminAuthServ.RegisterWithEmail(ctx, inputs.Body)
+	usr, err := ah.AuthServ.RegisterWithEmail(ctx, inputs.Body)
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
@@ -79,7 +79,7 @@ func (ah *GinAuthHandler) Register(ctx context.Context, inputs *humatypes.HumaRe
 }
 
 func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *humatypes.HumaReqBody[VerificationInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
-	usr, err := ah.AdminAuthServ.VerifyRegisteredUser(ctx, inputs.Body)
+	usr, err := ah.AuthServ.VerifyRegisteredUser(ctx, inputs.Body)
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
@@ -92,7 +92,7 @@ func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *h
 }
 
 func (ah *GinAuthHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBody[LoginData]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
-	tkn, err := ah.AdminAuthServ.Login(ctx, inputs.Body)
+	tkn, err := ah.AuthServ.Login(ctx, inputs.Body)
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusUnauthorized, err.Error())
 	}
@@ -111,7 +111,7 @@ func (ah *GinAuthHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBo
 }
 
 func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *humatypes.HumaReqBody[RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
-	tkn, err := ah.AdminAuthServ.ResetToken(ctx, inputs.Body.Token)
+	tkn, err := ah.AuthServ.ResetToken(ctx, inputs.Body.Token)
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusUnauthorized, err.Error())
 	}
@@ -130,7 +130,7 @@ func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *humatypes.Hu
 }
 
 func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqBody[RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SuccessResponse]], error) {
-	tkn, err := ah.AdminAuthServ.Logout(ctx, inputs.Body.Token)
+	tkn, err := ah.AuthServ.Logout(ctx, inputs.Body.Token)
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
@@ -145,7 +145,7 @@ func (ah *GinAuthHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqB
 }
 
 func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaReqBody[VerifyReqInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
-	tkn, err := ah.AdminAuthServ.ForgotPwd(ctx, inputs.Body)
+	tkn, err := ah.AuthServ.ForgotPwd(ctx, inputs.Body)
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
@@ -157,7 +157,7 @@ func (ah *GinAuthHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaR
 }
 
 func (ah *GinAuthHandler) ResetPwd(ctx context.Context, inputs *humatypes.HumaReqBody[PwdResetInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
-	tkn, err := ah.AdminAuthServ.ResetPwd(ctx, inputs.Body)
+	tkn, err := ah.AuthServ.ResetPwd(ctx, inputs.Body)
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}

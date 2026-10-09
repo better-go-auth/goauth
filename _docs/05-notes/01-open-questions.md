@@ -28,3 +28,5 @@ or a link to the doc that answers them.
 - [x] What are the new `Sessions`, `SessionResolver` and cookie functions? The better-auth session manager,
       its request middleware and the signed-cookie manager (see [04-plan/02-steps.md](../04-plan/02-steps.md), step 4).
 - [x] Fix column lengths: sizes removed except where MySQL needs them for indexes.
+
+

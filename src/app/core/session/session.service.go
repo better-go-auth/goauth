@@ -17,6 +17,8 @@ import (
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
+
+
 // Service is the legacy JWT transport on top of the shared better-auth sessions: every login is a normal
 // session row, the refresh token is that session's token, and the access token is a short JWT with sid = session id.
 type Service struct {
@@ -40,7 +42,7 @@ func NewService(conf config.SessionGoAuth, repos repo_interfaces.IAuthRepos, mgr
 	return &Service{SessionRepo: repos, users: repos, mgr: mgr, sConf: conf, sStore: sStore, Hooks: h}
 }
 
-var _ serv_interfaces.ISessionService = (*Service)(nil)
+var _ serv_interfaces.LegSessionService = (*Service)(nil)
 
 // tokens signs the access JWT for s and returns it with the session token as the refresh token.
 func (aus Service) tokens(s *models.Session, role string) (*models.AuthTokens, error) {
@@ -137,26 +139,26 @@ func (aus Service) FindByRefreshToken(ctx context.Context, refreshToken string) 
 // RefreshTokens slides the session's expiry like better-auth (once UpdateAge has passed), rotates the refresh
 // token when GoAuth.Session.JWT.RotateRefreshToken is on (default) and signs a new access token.
 func (aus Service) RefreshTokens(ctx context.Context, s *models.Session, role string) (*models.AuthTokens, error) {
-	sw, err := aus.mgr.Get(ctx, s.Token)
+	swu, err := aus.mgr.Get(ctx, s.Token)
 	if err != nil {
 		return nil, err
 	}
-	if sw != nil && aus.mgr.ShouldRefresh(sw, false) {
-		sw, err = aus.mgr.Refresh(ctx, sw)
+	if swu != nil && aus.mgr.ShouldRefresh(swu, false) {
+		swu, err = aus.mgr.Refresh(ctx, swu)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if sw != nil && aus.sConf.JWT.RotatesRefreshToken() {
-		sw, err = aus.mgr.RotateToken(ctx, sw)
+	if swu != nil && aus.sConf.JWT.RotatesRefreshToken() {
+		swu, err = aus.mgr.RotateToken(ctx, swu)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if sw == nil {
+	if swu == nil {
 		return nil, autherr.ErrInvalidToken
 	}
-	updated, err := aus.SessionRepo.FindSessionByID(ctx, sw.Session.ID)
+	updated, err := aus.SessionRepo.FindSessionByID(ctx, swu.Session.ID)
 	if err != nil {
 		return nil, err
 	}

@@ -39,11 +39,11 @@ type Deps struct {
 
 // Service implements IAuthService, ISessionService and IUserService.
 type Service struct {
-	cfg       config.AuthConfig
-	repos     repo_interfaces.IAuthRepos
-	sessions  *sessionsvc.Manager
-	passwords *authcrypto.Passwords
-	tx        interfaces.ITransactionManager
+	cfg        config.AuthConfig
+	repos      repo_interfaces.IAuthRepos
+	sessionMgr *sessionsvc.Manager
+	passwords  *authcrypto.Passwords
+	tx         interfaces.ITransactionManager
 	// sessionFields maps client-writable session JSON names to Go field names (GoAuth.Session.UpdatableFields)
 	sessionFields map[string]string
 }
@@ -64,7 +64,7 @@ func New(d Deps) *Service {
 	}
 	// invalid names are reported by ValidateConfig at setup; here they just disable update-session
 	fields, _ := updatableSessionFields(d.Config)
-	return &Service{cfg: d.Config, repos: d.Repos, sessions: d.Sessions, passwords: d.Passwords, tx: d.Tx, sessionFields: fields}
+	return &Service{cfg: d.Config, repos: d.Repos, sessionMgr: d.Sessions, passwords: d.Passwords, tx: d.Tx, sessionFields: fields}
 }
 
 // inTx runs fn inside a database transaction when a transaction manager was injected.

@@ -1,5 +1,6 @@
 package serv_interfaces
 
+// this is the legacy session and verification services
 import (
 	"context"
 
@@ -16,7 +17,7 @@ type IVerificationService interface {
 	DeleteByIdentifier(ctx context.Context, identifier string, purpose models.VerificationPurpose) error
 }
 
-type ISessionService interface {
+type LegSessionService interface {
 	CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error)
 	DeleteSession(ctx context.Context, sessionId string) error
 	DeleteAllUserSessions(ctx context.Context, userId string) error
@@ -29,11 +30,11 @@ type ISessionService interface {
 
 type IAuthServices interface {
 	IVerificationService
-	ISessionService
+	LegSessionService
 }
 
 // AuthServiceImpl Add a concrete combiner type to account_interfaces/core.interface.go
 type AuthServiceImpl struct {
 	IVerificationService
-	ISessionService
+	LegSessionService
 }

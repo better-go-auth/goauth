@@ -21,7 +21,7 @@ import (
 type Service struct {
 	ProvServ    *providers.IProviderS
 	VSvc        serv_interfaces.IVerificationService
-	SesSvc      serv_interfaces.ISessionService
+	SesSvc      serv_interfaces.LegSessionService
 	TxMgr       interfaces.ITransactionManager
 	userRepo    repo_interfaces.IUserRepo
 	accountRepo repo_interfaces.IOAuthAccountRepo
@@ -29,7 +29,7 @@ type Service struct {
 	Passwords *authcrypto.Passwords
 }
 
-func NewProfileServH(genServ *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sesSvc serv_interfaces.ISessionService, authRepos repo_interfaces.IAuthRepos) *Service {
+func NewProfileServH(genServ *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sesSvc serv_interfaces.LegSessionService, authRepos repo_interfaces.IAuthRepos) *Service {
 	var txMgr interfaces.ITransactionManager
 	if genServ != nil {
 		txMgr = genServ.TxManager

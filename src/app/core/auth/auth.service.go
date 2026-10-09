@@ -15,7 +15,7 @@ import (
 )
 
 // RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
-func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (res dtos.GResp[models.User], eror error) {
+func (aus LegacyService) RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (res dtos.GResp[models.User], eror error) {
 	// Check if the email already exists
 	usr, err := aus.userRepo.FindUserByEmail(ctx, input.Email)
 	if err == nil && usr != nil {
@@ -109,7 +109,7 @@ func (aus Service) RegisterWithEmail(ctx context.Context, input models.RegisterC
 }
 
 // VerifyRegisteredUser (acc-01), [id]x
-func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationInput) (res dtos.GResp[models.User], eror error) {
+func (aus LegacyService) VerifyRegisteredUser(ctx context.Context, input VerificationInput) (res dtos.GResp[models.User], eror error) {
 	var verifiedUser *models.User
 	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
 		usr, err := aus.userRepo.FindUserByEmail(txCtx, input.Info)
@@ -143,7 +143,7 @@ func (aus Service) VerifyRegisteredUser(ctx context.Context, input VerificationI
 }
 
 // Login (acc-03) [companyId, Role, Password]
-func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[TokenResponse], error) {
+func (aus LegacyService) Login(ctx context.Context, input LoginData) (dtos.GResp[TokenResponse], error) {
 	// 1. check the user exists and is active
 	usr, err := aus.userRepo.FindUserByEmail(ctx, input.LoginInfo)
 	// Active is goauth-only: nil means the user came from better-auth's sign-up and is allowed; false blocks login
@@ -219,7 +219,7 @@ func (aus Service) Login(ctx context.Context, input LoginData) (dtos.GResp[Token
 }
 
 // ResetToken (acc-04) exchanges a refresh token (the session token) for new tokens.
-func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GResp[TokenResponse], error) {
+func (aus LegacyService) ResetToken(ctx context.Context, refreshToken string) (dtos.GResp[TokenResponse], error) {
 	// 1. the refresh token must name a live session
 	session, err := aus.SesSvc.FindByRefreshToken(ctx, refreshToken)
 	if err != nil || session == nil {
@@ -255,7 +255,7 @@ func (aus Service) ResetToken(ctx context.Context, refreshToken string) (dtos.GR
 }
 
 // Logout revokes the session behind the refresh token.
-func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[bool], error) {
+func (aus LegacyService) Logout(ctx context.Context, refreshToken string) (dtos.GResp[bool], error) {
 	session, err := aus.SesSvc.FindByRefreshToken(ctx, refreshToken)
 	if err != nil || session == nil {
 		return dtos.BadReqC[bool](errors.InvalidToken), errors.InvalidTokenError
@@ -267,7 +267,7 @@ func (aus Service) Logout(ctx context.Context, refreshToken string) (dtos.GResp[
 }
 
 // ForgotPwd [ID]
-func (aus Service) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GResp[bool], error) {
+func (aus LegacyService) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GResp[bool], error) {
 	usr, err := aus.userRepo.FindUserByEmail(ctx, input.Email)
 	if err != nil || usr == nil {
 		return dtos.SuccessCreated(true, 0), nil
@@ -277,7 +277,7 @@ func (aus Service) ForgotPwd(ctx context.Context, input VerifyReqInput) (dtos.GR
 }
 
 // ResetPwd [ID]
-func (aus Service) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GResp[bool], error) {
+func (aus LegacyService) ResetPwd(ctx context.Context, input PwdResetInput) (dtos.GResp[bool], error) {
 	hash, err := aus.Passwords.Hash(input.NewPassword)
 	if err != nil {
 		return dtos.InternalErrMS[bool]("Hashing Error"), err

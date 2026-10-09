@@ -56,7 +56,7 @@ func (s *Service) UpdateUser(ctx context.Context, current *dtos.SessionWithUser,
 		return nil, autherr.ErrFailedToUpdateUser
 	}
 	// sessions cached in secondary storage hold a copy of the user; update it everywhere
-	s.sessions.RefreshUser(ctx, updated)
+	s.sessionMgr.RefreshUser(ctx, updated)
 	// the adapter rewrites the session cookie with the new user
 	sw := *current
 	sw.User = dtos.UserFromModel(updated)
@@ -132,7 +132,7 @@ func (s *Service) DeleteUser(ctx context.Context, current *dtos.SessionWithUser,
 		return MsgVerificationEmailSent, nil
 	}
 	// no password: config Session.FreshAge (default 1 day) requires a recently created session
-	if in.Password == nil && s.sessions.Config().FreshAge != 0 && !s.sessions.IsFresh(current) {
+	if in.Password == nil && s.sessionMgr.Config().FreshAge != 0 && !s.sessionMgr.IsFresh(current) {
 		return "", autherr.ErrSessionExpired
 	}
 	if err := s.deleteUserNow(ctx, current.User.ID); err != nil {
@@ -185,7 +185,7 @@ func (s *Service) deleteUserNow(ctx context.Context, userID string) error {
 		return err
 	}
 	// sign the user out on every device (DB and secondary storage)
-	if err := s.sessions.DeleteUserSessions(ctx, user.ID); err != nil {
+	if err := s.sessionMgr.DeleteUserSessions(ctx, user.ID); err != nil {
 		return err
 	}
 	// config: User.DeleteUser.AfterDelete for cleanup in the app (files, audit log, ...)

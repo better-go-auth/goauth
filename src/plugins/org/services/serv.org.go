@@ -30,7 +30,7 @@ type OrgService struct {
 	// sessionRepo repoimpl2.ISessionRepo
 	// emailSender emailiface.IVerificationSender
 	userRepo    corerepo.IUserRepo
-	sessionServ serv_interfaces.ISessionService
+	sessionServ serv_interfaces.LegSessionService
 	// baseURL     string
 	// basePath    string
 	txManager interfaces.ITransactionManager
@@ -65,7 +65,7 @@ func New(
 	inviteRepo orgrepo.IInvitationRepo,
 	txManager interfaces.ITransactionManager,
 	authRepos repo_interfaces.IAuthRepos,
-	sessionServ serv_interfaces.ISessionService,
+	sessionServ serv_interfaces.LegSessionService,
 ) *OrgService {
 	// if basePath == "" {
 	// 	basePath = "/api/auth"

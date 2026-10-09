@@ -158,7 +158,7 @@ func (s *Service) ResetPassword(ctx context.Context, in dtos.ResetPasswordInput)
 	}
 	// config: EmailAndPassword.RevokeSessionsOnPasswordReset signs the user out on every device
 	if s.cfg.EmailAndPassword.RevokeSessionsOnPasswordReset {
-		return s.sessions.DeleteUserSessions(ctx, userID)
+		return s.sessionMgr.DeleteUserSessions(ctx, userID)
 	}
 	return nil
 }
@@ -198,7 +198,7 @@ func (s *Service) ChangePassword(ctx context.Context, current *dtos.SessionWithU
 		return res, nil
 	}
 	// revoke all sessions, including the current one...
-	if err := s.sessions.DeleteUserSessions(ctx, current.User.ID); err != nil {
+	if err := s.sessionMgr.DeleteUserSessions(ctx, current.User.ID); err != nil {
 		return nil, err
 	}
 	user, err := s.repos.FindUserByID(ctx, current.User.ID)
@@ -206,7 +206,7 @@ func (s *Service) ChangePassword(ctx context.Context, current *dtos.SessionWithU
 		return nil, autherr.ErrFailedToGetSession
 	}
 	// ...then give this device a new one; the adapter sets it as the session cookie
-	sw, err := s.sessions.Create(ctx, user, meta, sessionsvc.CreateOptions{})
+	sw, err := s.sessionMgr.Create(ctx, user, meta, sessionsvc.CreateOptions{})
 	if err != nil {
 		return nil, autherr.ErrFailedToGetSession
 	}

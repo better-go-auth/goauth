@@ -178,7 +178,7 @@ func (s *Service) VerifyEmail(ctx context.Context, current *dtos.SessionWithUser
 		return nil, autherr.ErrFailedToUpdateUser
 	}
 	// sessions cached in secondary storage hold a copy of the user; update it so emailVerified is true there too
-	s.sessions.RefreshUser(ctx, updated)
+	s.sessionMgr.RefreshUser(ctx, updated)
 	// config: AfterEmailVerification runs once the user is verified (e.g. welcome email)
 	if ev.AfterEmailVerification != nil {
 		if err := ev.AfterEmailVerification(*updated, request(ctx)); err != nil {
@@ -190,7 +190,7 @@ func (s *Service) VerifyEmail(ctx context.Context, current *dtos.SessionWithUser
 	if ev.AutoSignInAfterVerification {
 		if current == nil || current.User.Email != email {
 			// not signed in (or signed in as someone else): start a new session for the verified user
-			sw, err := s.sessions.Create(ctx, updated, meta, sessionsvc.CreateOptions{})
+			sw, err := s.sessionMgr.Create(ctx, updated, meta, sessionsvc.CreateOptions{})
 			if err != nil {
 				return nil, autherr.ErrFailedToCreateSession
 			}
@@ -232,7 +232,7 @@ func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWi
 	// the email is about to change: make sure there is a session to write the new user into
 	active := current
 	if active == nil {
-		sw, err := s.sessions.Create(ctx, user, meta, sessionsvc.CreateOptions{})
+		sw, err := s.sessionMgr.Create(ctx, user, meta, sessionsvc.CreateOptions{})
 		if err != nil {
 			return nil, autherr.ErrFailedToCreateSession
 		}
@@ -245,7 +245,7 @@ func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWi
 		return nil, autherr.ErrFailedToUpdateUser
 	}
 	// update the user copy inside cached sessions (new email everywhere)
-	s.sessions.RefreshUser(ctx, updated)
+	s.sessionMgr.RefreshUser(ctx, updated)
 	if verified {
 		// config: AfterEmailVerification also runs when a new address is verified
 		if after := s.cfg.EmailVerification.AfterEmailVerification; after != nil {
@@ -313,7 +313,7 @@ func (s *Service) ChangeEmail(ctx context.Context, current *dtos.SessionWithUser
 		if err != nil {
 			return nil, autherr.ErrFailedToUpdateUser
 		}
-		s.sessions.RefreshUser(ctx, updated)
+		s.sessionMgr.RefreshUser(ctx, updated)
 		// still send a verification link to the new address (no-op without a sender)
 		if err := s.sendVerificationEmail(ctx, updated, callbackURL); err != nil {
 			return nil, err

@@ -20,7 +20,7 @@ const (
 	ResetPwdUser     = constant.OperationId("Au-7-ResetPwd")
 )
 
-func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *Service, conf config.AuthConfig) {
+func SetupAuthRoutes(humaRouter huma.API, providerS *providers.IProviderS, serv *LegacyService, conf config.AuthConfig) {
 	handler := NewAuthHandler(providerS, serv)
 	handler.Cookies = CookieAttrs{Secure: conf.SecureCookies(), Domain: conf.CookieDomain(), RefreshMaxAge: conf.Session.ExpiresIn}
 	tags := []string{"01-auth"}

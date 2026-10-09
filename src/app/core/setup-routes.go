@@ -45,6 +45,6 @@ func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg conf
 	profile.SetUserProfileRoutes(api, provServ, profileServ, conf)
 	return serv_interfaces.AuthServiceImpl{
 		IVerificationService: vSvc,
-		ISessionService:      sSvc,
+		LegSessionService:    sSvc,
 	}
 }

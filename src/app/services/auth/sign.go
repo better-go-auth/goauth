@@ -129,7 +129,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		return res, nil
 	}
 	// sign the user in: new session in the DB and/or secondary storage, depending on the session config
-	sw, err := s.sessions.Create(ctx, created, meta, sessionsvc.CreateOptions{DontRemember: dontRemember})
+	sw, err := s.sessionMgr.Create(ctx, created, meta, sessionsvc.CreateOptions{DontRemember: dontRemember})
 	if err != nil {
 		return nil, autherr.ErrFailedToCreateSession
 	}
@@ -191,7 +191,7 @@ func (s *Service) SignInEmail(ctx context.Context, in dtos.SignInEmailInput, met
 
 	// rememberMe=false (explicitly) gives a 1-day session that is never extended
 	dontRemember := in.RememberMe != nil && !*in.RememberMe
-	sw, err := s.sessions.Create(ctx, user, meta, sessionsvc.CreateOptions{DontRemember: dontRemember})
+	sw, err := s.sessionMgr.Create(ctx, user, meta, sessionsvc.CreateOptions{DontRemember: dontRemember})
 	if err != nil {
 		// a BeforeSessionCreate hook may reject the session with its own code (e.g. the admin plugin's BANNED_USER)
 		if ae := autherr.AsAuthError(err); ae != nil {
@@ -238,7 +238,7 @@ func (s *Service) SignOut(ctx context.Context, token string) error {
 	if token == "" {
 		return nil
 	}
-	return s.sessions.Delete(ctx, token)
+	return s.sessionMgr.Delete(ctx, token)
 }
 
 // VerifyPassword mirrors better-auth's POST /verify-password: checks the signed-in user's password

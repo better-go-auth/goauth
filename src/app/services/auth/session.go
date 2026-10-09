@@ -15,7 +15,7 @@ import (
 // is pushed to now + Session.ExpiresIn (default 7 days), so active users stay signed in.
 func (s *Service) GetSession(ctx context.Context, token string, opt GetSessionOptions) (*GetSessionResult, error) {
 	// the manager reads secondary storage first, then the DB (per the session config), and drops expired sessions
-	sw, err := s.sessions.Get(ctx, token)
+	sw, err := s.sessionMgr.Get(ctx, token)
 	if err != nil {
 		return nil, autherr.ErrFailedToGetSession
 	}
@@ -24,13 +24,13 @@ func (s *Service) GetSession(ctx context.Context, token string, opt GetSessionOp
 	}
 	// ShouldRefresh applies config: Session.UpdateAge and Session.DisableSessionRefresh;
 	// rememberMe=false sessions (dont_remember cookie) are never extended; the disableRefresh query skips it too
-	needsRefresh := !opt.DisableRefresh && s.sessions.ShouldRefresh(sw, opt.DontRemember)
+	needsRefresh := !opt.DisableRefresh && s.sessionMgr.ShouldRefresh(sw, opt.DontRemember)
 	// config: Session.DeferSessionRefresh → GET only reports needsRefresh, a later POST does the write
 	if opt.DeferRefresh || !needsRefresh {
 		return &GetSessionResult{Session: sw, NeedsRefresh: needsRefresh}, nil
 	}
 	// extend the expiry in the DB and/or secondary storage
-	refreshed, err := s.sessions.Refresh(ctx, sw)
+	refreshed, err := s.sessionMgr.Refresh(ctx, sw)
 	if err != nil {
 		return nil, autherr.ErrFailedToGetSession
 	}
@@ -48,7 +48,7 @@ func (s *Service) ListSessions(ctx context.Context, current *dtos.SessionWithUse
 	if current == nil {
 		return nil, autherr.ErrUnauthorized
 	}
-	return s.sessions.List(ctx, current.User.ID)
+	return s.sessionMgr.List(ctx, current.User.ID)
 }
 
 // RevokeSession mirrors better-auth's POST /revoke-session: tokens of other users are ignored silently.
@@ -57,7 +57,7 @@ func (s *Service) RevokeSession(ctx context.Context, current *dtos.SessionWithUs
 	if current == nil {
 		return autherr.ErrUnauthorized
 	}
-	target, err := s.sessions.Get(ctx, token)
+	target, err := s.sessionMgr.Get(ctx, token)
 	if err != nil {
 		return err
 	}
@@ -65,7 +65,7 @@ func (s *Service) RevokeSession(ctx context.Context, current *dtos.SessionWithUs
 	if target == nil || target.Session.UserID != current.User.ID {
 		return nil
 	}
-	return s.sessions.Delete(ctx, token)
+	return s.sessionMgr.Delete(ctx, token)
 }
 
 // UpdateSession mirrors better-auth's POST /update-session for the fields in GoAuth.Session.UpdatableFields
@@ -95,7 +95,7 @@ func (s *Service) UpdateSession(ctx context.Context, current *dtos.SessionWithUs
 	if len(data) == 0 {
 		return nil, ErrNoFieldsToUpdate
 	}
-	sw, err := s.sessions.Update(ctx, current, data)
+	sw, err := s.sessionMgr.Update(ctx, current, data)
 	if err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ func (s *Service) RevokeSessions(ctx context.Context, current *dtos.SessionWithU
 	if current == nil {
 		return autherr.ErrUnauthorized
 	}
-	return s.sessions.DeleteUserSessions(ctx, current.User.ID)
+	return s.sessionMgr.DeleteUserSessions(ctx, current.User.ID)
 }
 
 // RevokeOtherSessions mirrors better-auth's POST /revoke-other-sessions: signs out every other device
@@ -120,7 +120,7 @@ func (s *Service) RevokeOtherSessions(ctx context.Context, current *dtos.Session
 	if current == nil {
 		return autherr.ErrUnauthorized
 	}
-	list, err := s.sessions.List(ctx, current.User.ID)
+	list, err := s.sessionMgr.List(ctx, current.User.ID)
 	if err != nil {
 		return err
 	}
@@ -129,7 +129,7 @@ func (s *Service) RevokeOtherSessions(ctx context.Context, current *dtos.Session
 		if other.Token == current.Session.Token {
 			continue
 		}
-		if err := s.sessions.Delete(ctx, other.Token); err != nil {
+		if err := s.sessionMgr.Delete(ctx, other.Token); err != nil {
 			return err
 		}
 	}

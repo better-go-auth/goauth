@@ -3,24 +3,24 @@ package auth
 import (
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
-	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
 
 type GinAuthHandler struct {
-	AdminAuthServ *Service
-	CmnServ       *providers.IProviderS
-	Cookies       CookieAttrs
+	AuthServ *LegacyService
+	CmnServ  *providers.IProviderS
+	Cookies  CookieAttrs
 }
-type Service struct {
+type LegacyService struct {
 	Config   *config.SessionGoAuth
 	Provider *providers.IProviderS
 	// services
 	VSvc   serv_interfaces.IVerificationService
-	SesSvc serv_interfaces.ISessionService
+	SesSvc serv_interfaces.LegSessionService
 	// repos
 	userRepo    repo_interfaces.IUserRepo
 	accountRepo repo_interfaces.IOAuthAccountRepo
@@ -32,7 +32,7 @@ type Service struct {
 	Passwords *authcrypto.Passwords
 }
 
-func NewAuthService(conf *config.SessionGoAuth, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.ISessionService, authRepos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) *Service {
+func NewAuthService(conf *config.SessionGoAuth, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.LegSessionService, authRepos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) *LegacyService {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]
@@ -42,7 +42,7 @@ func NewAuthService(conf *config.SessionGoAuth, provSvc *providers.IProviderS, v
 		txMgr = provSvc.TxManager
 	}
 
-	return &Service{
+	return &LegacyService{
 		Config:      conf,
 		Provider:    provSvc,
 		VSvc:        vSvc,
@@ -55,10 +55,10 @@ func NewAuthService(conf *config.SessionGoAuth, provSvc *providers.IProviderS, v
 	}
 }
 
-func NewAuthHandler(cmnServ *providers.IProviderS, serv *Service) *GinAuthHandler {
+func NewAuthHandler(cmnServ *providers.IProviderS, serv *LegacyService) *GinAuthHandler {
 	// you can migrate auth models here
 	return &GinAuthHandler{
-		AdminAuthServ: serv,
-		CmnServ:       cmnServ,
+		AuthServ: serv,
+		CmnServ:  cmnServ,
 	}
 }

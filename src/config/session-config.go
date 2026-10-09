@@ -47,8 +47,8 @@ type SessionJWT struct {
 	// RefreshExpiresIn is only the default impersonation lifetime now; legacy sessions live for
 	// Session.ExpiresIn and slide like better-auth sessions.
 	RefreshExpiresIn time.Duration
-	// RotateRefreshToken replaces the refresh (session) token on every /refresh (default true).
-	// better-auth never rotates; turn it off to keep the session token stable across refreshes.
+	// RotateRefreshToken replaces the refresh (session) token on every /refresh (default false).
+	// better-auth never rotates; turn it on to keep the session token changing across refreshes.
 	RotateRefreshToken *bool
 	// CheckRevocation looks the session up on every request that carries an access token.
 	// Forced on when no secondary storage is configured, otherwise revocation cannot work.
@@ -60,9 +60,9 @@ func (s Session) StoreInDatabase() bool {
 	return s.StoreSessionInDatabase == nil || *s.StoreSessionInDatabase
 }
 
-// RotatesRefreshToken reports whether /refresh issues a new refresh token (default true).
+// RotatesRefreshToken reports whether /refresh issues a new refresh token (default false).
 func (j SessionJWT) RotatesRefreshToken() bool {
-	return j.RotateRefreshToken == nil || *j.RotateRefreshToken
+	return j.RotateRefreshToken != nil && *j.RotateRefreshToken
 }
 
 type CookieCacheStrategy string

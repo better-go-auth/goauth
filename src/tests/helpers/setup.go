@@ -69,7 +69,7 @@ type TestEnv struct {
 	OrgHandler     *humaorg.OrgHandler
 
 	// Direct services for testing/debugging
-	AuthService    *coreauth.Service
+	AuthService    *coreauth.LegacyService
 	ProfileService *profile.Service
 	SessionService *session.Service
 	AdminService   adminsvc.IAdminService

@@ -36,7 +36,7 @@ type AdminService struct {
 	authConfig       config.AuthConfig
 	adminConfig      adminmodels.AdminConfig
 	secondaryStorage sec_storage.SecondaryStorage
-	sessionServ      serv_interfaces.ISessionService
+	sessionServ      serv_interfaces.LegSessionService
 	hooks            plugins.HookRegistry
 }
 
@@ -48,7 +48,7 @@ func (s *AdminService) SetHooks(hooks plugins.HookRegistry) {
 }
 
 // SetSessionService configures the core session service used to create and revoke sessions.
-func (s *AdminService) SetSessionService(sessionServ serv_interfaces.ISessionService) {
+func (s *AdminService) SetSessionService(sessionServ serv_interfaces.LegSessionService) {
 	s.sessionServ = sessionServ
 }
 

@@ -3,17 +3,15 @@
 package session
 
 import (
+	"maps"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"reflect"
-	"sort"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -61,31 +59,31 @@ func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions r
 	return &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now}
 }
 
-// Config returns the session configuration.
-func (m *Manager) Config() config.Session { return m.conf }
-
-func (m *Manager) storeInDB() bool {
-	return m.secStore == nil || m.conf.StoreInDatabase()
-}
-
 // Create starts a new session for user.
-func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt CreateOptions) (*dtos.SessionWithUser, error) {
+func (mgr *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt CreateOptions) (*dtos.SessionWithUser, error) {
+	// 1. check if user or user.ID is nil / empty, and if so return error
 	if user == nil || user.ID == "" {
 		return nil, errors.New("sessions: user is required")
 	}
-	expiresIn := m.conf.ExpiresIn
+
+	// 2. if dontRemember is set, set lifetime to 24h; otherwise use config or custom ExpiresIn override
+	expiresIn := mgr.conf.ExpiresIn
 	if opt.DontRemember {
 		expiresIn = dontRememberLifetime
 	}
 	if opt.ExpiresIn > 0 {
 		expiresIn = opt.ExpiresIn
 	}
-	now := m.now().UTC()
+
+	// 3. generate a new 32-char opaque random token and session ID (or use caller-supplied ID)
+	now := mgr.now().UTC()
 	tok := idgen.GenerateToken()
 	id := opt.ID
 	if id == "" {
 		id = models.NewID()
 	}
+
+	// 4. construct session model with timestamps, metadata, and optional plugin context
 	s := &models.Session{
 		Base:                   models.Base{ID: id, CreatedAt: now, UpdatedAt: now},
 		Token:                  tok,
@@ -99,89 +97,123 @@ func (m *Manager) Create(ctx context.Context, user *models.User, meta Meta, opt 
 		DeviceToken:            opt.DeviceToken,
 	}
 
-	if m.hooks != nil {
+	// 5. trigger BeforeSessionCreate hook if registered (allows plugins like admin ban-check to reject)
+	if mgr.hooks != nil {
 		claims := token.CustomClaims{UserID: user.ID, SessionID: s.ID, Role: string(user.Role)}
-		if err := m.hooks.TriggerBeforeSessionCreate(ctx, s, &claims); err != nil {
+		if err := mgr.hooks.TriggerBeforeSessionCreate(ctx, s, &claims); err != nil {
 			return nil, err
 		}
 	}
-	if m.storeInDB() {
-		if _, err := m.sessionsRepo.CreateSession(ctx, s); err != nil {
+
+	// 6. persist session row to the database if DB storage is enabled
+	if mgr.storeInDB() {
+		if _, err := mgr.sessionsRepo.CreateSession(ctx, s); err != nil {
 			return nil, fmt.Errorf("sessions: create: %w", err)
 		}
 	}
 
-	sw := &dtos.SessionWithUser{Session: dtos.SessionFromModel(s), User: dtos.UserFromModel(user)}
-	if m.secStore != nil {
-		if err := m.cache(ctx, sw); err != nil {
+	// 7. construct session DTO with embedded user snapshot
+	swu := &dtos.SessionWithUser{Session: dtos.SessionFromModel(s), User: dtos.UserFromModel(user)}
+
+	// 8. cache session in secondary storage and update user's active-sessions index
+	if mgr.secStore != nil {
+		if err := mgr.cache(ctx, swu); err != nil {
 			return nil, err
 		}
-		m.trackActive(ctx, user.ID, tok, s.ExpiresAt)
+		mgr.trackActive(ctx, user.ID, tok, s.ExpiresAt)
 	}
-	return sw, nil
+
+	// 9. return the created session
+	return swu, nil
 }
 
 // Get returns the live session for tok, or nil when it does not exist or has expired.
-func (m *Manager) Get(ctx context.Context, tok string) (*dtos.SessionWithUser, error) {
+func (mgr *Manager) Get(ctx context.Context, tok string) (*dtos.SessionWithUser, error) {
+	// 1. check if token is empty; if so, return nil immediately
 	if tok == "" {
 		return nil, nil
 	}
-	if m.secStore != nil {
-		sw, err := m.fromStore(ctx, tok)
+
+	// 2. check secondary storage cache first (if configured)
+	if mgr.secStore != nil {
+		sSec, err := mgr.fromStore(ctx, tok)
 		if err != nil {
 			return nil, err
 		}
-		if sw != nil {
-			if m.expired(sw) {
-				return nil, m.Delete(ctx, tok)
+		if sSec != nil {
+			// 2a. if cached session is expired, delete it and return nil
+			if mgr.expired(sSec) {
+				return nil, mgr.Delete(ctx, tok)
 			}
-			return sw, nil
+			// 2b. *** return valid cached session (zero DB hit)
+			return sSec, nil
 		}
-		if !m.storeInDB() {
+		// 2c. if cache missed and DB persistence is disabled, session does not exist
+		if !mgr.storeInDB() {
 			return nil, nil
 		}
 	}
 
-	// legacy JWT rows store a 64-hex refresh hash in token; never accept one as a cookie token
+	// 3. validate token format (reject non-token formats like legacy 64-hex hashes)
 	if !idgen.IsToken(tok) {
 		return nil, nil
 	}
-	s, err := m.sessionsRepo.FindSession(ctx, tok)
+
+	// 4. lookup session by token in the database
+	s, err := mgr.sessionsRepo.FindSession(ctx, tok)
 	if err != nil {
 		if isNotFound(err) {
 			return nil, nil
 		}
 		return nil, fmt.Errorf("sessions: get: %w", err)
 	}
-	if !s.ExpiresAt.After(m.now()) {
-		return nil, m.Delete(ctx, tok)
+
+	// 5. check if the database session has expired; if so, delete it and return nil
+	if !s.ExpiresAt.After(mgr.now()) {
+		return nil, mgr.Delete(ctx, tok)
 	}
-	user, err := m.usersRepo.FindUserByID(ctx, s.UserID)
+
+	// 6. load the associated user from the user repository
+	user, err := mgr.usersRepo.FindUserByID(ctx, s.UserID)
 	if err != nil || user == nil {
 		return nil, nil
 	}
+
+	// 7. construct session with user DTO
 	sw := &dtos.SessionWithUser{Session: dtos.SessionFromModel(s), User: dtos.UserFromModel(user)}
-	if m.secStore != nil {
-		_ = m.cache(ctx, sw)
+
+	// 8. backfill secondary storage cache with the loaded session
+	if mgr.secStore != nil {
+		_ = mgr.cache(ctx, sw)
 	}
+
+	// 9. return the active session
 	return sw, nil
 }
 
 // ShouldRefresh applies better-auth's rule: refresh once UpdateAge has passed since expiresAt was last set.
-func (m *Manager) ShouldRefresh(sw *dtos.SessionWithUser, dontRemember bool) bool {
-	if sw == nil || dontRemember || m.conf.DisableSessionRefresh {
+func (mgr *Manager) ShouldRefresh(sw *dtos.SessionWithUser, dontRemember bool) bool {
+	// 1. skip refresh if session is nil, dontRemember is true, or session refresh is disabled in config
+	if sw == nil || dontRemember || mgr.conf.DisableSessionRefresh {
 		return false
 	}
-	dueAt := time.Time(sw.Session.ExpiresAt).Add(-m.conf.ExpiresIn).Add(m.conf.UpdateAge)
-	return !dueAt.After(m.now())
+
+	// 2. calculate refresh threshold: (expiresAt - expiresIn + updateAge)
+	dueAt := time.Time(sw.Session.ExpiresAt).Add(-mgr.conf.ExpiresIn).Add(mgr.conf.UpdateAge)
+
+	// 3. return true if current time has reached or passed the threshold
+	return !dueAt.After(mgr.now())
 }
 
 // Refresh extends the session to now+ExpiresIn.
-func (m *Manager) Refresh(ctx context.Context, sw *dtos.SessionWithUser) (*dtos.SessionWithUser, error) {
-	now := m.now().UTC()
-	expiresAt := now.Add(m.conf.ExpiresIn)
-	if m.storeInDB() {
-		if _, err := m.sessionsRepo.UpdateSession(ctx, sw.Session.ID, map[string]interface{}{
+func (mgr *Manager) Refresh(ctx context.Context, swu *dtos.SessionWithUser) (*dtos.SessionWithUser, error) {
+	// 1. calculate new expiration timestamp: now + expiresIn
+	now := mgr.now().UTC()
+	expiresAt := now.Add(mgr.conf.ExpiresIn)
+
+	// 2. update session ExpiresAt and UpdatedAt in the database
+	if mgr.storeInDB() {
+		if _, err := mgr.sessionsRepo.UpdateSession(ctx, swu.Session.ID, map[string]interface{}{
 			"ExpiresAt": expiresAt,
 			"UpdatedAt": now,
 		}); err != nil {
@@ -191,26 +223,35 @@ func (m *Manager) Refresh(ctx context.Context, sw *dtos.SessionWithUser) (*dtos.
 			return nil, fmt.Errorf("sessions: refresh: %w", err)
 		}
 	}
-	out := *sw
+
+	// 3. update local in-memory session DTO copy
+	out := *swu
 	out.Session.ExpiresAt = dtos.Time(expiresAt)
 	out.Session.UpdatedAt = dtos.Time(now)
-	if m.secStore != nil {
-		if err := m.cache(ctx, &out); err != nil {
+
+	// 4. update secondary storage cache and update user's active session expiry
+	if mgr.secStore != nil {
+		if err := mgr.cache(ctx, &out); err != nil {
 			return nil, err
 		}
-		m.trackActive(ctx, sw.Session.UserID, sw.Session.Token, expiresAt)
+		mgr.trackActive(ctx, swu.Session.UserID, swu.Session.Token, expiresAt)
 	}
+
+	// 5. return updated session
 	return &out, nil
 }
 
 // RotateToken gives the session a new token and invalidates the old one (legacy refresh-token rotation).
 // It returns nil when the session no longer exists.
-func (m *Manager) RotateToken(ctx context.Context, sw *dtos.SessionWithUser) (*dtos.SessionWithUser, error) {
-	now := m.now().UTC()
-	oldTok, newTok := sw.Session.Token, idgen.GenerateToken()
-	out := *sw
-	if m.storeInDB() {
-		s, err := m.sessionsRepo.UpdateSession(ctx, sw.Session.ID, map[string]interface{}{"Token": newTok, "UpdatedAt": now})
+func (mgr *Manager) RotateToken(ctx context.Context, swu *dtos.SessionWithUser) (*dtos.SessionWithUser, error) {
+	// 1. generate a new token and record current time
+	now := mgr.now().UTC()
+	oldTok, newTok := swu.Session.Token, idgen.GenerateToken()
+	out := *swu
+
+	// 2. update the token in the database or verify it exists in cache
+	if mgr.storeInDB() {
+		s, err := mgr.sessionsRepo.UpdateSession(ctx, swu.Session.ID, map[string]interface{}{"Token": newTok, "UpdatedAt": now})
 		if err != nil {
 			if isNotFound(err) {
 				return nil, nil
@@ -219,66 +260,73 @@ func (m *Manager) RotateToken(ctx context.Context, sw *dtos.SessionWithUser) (*d
 		}
 		out.Session = dtos.SessionFromModel(s)
 	} else {
-		if cached, _ := m.fromStore(ctx, oldTok); cached == nil {
+		if cached, _ := mgr.fromStore(ctx, oldTok); cached == nil {
 			return nil, nil
 		}
 		out.Session.Token = newTok
 		out.Session.UpdatedAt = dtos.Time(now)
 	}
-	if m.secStore != nil {
-		_ = m.secStore.Delete(ctx, oldTok)
-		m.untrackActive(ctx, sw.Session.UserID, oldTok)
-		if err := m.cache(ctx, &out); err != nil {
+
+	// 3. remove old token from cache and untrack from active list
+	if mgr.secStore != nil {
+		_ = mgr.secStore.Delete(ctx, oldTok)
+		mgr.untrackActive(ctx, swu.Session.UserID, oldTok)
+
+		// 4. store new token in cache and track in active list
+		if err := mgr.cache(ctx, &out); err != nil {
 			return nil, err
 		}
-		m.trackActive(ctx, sw.Session.UserID, newTok, time.Time(out.Session.ExpiresAt))
+		mgr.trackActive(ctx, swu.Session.UserID, newTok, time.Time(out.Session.ExpiresAt))
 	}
+
+	// 5. return updated session with new token
 	return &out, nil
 }
 
-// IsFresh reports whether the session was created within FreshAge (negative FreshAge disables the check).
-func (m *Manager) IsFresh(sw *dtos.SessionWithUser) bool {
-	if m.conf.FreshAge < 0 {
-		return true
-	}
-	return m.now().Sub(time.Time(sw.Session.CreatedAt)) < m.conf.FreshAge
-}
-
 // Delete revokes a single session.
-func (m *Manager) Delete(ctx context.Context, tok string) error {
+func (mgr *Manager) Delete(ctx context.Context, tok string) error {
 	var userID string
-	if m.secStore != nil {
-		if sw, _ := m.fromStore(ctx, tok); sw != nil {
+
+	// 1. delete from secondary storage cache and untrack from user's active list
+	if mgr.secStore != nil {
+		if sw, _ := mgr.fromStore(ctx, tok); sw != nil {
 			userID = sw.Session.UserID
 		}
-		if err := m.secStore.Delete(ctx, tok); err != nil {
+		if err := mgr.secStore.Delete(ctx, tok); err != nil {
 			return fmt.Errorf("sessions: delete cached: %w", err)
 		}
 		if userID != "" {
-			m.untrackActive(ctx, userID, tok)
+			mgr.untrackActive(ctx, userID, tok)
 		}
 	}
-	if m.storeInDB() && !(m.secStore != nil && m.conf.PreserveSessionInDatabase) {
-		if err := m.sessionsRepo.DeleteSession(ctx, tok); err != nil {
+
+	// 2. delete session row from database (unless PreserveSessionInDatabase is enabled)
+	if mgr.storeInDB() && !(mgr.secStore != nil && mgr.conf.PreserveSessionInDatabase) {
+		if err := mgr.sessionsRepo.DeleteSession(ctx, tok); err != nil {
 			return fmt.Errorf("sessions: delete: %w", err)
 		}
 	}
-	if m.hooks != nil {
-		_ = m.hooks.TriggerSessionRevoked(ctx, tok)
+
+	// 3. trigger SessionRevoked lifecycle hook
+	if mgr.hooks != nil {
+		_ = mgr.hooks.TriggerSessionRevoked(ctx, tok)
 	}
 	return nil
 }
 
 // DeleteUserSessions revokes every session of userID (including legacy JWT sessions in the database).
-func (m *Manager) DeleteUserSessions(ctx context.Context, userID string) error {
-	if m.secStore != nil {
-		for _, e := range m.activeList(ctx, userID) {
-			_ = m.secStore.Delete(ctx, e.Token)
+func (mgr *Manager) DeleteUserSessions(ctx context.Context, userID string) error {
+	// 1. delete all cached sessions in secondary storage and delete user active index
+	if mgr.secStore != nil {
+		for _, e := range mgr.activeList(ctx, userID) {
+			_ = mgr.secStore.Delete(ctx, e.Token)
 		}
-		_ = m.secStore.Delete(ctx, activeKey(userID))
+		_ = mgr.secStore.Delete(ctx, activeKey(userID))
 	}
-	if m.storeInDB() && !(m.secStore != nil && m.conf.PreserveSessionInDatabase) {
-		if err := m.sessionsRepo.DeleteUserSessions(ctx, userID); err != nil {
+
+	// 2. delete all session rows for user from database (unless preserve is configured)
+	if mgr.storeInDB() && !(mgr.secStore != nil && mgr.conf.PreserveSessionInDatabase) {
+		if err := mgr.sessionsRepo.DeleteUserSessions(ctx, userID); err != nil {
 			return fmt.Errorf("sessions: delete user sessions: %w", err)
 		}
 	}
@@ -287,17 +335,18 @@ func (m *Manager) DeleteUserSessions(ctx context.Context, userID string) error {
 
 // Update writes session fields (keyed by Go field name) to the database and the cached copy.
 // It returns nil when the session no longer exists.
-func (m *Manager) Update(ctx context.Context, sw *dtos.SessionWithUser, data map[string]any) (*dtos.SessionWithUser, error) {
-	now := m.now().UTC()
+//TODO: instead of map[string]any use a struct
+func (mgr *Manager) Update(ctx context.Context, swu *dtos.SessionWithUser, data map[string]any) (*dtos.SessionWithUser, error) {
+	// 1. copy update fields and set UpdatedAt to current time
+	now := mgr.now().UTC()
 	fields := make(map[string]any, len(data)+1)
-	for k, v := range data {
-		fields[k] = v
-	}
+	maps.Copy(fields, data)
 	fields["UpdatedAt"] = now
 
-	out := *sw
-	if m.storeInDB() {
-		s, err := m.sessionsRepo.UpdateSession(ctx, sw.Session.ID, fields)
+	out := *swu
+	// 2. apply update to database if DB storage is enabled
+	if mgr.storeInDB() {
+		s, err := mgr.sessionsRepo.UpdateSession(ctx, swu.Session.ID, fields)
 		if err != nil {
 			if isNotFound(err) {
 				return nil, nil
@@ -306,7 +355,8 @@ func (m *Manager) Update(ctx context.Context, sw *dtos.SessionWithUser, data map
 		}
 		out.Session = dtos.SessionFromModel(s)
 	} else {
-		if cached, _ := m.fromStore(ctx, sw.Session.Token); cached == nil {
+		// 2b. otherwise verify session exists in cache and update struct via reflection
+		if cached, _ := mgr.fromStore(ctx, swu.Session.Token); cached == nil {
 			return nil, nil
 		}
 		if err := setSessionFields(&out.Session, data); err != nil {
@@ -314,11 +364,15 @@ func (m *Manager) Update(ctx context.Context, sw *dtos.SessionWithUser, data map
 		}
 		out.Session.UpdatedAt = dtos.Time(now)
 	}
-	if m.secStore != nil {
-		if err := m.cache(ctx, &out); err != nil {
+
+	// 3. sync updated session to secondary storage cache
+	if mgr.secStore != nil {
+		if err := mgr.cache(ctx, &out); err != nil {
 			return nil, err
 		}
 	}
+
+	// 4. return updated session
 	return &out, nil
 }
 
@@ -345,158 +399,34 @@ func setSessionFields(s *dtos.BetterAuthSession, data map[string]any) error {
 	return nil
 }
 
-// RefreshUser rewrites the user snapshot of every cached session of user (better-auth's refreshUserSessions).
-func (m *Manager) RefreshUser(ctx context.Context, user *models.User) {
-	if m.secStore == nil || user == nil {
-		return
-	}
-	for _, e := range m.activeList(ctx, user.ID) {
-		if sw, _ := m.fromStore(ctx, e.Token); sw != nil {
-			sw.User = dtos.UserFromModel(user)
-			_ = m.cache(ctx, sw)
-		}
-	}
-}
+
 
 // List returns the live sessions of userID.
-func (m *Manager) List(ctx context.Context, userID string) ([]dtos.BetterAuthSession, error) {
-	now := m.now()
+func (mgr *Manager) List(ctx context.Context, userID string) ([]dtos.BetterAuthSession, error) {
+	now := mgr.now()
 	out := []dtos.BetterAuthSession{}
-	if !m.storeInDB() {
-		for _, e := range m.activeList(ctx, userID) {
-			if sw, _ := m.fromStore(ctx, e.Token); sw != nil && time.Time(sw.Session.ExpiresAt).After(now) {
+
+	// 1. if not storing in DB, load active sessions from secondary storage list
+	if !mgr.storeInDB() {
+		for _, e := range mgr.activeList(ctx, userID) {
+			if sw, _ := mgr.fromStore(ctx, e.Token); sw != nil && time.Time(sw.Session.ExpiresAt).After(now) {
 				out = append(out, sw.Session)
 			}
 		}
 		return out, nil
 	}
-	rows, err := m.sessionsRepo.ListSessions(ctx, userID)
+
+	// 2. if storing in DB, query session rows from repository
+	rows, err := mgr.sessionsRepo.ListSessions(ctx, userID)
 	if err != nil {
 		return nil, fmt.Errorf("sessions: list: %w", err)
 	}
+
+	// 3. filter out legacy non-token rows and expired sessions
 	for i := range rows {
 		if idgen.IsToken(rows[i].Token) && rows[i].ExpiresAt.After(now) {
 			out = append(out, dtos.SessionFromModel(&rows[i]))
 		}
 	}
 	return out, nil
-}
-
-// CleanupExpired deletes expired session rows.
-func (m *Manager) CleanupExpired(ctx context.Context) error {
-	return m.sessionsRepo.DeleteExpiredSessions(ctx)
-}
-
-func (m *Manager) expired(sw *dtos.SessionWithUser) bool {
-	return !time.Time(sw.Session.ExpiresAt).After(m.now())
-}
-
-// cache stores the session under its token, as better-auth does: key <token> -> {"session","user"}.
-func (m *Manager) cache(ctx context.Context, sw *dtos.SessionWithUser) error {
-	ttl := time.Time(sw.Session.ExpiresAt).Sub(m.now())
-	if ttl <= 0 {
-		return nil
-	}
-	b, err := json.Marshal(sw)
-	if err != nil {
-		return err
-	}
-	if err := m.secStore.Set(ctx, sw.Session.Token, string(b), ttl); err != nil {
-		return fmt.Errorf("sessions: cache: %w", err)
-	}
-	return nil
-}
-
-func (m *Manager) fromStore(ctx context.Context, tok string) (*dtos.SessionWithUser, error) {
-	v, ok, err := m.secStore.Get(ctx, tok)
-	if err != nil {
-		return nil, fmt.Errorf("sessions: read cache: %w", err)
-	}
-	raw, isText := asBytes(v)
-	if !ok || !isText {
-		return nil, nil
-	}
-	var sw dtos.SessionWithUser
-	if err := json.Unmarshal(raw, &sw); err != nil || sw.Session.Token != tok {
-		return nil, nil
-	}
-	return &sw, nil
-}
-
-type activeEntry struct {
-	Token     string `json:"token"`
-	ExpiresAt int64  `json:"expiresAt"`
-}
-
-func activeKey(userID string) string { return "active-sessions-" + userID }
-
-func (m *Manager) activeList(ctx context.Context, userID string) []activeEntry {
-	v, ok, err := m.secStore.Get(ctx, activeKey(userID))
-	raw, isText := asBytes(v)
-	if err != nil || !ok || !isText {
-		return nil
-	}
-	var list []activeEntry
-	_ = json.Unmarshal(raw, &list)
-	return list
-}
-
-// trackActive maintains better-auth's "active-sessions-<userId>" index (sorted by expiry, expired pruned).
-func (m *Manager) trackActive(ctx context.Context, userID, tok string, expiresAt time.Time) {
-	nowMs := m.now().UnixMilli()
-	list := []activeEntry{}
-	for _, e := range m.activeList(ctx, userID) {
-		if e.ExpiresAt > nowMs && e.Token != tok {
-			list = append(list, e)
-		}
-	}
-	list = append(list, activeEntry{Token: tok, ExpiresAt: expiresAt.UnixMilli()})
-	m.saveActive(ctx, userID, list)
-}
-
-func (m *Manager) untrackActive(ctx context.Context, userID, tok string) {
-	nowMs := m.now().UnixMilli()
-	list := []activeEntry{}
-	for _, e := range m.activeList(ctx, userID) {
-		if e.ExpiresAt > nowMs && e.Token != tok {
-			list = append(list, e)
-		}
-	}
-	if len(list) == 0 {
-		_ = m.secStore.Delete(ctx, activeKey(userID))
-		return
-	}
-	m.saveActive(ctx, userID, list)
-}
-
-func (m *Manager) saveActive(ctx context.Context, userID string, list []activeEntry) {
-	sort.Slice(list, func(i, j int) bool { return list[i].ExpiresAt < list[j].ExpiresAt })
-	ttl := time.Until(time.UnixMilli(list[len(list)-1].ExpiresAt))
-	if ttl <= 0 {
-		return
-	}
-	b, _ := json.Marshal(list)
-	_ = m.secStore.Set(ctx, activeKey(userID), string(b), ttl)
-}
-
-func asBytes(v any) ([]byte, bool) {
-	switch x := v.(type) {
-	case string:
-		return []byte(x), true
-	case []byte:
-		return x, true
-	}
-	return nil, false
-}
-
-func isNotFound(err error) bool {
-	ae := autherr.AsAuthError(err)
-	return ae != nil && ae.StatusCode == http.StatusNotFound
-}
-
-func optional(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }
