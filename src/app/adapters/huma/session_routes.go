@@ -71,7 +71,7 @@ func (h *handler) session(ctx context.Context, in *getSessionInput, deferRefresh
 }
 
 type listSessionsOutput struct {
-	Body []dtos.BetterAuthSession
+	Body []dtos.SessionData
 }
 
 func (h *handler) listSessions(ctx context.Context, _ *struct{}) (*listSessionsOutput, error) {
@@ -116,7 +116,7 @@ type updateSessionInput struct {
 type updateSessionOutput struct {
 	SetCookie []http.Cookie `header:"Set-Cookie"`
 	Body      struct {
-		Session dtos.BetterAuthSession `json:"session"`
+		Session dtos.SessionData `json:"session"`
 	}
 }
 

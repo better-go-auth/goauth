@@ -8,8 +8,8 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/token"
 )
 
-// SessionFromContext extracts the authenticated SessionResponse from context if claims were set by middleware.
-func SessionFromContext(ctx context.Context) (session *dtos.SessionResponse, valid bool) {
+// SessionFromContext extracts the authenticated SessionWithUser from context if claims were set by middleware.
+func SessionFromContext(ctx context.Context) (session *dtos.SessionWithUser, valid bool) {
 	if v, ok := ctx.Value(consts.CtxClaims.Str()).(token.CustomClaims); ok && v.UserID != "" {
 		sess, err := sessionResponseFromClaims(&v, "")
 		return sess, err == nil
@@ -27,10 +27,10 @@ func UserFromContext(ctx context.Context) (*dtos.UserResponse, bool) {
 	if !ok || sess == nil {
 		return nil, false
 	}
-	return sess.User, true
+	return &sess.User, true
 }
 
-func sessionResponseFromClaims(claims *token.CustomClaims, token string) (*dtos.SessionResponse, error) {
+func sessionResponseFromClaims(claims *token.CustomClaims, token string) (*dtos.SessionWithUser, error) {
 	var activeOrgID *string
 	var activeOrgRole *string
 
@@ -41,18 +41,17 @@ func sessionResponseFromClaims(claims *token.CustomClaims, token string) (*dtos.
 	if claims.ActiveOrgRole != "" {
 		activeOrgRole = &claims.ActiveOrgRole
 	}
-	return &dtos.SessionResponse{
-		User: &dtos.UserResponse{
+	return &dtos.SessionWithUser{
+		User: dtos.UserResponse{
 			ID:   claims.UserID,
 			Role: claims.Role,
 		},
-		Session: &dtos.SessionData{
-			ID:                   claims.SessionID,
-			UserID:               claims.UserID,
-			Token:                token,
-			ActiveOrganizationID: activeOrgID,
-			ActiveOrgRole:        activeOrgRole,
-			Role:                 claims.Role,
+		Session: dtos.SessionData{
+			ID:                     claims.SessionID,
+			UserID:                 claims.UserID,
+			Token:                  token,
+			ActiveOrganizationID:   activeOrgID,
+			ActiveOrganizationRole: activeOrgRole,
 		},
 	}, nil
 }

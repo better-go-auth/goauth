@@ -44,7 +44,7 @@ func (s *Service) GetSession(ctx context.Context, token string, opt GetSessionOp
 
 // ListSessions mirrors better-auth's GET /list-sessions: the signed-in user's live sessions (one per device).
 // With secondary storage only, the manager reads them from the "active-sessions-<userId>" list.
-func (s *Service) ListSessions(ctx context.Context, current *dtos.SessionWithUser) ([]dtos.BetterAuthSession, error) {
+func (s *Service) ListSessions(ctx context.Context, current *dtos.SessionWithUser) ([]dtos.SessionData, error) {
 	if current == nil {
 		return nil, autherr.ErrUnauthorized
 	}

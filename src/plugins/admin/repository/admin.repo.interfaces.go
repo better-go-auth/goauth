@@ -43,6 +43,8 @@ type IAdminRepo interface {
 	GetUserByID(ctx context.Context, id string) (*models.User, error)
 	// GetUserByEmail retrieves a user by email.
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
+	// UpdateUser updates user fields by ID.
+	UpdateUser(ctx context.Context, userID string, updates map[string]interface{}) (*models.User, error)
 }
 
 // AdminRepositories bundles the repositories and migrator for the Admin plugin.

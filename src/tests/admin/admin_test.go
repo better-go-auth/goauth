@@ -103,6 +103,72 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 		}
 	})
 
+	t.Run("02b List Users via GET", func(t *testing.T) {
+		resp, body := env.GetJSON("/api/auth/admin/list-users?limit=10", adminAuthHeader)
+		if !isSuccess(resp.StatusCode) {
+			t.Fatalf("ListUsers GET failed: status %d, body: %s", resp.StatusCode, body)
+		}
+		var listResp admindtos.AdminListUsersResponse
+		if err := json.Unmarshal([]byte(body), &listResp); err != nil {
+			t.Fatalf("Failed to decode ListUsers GET response: %v, raw: %s", err, body)
+		}
+		if len(listResp.Users) < 2 {
+			t.Fatalf("Expected at least 2 users, got %d", len(listResp.Users))
+		}
+	})
+
+	t.Run("03b Set Role (/set-role endpoint)", func(t *testing.T) {
+		setRoleInput := admindtos.AdminSetRoleInput{
+			UserID: managedUserID,
+			Role:   enums.Admin,
+		}
+		resp, body := env.PostJSON("/api/auth/admin/set-role", setRoleInput, adminAuthHeader)
+		if !isSuccess(resp.StatusCode) {
+			t.Fatalf("SetRole failed: status %d, body: %s", resp.StatusCode, body)
+		}
+	})
+
+	t.Run("03c Get User", func(t *testing.T) {
+		resp, body := env.GetJSON("/api/auth/admin/get-user?id="+managedUserID, adminAuthHeader)
+		if !isSuccess(resp.StatusCode) {
+			t.Fatalf("GetUser failed: status %d, body: %s", resp.StatusCode, body)
+		}
+		var userResp dtos.UserResponse
+		if err := json.Unmarshal([]byte(body), &userResp); err != nil || userResp.ID != managedUserID {
+			t.Fatalf("Failed to decode GetUser response: %v, raw: %s", err, body)
+		}
+	})
+
+	t.Run("03d Update User", func(t *testing.T) {
+		updateInput := admindtos.AdminUpdateUserInput{
+			UserID: managedUserID,
+			Data: map[string]interface{}{
+				"name": "Updated Managed User",
+			},
+		}
+		resp, body := env.PostJSON("/api/auth/admin/update-user", updateInput, adminAuthHeader)
+		if !isSuccess(resp.StatusCode) {
+			t.Fatalf("UpdateUser failed: status %d, body: %s", resp.StatusCode, body)
+		}
+	})
+
+	t.Run("03e Has Permission", func(t *testing.T) {
+		permInput := admindtos.AdminHasPermissionInput{
+			UserID: managedUserID,
+			Permissions: map[string][]string{
+				"user": {"read"},
+			},
+		}
+		resp, body := env.PostJSON("/api/auth/admin/has-permission", permInput, adminAuthHeader)
+		if !isSuccess(resp.StatusCode) {
+			t.Fatalf("HasPermission failed: status %d, body: %s", resp.StatusCode, body)
+		}
+		var permResp admindtos.AdminHasPermissionResponse
+		if err := json.Unmarshal([]byte(body), &permResp); err != nil || !permResp.Success {
+			t.Fatalf("Expected permission to succeed for admin role: %v, raw: %s", err, body)
+		}
+	})
+
 	t.Run("04 Set User Password", func(t *testing.T) {
 		setPwdInput := admindtos.AdminSetUserPasswordInput{
 			UserID:      managedUserID,
@@ -189,8 +255,8 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 		if !isSuccess(resp.StatusCode) {
 			t.Fatalf("ImpersonateUser failed: status %d, body: %s", resp.StatusCode, body)
 		}
-		var impersonateResp dtos.SessionResponse
-		if err := json.Unmarshal([]byte(body), &impersonateResp); err != nil || impersonateResp.Session == nil {
+		var impersonateResp dtos.SessionWithUser
+		if err := json.Unmarshal([]byte(body), &impersonateResp); err != nil || impersonateResp.Session.ID == "" {
 			t.Fatalf("Failed to decode ImpersonateUser response: %v, raw: %s", err, body)
 		}
 		impersonatedToken = impersonateResp.Session.Token

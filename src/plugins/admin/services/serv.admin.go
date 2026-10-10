@@ -13,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/plugins"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 
@@ -80,14 +81,8 @@ func (s *AdminService) ListUsers(ctx context.Context, input admindtos.AdminListU
 	if err != nil {
 		return nil, fmt.Errorf("adminsvc: list users: %w", err)
 	}
-
-	userResps := make([]dtos.UserResponse, 0, len(users))
-	for i := range users {
-		userResps = append(userResps, *dtos.UserToResponse(&users[i]))
-	}
-
 	return &admindtos.AdminListUsersResponse{
-		Users: userResps,
+		Users: dtos.UsersToResponse(users),
 		Total: total,
 	}, nil
 }
@@ -137,7 +132,8 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 		return nil, fmt.Errorf("adminsvc: create user: %w", err)
 	}
 
-	return dtos.UserToResponse(created), nil
+	u := dtos.UserFromModel(created)
+	return &u, nil
 }
 
 // SetUserRole assigns a new role to a user.
@@ -163,7 +159,8 @@ func (s *AdminService) SetUserRole(ctx context.Context, input admindtos.AdminSet
 		_ = s.adminRepo.RevokeUserSessions(ctx, input.UserID)
 	}
 
-	return dtos.UserToResponse(user), nil
+	u := dtos.UserFromModel(user)
+	return &u, nil
 }
 
 // SetUserPassword overrides a user's password directly.
@@ -245,7 +242,8 @@ func (s *AdminService) BanUser(ctx context.Context, input admindtos.AdminBanUser
 		_ = s.adminRepo.RevokeUserSessions(ctx, input.UserID)
 	}
 
-	return dtos.UserToResponse(user), nil
+	u := dtos.UserFromModel(user)
+	return &u, nil
 }
 
 // UnbanUser removes an existing ban on a user.
@@ -258,5 +256,72 @@ func (s *AdminService) UnbanUser(ctx context.Context, input admindtos.AdminUnban
 	if err != nil {
 		return nil, err
 	}
-	return dtos.UserToResponse(user), nil
+	u := dtos.UserFromModel(user)
+	return &u, nil
 }
+
+// GetUser retrieves a single user by ID.
+func (s *AdminService) GetUser(ctx context.Context, userID string) (*dtos.UserResponse, error) {
+	if userID == "" {
+		return nil, autherr.New(autherr.BadRequest, "userId is required", http.StatusBadRequest)
+	}
+	user, err := s.adminRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	u := dtos.UserFromModel(user)
+	return &u, nil
+}
+
+// UpdateUser updates user fields by ID.
+func (s *AdminService) UpdateUser(ctx context.Context, input admindtos.AdminUpdateUserInput) (*dtos.UserResponse, error) {
+	if input.UserID == "" {
+		return nil, autherr.New(autherr.BadRequest, "userId is required", http.StatusBadRequest)
+	}
+	if len(input.Data) == 0 {
+		return nil, autherr.New(autherr.BadRequest, "no data to update", http.StatusBadRequest)
+	}
+	// Password cannot be updated via update-user (Better Auth specification)
+	if _, ok := input.Data["password"]; ok {
+		return nil, autherr.New(autherr.BadRequest, "password cannot be updated via update-user", http.StatusBadRequest)
+	}
+
+	updated, err := s.adminRepo.UpdateUser(ctx, input.UserID, input.Data)
+	if err != nil {
+		return nil, err
+	}
+	u := dtos.UserFromModel(updated)
+	return &u, nil
+}
+
+// HasPermission checks if the given user or role has the requested permissions.
+func (s *AdminService) HasPermission(ctx context.Context, input admindtos.AdminHasPermissionInput, adminUser *dtos.UserResponse) (*admindtos.AdminHasPermissionResponse, error) {
+	perms := input.Permissions
+	if len(perms) == 0 && len(input.Permission) > 0 {
+		perms = input.Permission
+	}
+	if len(perms) == 0 {
+		return nil, autherr.New(autherr.BadRequest, "invalid permission check: no permission(s) were passed", http.StatusBadRequest)
+	}
+
+	targetRole := input.Role
+	if targetRole == "" && input.UserID != "" {
+		user, err := s.adminRepo.GetUserByID(ctx, input.UserID)
+		if err != nil {
+			return nil, err
+		}
+		targetRole = user.Role.S()
+	}
+	if targetRole == "" && adminUser != nil {
+		targetRole = adminUser.Role
+	}
+
+	// Admin role has all permissions
+	isAdmin := enums.HasRole(targetRole, enums.Admin.S()) || targetRole == "admin"
+	if isAdmin {
+		return &admindtos.AdminHasPermissionResponse{Success: true}, nil
+	}
+
+	return &admindtos.AdminHasPermissionResponse{Success: false}, nil
+}
+

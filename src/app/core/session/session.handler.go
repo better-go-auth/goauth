@@ -46,11 +46,10 @@ func (uh *HumaSessionHandler) GetMySession(ctx context.Context, q *models.Sessio
 	if err != nil {
 		return types.MakeRes(dtos.PResp[[]authDtos.SessionData]{}, http.StatusInternalServerError), err
 	}
-	data := authDtos.SessionsToData(sessions)
 	return types.MakeRes(dtos.PResp[[]authDtos.SessionData]{
-		Body:         data,
+		Body:         authDtos.SessionsToData(sessions),
 		Status:       http.StatusOK,
-		RowsAffected: int64(len(data)),
+		RowsAffected: int64(len(sessions)),
 		Count:        total,
 	}, 200), nil
 }

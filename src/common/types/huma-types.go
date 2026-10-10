@@ -82,7 +82,7 @@ func MakeResPtr[T any](item *T, status int, setCookie ...http.Cookie) *HumaRes[T
 
 // HumaGetSessionRes is the nullable get-session output: a nil Body serializes
 // to the literal JSON `null`, matching Better Auth's unauthenticated response.
-type HumaGetSessionRes = HumaRes[*dtos.SessionResponse]
+type HumaGetSessionRes = HumaRes[*dtos.SessionWithUser]
 
 type SuccessBody struct {
 	Success bool `json:"success"`

@@ -127,7 +127,7 @@ func main() {
 		if claims, valid := authenticator.SessionFromContext(ctx); valid {
 
 			out.Body.UserID = claims.Session.UserID
-			out.Body.Role = claims.Session.Role
+			out.Body.Role = claims.User.Role
 		}
 
 		return out, nil

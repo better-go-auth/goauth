@@ -112,39 +112,6 @@ type UpdateUserInput struct {
 	PhoneNumber *string `json:"phoneNumber,omitempty"`
 }
 
-// ─── Admin DTOs ───────────────────────────────────────────────────────────────
-
-// BanUserInput matches better-auth POST /admin/ban-user body.
-type BanUserInput struct {
-	UserID       string  `json:"userId"                 validate:"required"`
-	BanReason    *string `json:"banReason,omitempty"`
-	BanExpiresIn *int64  `json:"banExpiresIn,omitempty"` // BanExpiresIn in seconds. 0 = permanent.
-}
-
-// UnbanUserInput matches better-auth POST /admin/unban-user body.
-type UnbanUserInput struct {
-	UserID string `json:"userId" validate:"required"`
-}
-
-// SetRoleInput matches better-auth POST /admin/set-role body.
-type SetRoleInput struct {
-	UserID string `json:"userId" validate:"required"`
-	Role   string `json:"role"   validate:"required"`
-}
-
-// ListUsersInput matches better-auth GET /admin/list-users query.
-type ListUsersInput struct {
-	Limit          int    `query:"limit"                    json:"limit,omitempty"`
-	Offset         int    `query:"offset"                   json:"offset,omitempty"`
-	SortBy         string `query:"sortBy"                   json:"sortBy,omitempty"`
-	SortDir        string `query:"sortDir"                  json:"sortDir,omitempty"` // "asc" | "desc"
-	SearchField    string `query:"searchField"              json:"searchField,omitempty"`
-	SearchValue    string `query:"searchValue"              json:"searchValue,omitempty"`
-	FilterField    string `query:"filterField"              json:"filterField,omitempty"`
-	FilterValue    string `query:"filterValue"              json:"filterValue,omitempty"`
-	FilterOperator string `query:"filterOperator,omitempty" json:"filterOperator,omitempty"`
-}
-
 
 // RequestMeta carries HTTP request metadata (IP, user agent) for session creation.
 type RequestMeta struct {

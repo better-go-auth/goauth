@@ -86,8 +86,8 @@ type changePasswordInput struct {
 type changePasswordOutput struct {
 	SetCookie []http.Cookie `header:"Set-Cookie"`
 	Body      struct {
-		Token *string             `json:"token"`
-		User  dtos.BetterAuthUser `json:"user"`
+		Token *string           `json:"token"`
+		User  dtos.UserResponse `json:"user"`
 	}
 }
 

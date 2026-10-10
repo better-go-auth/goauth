@@ -13,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 )
 
 // AdminHandler holds admin-domain services and embeds AuthHandler for authentication.
@@ -23,6 +24,7 @@ type AdminHandler struct {
 	AdminRepo  repository.IAdminRepo
 	MiddleWare *middleware.AuthMiddleware
 	authFn     authenticator.AuthenticateFunc
+	Cookies    *cookies.Manager
 }
 
 // NewAdminHandler creates a new AdminHandler.
@@ -43,12 +45,12 @@ func NewAdminHandler(admin adminsvc.IAdminService, cfg adminmodels.AdminConfig, 
 }
 
 // RequireAdmin authenticates the request and checks that the user has an authorized admin role.
-func (h *AdminHandler) RequireAdmin(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
+func (h *AdminHandler) RequireAdmin(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error) {
 	sessionResp, err := h.Authenticate(ctx, auth)
 	if err != nil {
 		return nil, err
 	}
-	if sessionResp.User == nil {
+	if sessionResp.User.ID == "" {
 		return nil, autherr.ErrUnauthorized
 	}
 	if sessionResp.User.Banned {
@@ -65,7 +67,7 @@ func (h *AdminHandler) RequireAdmin(ctx context.Context, auth humatypes.AuthHead
 
 // Authenticate delegates authentication to the core authenticate function.
 // It first checks if the request was already authenticated into context by middleware.
-func (h *AdminHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
+func (h *AdminHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error) {
 	// TODO: use the plain session authenticator or the authFn based on the config
 	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
 		return sess, nil

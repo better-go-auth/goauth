@@ -169,11 +169,13 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			log.Fatalf("failed to create in-memory secondary storage: %v", err)
 		}
 	}
+	rot := true
 	jwt := loc_conf.SessionJWT{
-		AccessSecret:     TestAccessSecret,
-		RefreshSecret:    TestRefreshSecret,
-		AccessExpiresIn:  time.Hour,
-		RefreshExpiresIn: 24 * time.Hour,
+		AccessSecret:       TestAccessSecret,
+		RefreshSecret:      TestRefreshSecret,
+		AccessExpiresIn:    time.Hour,
+		RefreshExpiresIn:   24 * time.Hour,
+		RotateRefreshToken: &rot,
 	}
 
 	mockEmail := NewMockEmailSender()

@@ -13,6 +13,7 @@ const (
 	CookieSessionToken = "session_token"
 	CookieSessionData  = "session_data"
 	CookieDontRemember = "dont_remember"
+	CookieAdminSession = "admin_session"
 )
 
 const securePrefix = "__Secure-"
@@ -128,4 +129,22 @@ func (c *Manager) cookie(base, value string, maxAge int) http.Cookie {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	}
+}
+
+// AdminSessionCookies returns Set-Cookie entries when an admin impersonates a user:
+// sets admin_session cookie with the admin token, and session cookies for the target user.
+func (c *Manager) AdminSessionCookies(adminToken string, impersonatedToken string) []http.Cookie {
+	out := c.SessionCookies(impersonatedToken, false)
+	out = append(out, c.cookie(CookieAdminSession, c.signed(adminToken), int(c.sessionMaxAge.Seconds())))
+	return out
+}
+
+// AdminSessionToken returns the verified admin session token from admin_session cookie.
+func (c *Manager) AdminSessionToken(cookieHeader string) (string, bool) {
+	return c.ReadSigned(cookieHeader, CookieAdminSession)
+}
+
+// ExpireAdminSessionCookie returns a Set-Cookie entry that clears the admin_session cookie.
+func (c *Manager) ExpireAdminSessionCookie() http.Cookie {
+	return c.cookie(CookieAdminSession, "", -1)
 }

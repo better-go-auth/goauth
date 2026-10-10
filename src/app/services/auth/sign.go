@@ -73,7 +73,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 			}
 			// fake user with a fresh ID, shaped exactly like a real sign-up response; nothing is stored
 			now := time.Now().UTC()
-			res = &SignUpResult{User: dtos.BetterAuthUser{
+			res = &SignUpResult{User: dtos.UserResponse{
 				ID: models.NewID(), Name: in.Name, Email: email, Image: in.Image,
 				CreatedAt: dtos.Time(now), UpdatedAt: dtos.Time(now),
 			}}

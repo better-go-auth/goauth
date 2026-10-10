@@ -34,7 +34,11 @@ func (s *Server) bare(t *testing.T, method, path, bearer string) int {
 }
 
 func TestLegacyJWTOnSharedSessions(t *testing.T) {
-	s := NewServer(t, WithConfig(compatMode))
+	s := NewServer(t, WithConfig(func(c *config.AuthConfig) {
+		compatMode(c)
+		rot := true
+		c.GoAuth.Session.JWT.RotateRefreshToken = &rot
+	}))
 	expectStatus(t, s.Post(t, "/api/auth/sign-up/email", signUpBody("legacy@example.com")), http.StatusOK)
 
 	// legacy login creates a normal better-auth session; the refresh token is its session token

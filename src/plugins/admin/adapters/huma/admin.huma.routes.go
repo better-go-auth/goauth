@@ -12,10 +12,15 @@ import (
 const (
 	// User Management
 	AdminListUsers       = consts.OperationId("Ad-1-ListUsers")
+	AdminListUsersQuery  = consts.OperationId("Ad-1-ListUsersQuery")
 	AdminCreateUser      = consts.OperationId("Ad-2-CreateUser")
 	AdminSetUserRole     = consts.OperationId("Ad-3-SetUserRole")
+	AdminSetRole         = consts.OperationId("Ad-3-SetRole")
 	AdminSetUserPassword = consts.OperationId("Ad-4-SetUserPassword")
 	AdminRemoveUser      = consts.OperationId("Ad-5-RemoveUser")
+	AdminGetUser         = consts.OperationId("Ad-13-GetUser")
+	AdminUpdateUser      = consts.OperationId("Ad-14-UpdateUser")
+	AdminHasPermission   = consts.OperationId("Ad-15-HasPermission")
 
 	// Moderation & Bans
 	AdminBanUser   = consts.OperationId("Ad-6-BanUser")
@@ -35,10 +40,15 @@ var defaultAdminRoles = []string{enums.Admin.S(), "admin"}
 
 var AdminPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	AdminListUsers:          {AllowedRoles: defaultAdminRoles, Description: "List Users (Admin)"},
+	AdminListUsersQuery:     {AllowedRoles: defaultAdminRoles, Description: "List Users Query (Admin)"},
 	AdminCreateUser:         {AllowedRoles: defaultAdminRoles, Description: "Create User (Admin)"},
 	AdminSetUserRole:        {AllowedRoles: defaultAdminRoles, Description: "Set User Role (Admin)"},
+	AdminSetRole:            {AllowedRoles: defaultAdminRoles, Description: "Set Role (Admin)"},
 	AdminSetUserPassword:    {AllowedRoles: defaultAdminRoles, Description: "Set User Password (Admin)"},
 	AdminRemoveUser:         {AllowedRoles: defaultAdminRoles, Description: "Remove User (Admin)"},
+	AdminGetUser:            {AllowedRoles: defaultAdminRoles, Description: "Get User (Admin)"},
+	AdminUpdateUser:         {AllowedRoles: defaultAdminRoles, Description: "Update User (Admin)"},
+	AdminHasPermission:      {AllowedRoles: defaultAdminRoles, Description: "Has Permission (Admin)"},
 	AdminBanUser:            {AllowedRoles: defaultAdminRoles, Description: "Ban User (Admin)"},
 	AdminUnbanUser:          {AllowedRoles: defaultAdminRoles, Description: "Unban User (Admin)"},
 	AdminImpersonateUser:    {AllowedRoles: defaultAdminRoles, Description: "Impersonate User (Admin)"},
@@ -58,11 +68,21 @@ func SetupAdminRoutes(api huma.API, h *AdminHandler) {
 
 	// 1. User Management
 	huma.Register(api, huma.Operation{
-		OperationID: AdminListUsers.Str(),
-		Method:      http.MethodPost,
+		OperationID: AdminListUsersQuery.Str(),
+		Method:      http.MethodGet,
 		Path:        basePath + "/list-users",
 		Summary:     "List Users (Admin)",
 		Description: "Search, filter, and paginate users with sorting and advanced field operators.",
+		Tags:        []string{"Admin"},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.Authorize(AdminListUsersQuery, AdminPermissionsMap[AdminListUsersQuery].AllowedRoles)},
+	}, h.ListUsersQuery)
+
+	huma.Register(api, huma.Operation{
+		OperationID: AdminListUsers.Str(),
+		Method:      http.MethodPost,
+		Path:        basePath + "/list-users",
+		Summary:     "List Users (Admin) [Legacy]",
+		Description: "Search, filter, and paginate users via POST body.",
 		Tags:        []string{"Admin"},
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.Authorize(AdminListUsers, AdminPermissionsMap[AdminListUsers].AllowedRoles)},
 	}, h.ListUsers)
@@ -78,14 +98,54 @@ func SetupAdminRoutes(api huma.API, h *AdminHandler) {
 	}, h.CreateUser)
 
 	huma.Register(api, huma.Operation{
+		OperationID: AdminSetRole.Str(),
+		Method:      http.MethodPost,
+		Path:        basePath + "/set-role",
+		Summary:     "Set User Role (Admin)",
+		Description: "Updates the role of a user.",
+		Tags:        []string{"Admin"},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.Authorize(AdminSetRole, AdminPermissionsMap[AdminSetRole].AllowedRoles)},
+	}, h.SetUserRole)
+
+	huma.Register(api, huma.Operation{
 		OperationID: AdminSetUserRole.Str(),
 		Method:      http.MethodPost,
 		Path:        basePath + "/set-user-role",
-		Summary:     "Set User Role (Admin)",
+		Summary:     "Set User Role (Admin) [Legacy]",
 		Description: "Updates the role of a user.",
 		Tags:        []string{"Admin"},
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.Authorize(AdminSetUserRole, AdminPermissionsMap[AdminSetUserRole].AllowedRoles)},
 	}, h.SetUserRole)
+
+	huma.Register(api, huma.Operation{
+		OperationID: AdminGetUser.Str(),
+		Method:      http.MethodGet,
+		Path:        basePath + "/get-user",
+		Summary:     "Get User (Admin)",
+		Description: "Retrieves details of an existing user.",
+		Tags:        []string{"Admin"},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.Authorize(AdminGetUser, AdminPermissionsMap[AdminGetUser].AllowedRoles)},
+	}, h.GetUser)
+
+	huma.Register(api, huma.Operation{
+		OperationID: AdminUpdateUser.Str(),
+		Method:      http.MethodPost,
+		Path:        basePath + "/update-user",
+		Summary:     "Update User (Admin)",
+		Description: "Updates fields of an existing user.",
+		Tags:        []string{"Admin"},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.Authorize(AdminUpdateUser, AdminPermissionsMap[AdminUpdateUser].AllowedRoles)},
+	}, h.UpdateUser)
+
+	huma.Register(api, huma.Operation{
+		OperationID: AdminHasPermission.Str(),
+		Method:      http.MethodPost,
+		Path:        basePath + "/has-permission",
+		Summary:     "Check User Permission (Admin)",
+		Description: "Checks if a user or role has the specified permissions.",
+		Tags:        []string{"Admin"},
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate(), h.MiddleWare.Authorize(AdminHasPermission, AdminPermissionsMap[AdminHasPermission].AllowedRoles)},
+	}, h.HasPermission)
 
 	huma.Register(api, huma.Operation{
 		OperationID: AdminSetUserPassword.Str(),

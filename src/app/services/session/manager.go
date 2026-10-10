@@ -377,7 +377,7 @@ func (mgr *Manager) Update(ctx context.Context, swu *dtos.SessionWithUser, data 
 }
 
 // setSessionFields applies string/nil values by Go field name to the cached session shape.
-func setSessionFields(s *dtos.BetterAuthSession, data map[string]any) error {
+func setSessionFields(s *dtos.SessionData, data map[string]any) error {
 	rv := reflect.ValueOf(s).Elem()
 	for name, val := range data {
 		f := rv.FieldByName(name)
@@ -402,9 +402,9 @@ func setSessionFields(s *dtos.BetterAuthSession, data map[string]any) error {
 
 
 // List returns the live sessions of userID.
-func (mgr *Manager) List(ctx context.Context, userID string) ([]dtos.BetterAuthSession, error) {
+func (mgr *Manager) List(ctx context.Context, userID string) ([]dtos.SessionData, error) {
 	now := mgr.now()
-	out := []dtos.BetterAuthSession{}
+	out := []dtos.SessionData{}
 
 	// 1. if not storing in DB, load active sessions from secondary storage list
 	if !mgr.storeInDB() {

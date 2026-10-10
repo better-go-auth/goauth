@@ -2,11 +2,10 @@ package humaadmin
 
 import (
 	"context"
+	"net/http"
 
 	humaauth "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models/dtos"
-
-	// svcinterfaces "github.com/better-go-auth/goauth/core/services/interfaces"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 )
@@ -52,24 +51,26 @@ func (h *AdminHandler) RevokeUserSessions(ctx context.Context, input *humatypes.
 }
 
 // ImpersonateUser handles POST /api/auth/admin/impersonate-user.
-func (h *AdminHandler) ImpersonateUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminImpersonateUserInput]) (*humatypes.HumaRes[dtos.SessionResponse], error) {
+func (h *AdminHandler) ImpersonateUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminImpersonateUserInput]) (*humatypes.HumaRes[dtos.SessionWithUser], error) {
 	adminSession, err := h.RequireAdmin(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
 
 	meta := dtos.RequestMeta{}
-	signInResp, err := h.Admin.ImpersonateUser(ctx, input.Body, adminSession.User, meta)
+	signInResp, err := h.Admin.ImpersonateUser(ctx, input.Body, &adminSession.User, meta)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
 
-	// cookies := h.EmitSessionCookies(signInResp.User, signInResp.SessionData, true)
+	var cookies []http.Cookie
+	if h.Cookies != nil && adminSession.Session.Token != "" && signInResp.Token != "" {
+		cookies = h.Cookies.AdminSessionCookies(adminSession.Session.Token, signInResp.Token)
+	}
 
-	return humatypes.MakeResPtr(&dtos.SessionResponse{
-		Session: signInResp.SessionData,
-		User:    signInResp.User,
-	}, 200), nil
+	
+	// sessionWithUsr:= dtos
+	return humatypes.MakeResPtr(dtos.ToSessionWithUser(signInResp.SessionData, signInResp.User), 200, cookies...), nil
 }
 
 // StopImpersonating handles POST /api/auth/admin/stop-impersonating.
@@ -83,11 +84,17 @@ func (h *AdminHandler) StopImpersonating(ctx context.Context, input *humatypes.H
 		return nil, humaauth.RespondErr(err)
 	}
 
-	// jar := map[string]string{}
-	// cookies := h.DeleteSessionCookies(false, jar)
+	var cookies []http.Cookie
+	if h.Cookies != nil {
+		adminTok, hasAdmin := h.Cookies.AdminSessionToken(input.Cookie)
+		if hasAdmin && adminTok != "" {
+			cookies = append(cookies, h.Cookies.SessionCookies(adminTok, false)...)
+		}
+		cookies = append(cookies, h.Cookies.ExpireAdminSessionCookie())
+	}
 
 	return humatypes.MakeResPtr(&admindtos.AdminStatusResponse{
 		Status:  true,
 		Message: "Impersonation session terminated successfully",
-	}, 200), nil
+	}, 200, cookies...), nil
 }

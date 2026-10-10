@@ -23,12 +23,7 @@ func (s *AdminService) ListUserSessions(ctx context.Context, input admindtos.Adm
 	if err != nil {
 		return nil, err
 	}
-
-	data := make([]dtos.SessionData, 0, len(sessions))
-	for i := range sessions {
-		data = append(data, *dtos.SessionToData(&sessions[i]))
-	}
-	return data, nil
+	return dtos.SessionsToData(sessions), nil
 }
 
 // RevokeUserSession invalidates a specific session for a user.
@@ -115,15 +110,15 @@ func (s *AdminService) ImpersonateUser(ctx context.Context, input admindtos.Admi
 		return nil, fmt.Errorf("adminsvc: load impersonation session: %w", err)
 	}
 
-	sessData := dtos.SessionToData(createdSession)
+	sessData := dtos.SessionFromModel(createdSession)
 	// The refresh token is deliberately not returned: impersonation must not outlive its session row.
 	sessData.Token = tokens.AccessToken
-	userResp := dtos.UserToResponse(targetUser)
+	userResp := dtos.UserFromModel(targetUser)
 
 	return &dtos.SignInResponse{
-		User:        userResp,
+		User:        &userResp,
 		Token:       tokens.AccessToken,
-		SessionData: sessData,
+		SessionData: &sessData,
 	}, nil
 }
 

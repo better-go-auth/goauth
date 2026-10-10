@@ -37,7 +37,7 @@ func NewOrgHandler(org orgsvc.IOrgService, mdlware *middleware.AuthMiddleware, a
 
 // RequireOrgMember authenticates the caller and checks, against the member table, that they belong to
 // orgID (the session's active organization when orgID is empty) with one of roles (any role when empty).
-func (h *OrgHandler) RequireOrgMember(ctx context.Context, auth humatypes.AuthHeaders, orgID string, roles ...string) (sessionRes *dtos.SessionResponse, orgid string, err error) {
+func (h *OrgHandler) RequireOrgMember(ctx context.Context, auth humatypes.AuthHeaders, orgID string, roles ...string) (sessionRes *dtos.SessionWithUser, orgid string, err error) {
 	sessionResp, err := h.Authenticate(ctx, auth)
 	if err != nil {
 		return nil, "", err
@@ -78,7 +78,7 @@ func (h *OrgHandler) targetMember(ctx context.Context, orgID, memberID string) (
 }
 
 // requireInvitee authenticates the caller and ensures the invitation was sent to their email.
-func (h *OrgHandler) requireInvitee(ctx context.Context, auth humatypes.AuthHeaders, invitationID string) (*dtos.SessionResponse, error) {
+func (h *OrgHandler) requireInvitee(ctx context.Context, auth humatypes.AuthHeaders, invitationID string) (*dtos.SessionWithUser, error) {
 	session, err := h.Authenticate(ctx, auth)
 	if err != nil {
 		return nil, err
@@ -94,7 +94,7 @@ func (h *OrgHandler) requireInvitee(ctx context.Context, auth humatypes.AuthHead
 }
 
 // isInvitee reports whether the caller's email matches inviteEmail (JWT claims carry no email, so fall back to the DB).
-func (h *OrgHandler) isInvitee(ctx context.Context, session *dtos.SessionResponse, inviteEmail string) bool {
+func (h *OrgHandler) isInvitee(ctx context.Context, session *dtos.SessionWithUser, inviteEmail string) bool {
 	email := session.User.Email
 	if email == "" {
 		email, _ = h.Org.UserEmail(ctx, session.User.ID)
@@ -109,7 +109,7 @@ func defaultPagi() models.Pagination {
 
 // Authenticate delegates authentication to the core authenticate function.
 // It first checks if the request was already authenticated into context by middleware.
-func (h *OrgHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
+func (h *OrgHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error) {
 	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
 		return sess, nil
 	}

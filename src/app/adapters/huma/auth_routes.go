@@ -19,8 +19,8 @@ type signUpInput struct {
 type signUpOutput struct {
 	SetCookie []http.Cookie `header:"Set-Cookie"`
 	Body      struct {
-		Token *string             `json:"token"`
-		User  dtos.BetterAuthUser `json:"user"`
+		Token *string           `json:"token"`
+		User  dtos.UserResponse `json:"user"`
 	}
 }
 
@@ -51,10 +51,10 @@ type signInOutput struct {
 	SetCookie []http.Cookie `header:"Set-Cookie"`
 	Location  string        `header:"Location"`
 	Body      struct {
-		Redirect bool                `json:"redirect"`
-		Token    string              `json:"token"`
-		URL      *string             `json:"url,omitempty"`
-		User     dtos.BetterAuthUser `json:"user"`
+		Redirect bool              `json:"redirect"`
+		Token    string            `json:"token"`
+		URL      *string           `json:"url,omitempty"`
+		User     dtos.UserResponse `json:"user"`
 	}
 }
 
@@ -134,8 +134,8 @@ type verifyEmailOutput struct {
 }
 
 type verifyEmailBody struct {
-	Status bool                 `json:"status"`
-	User   *dtos.BetterAuthUser `json:"user"`
+	Status bool               `json:"status"`
+	User   *dtos.UserResponse `json:"user"`
 }
 
 // verifyEmail mirrors GET /verify-email: with a callbackURL every outcome is a redirect

@@ -73,7 +73,8 @@ func MemberToResponse(m *models.Member) *MemberResponse {
 		CreatedAt:      createdAt,
 	}
 	if m.User != nil {
-		resp.User = coredtos.UserToResponse(m.User)
+		u := coredtos.UserFromModel(m.User)
+		resp.User = &u
 	}
 	return resp
 }

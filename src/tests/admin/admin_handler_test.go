@@ -197,8 +197,8 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ImpersonateUser handler failed: %v", err)
 		}
-		if resp == nil || resp.Body.Session == nil {
-			t.Fatalf("Expected impersonated session, got nil")
+		if resp == nil || resp.Body.Session.ID == "" {
+			t.Fatalf("Expected impersonated session, got empty")
 		}
 		impersonatedToken = resp.Body.Session.Token
 		if impersonatedToken == "" {

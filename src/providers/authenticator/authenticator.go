@@ -27,8 +27,8 @@ all authentication logic should happen on the middleware
 
 */
 
-// AuthenticateFunc authenticates an incoming request and returns the active SessionResponse.
-type AuthenticateFunc func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error)
+// AuthenticateFunc authenticates an incoming request and returns the active SessionWithUser.
+type AuthenticateFunc func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error)
 
 // SessionLookupRepo defines the data access methods required by Authenticator for fallback lookups.
 type SessionLookupRepo interface {
@@ -47,7 +47,7 @@ type SessionLookupRepo interface {
 // 3. JWT verification against the session access secret
 // 4. Database session and user lookup fallback via SessionLookupRepo
 func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) AuthenticateFunc {
-	return func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionResponse, error) {
+	return func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error) {
 		// 1. Check if claims already exist in ctx (set by middleware)
 		if sesResp, valid := SessionFromContext(ctx); valid {
 			return sesResp, nil
@@ -92,27 +92,9 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 
 				user, err := lookup.FindUserByID(ctx, sess.UserID)
 				if err == nil && user != nil {
-					email := user.Email
-					var activeOrgRole *string
-					if sess.ActiveOrganizationRole != nil {
-						activeOrgRole = sess.ActiveOrganizationRole
-					}
-					return &dtos.SessionResponse{
-						User: &dtos.UserResponse{
-							ID:            user.ID,
-							Email:         email,
-							Role:          string(user.Role),
-							Banned:        user.Banned,
-							BanReason:     user.BanReason,
-							EmailVerified: user.EmailVerified,
-						},
-						Session: &dtos.SessionData{
-							ID:                   sess.ID,
-							UserID:               sess.UserID,
-							Token:                token,
-							ActiveOrganizationID: sess.ActiveOrganizationID,
-							ActiveOrgRole:        activeOrgRole,
-						},
+					return &dtos.SessionWithUser{
+						User:    dtos.UserFromModel(user),
+						Session: dtos.SessionFromModel(sess),
 					}, nil
 				}
 			}

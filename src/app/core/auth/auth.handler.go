@@ -70,8 +70,9 @@ func (ah *GinAuthHandler) Register(ctx context.Context, inputs *humatypes.HumaRe
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
+	u := authDtos.UserFromModel(&usr.Body)
 	resp := authDtos.SignUpResponse{
-		User:  authDtos.UserToResponse(&usr.Body),
+		User:  &u,
 		Token: nil,
 	}
 	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
@@ -83,8 +84,9 @@ func (ah *GinAuthHandler) VerifyRegisteredAccount(ctx context.Context, inputs *h
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
+	u := authDtos.UserFromModel(&usr.Body)
 	resp := authDtos.VerifyEmailResponse{
-		User:   authDtos.UserToResponse(&usr.Body),
+		User:   &u,
 		Status: true,
 	}
 	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
@@ -101,8 +103,9 @@ func (ah *GinAuthHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBo
 	if tkn.Body.AuthTokens != nil {
 		token = tkn.Body.AuthTokens.AccessToken
 	}
+	u := authDtos.UserFromModel(&tkn.Body.UserData)
 	resp := authDtos.SignInResponse{
-		User:       authDtos.UserToResponse(&tkn.Body.UserData),
+		User:       &u,
 		Token:      token,
 		Redirect:   false,
 		AuthTokens: tkn.Body.AuthTokens,
@@ -120,8 +123,9 @@ func (ah *GinAuthHandler) RefreshToken(ctx context.Context, inputs *humatypes.Hu
 	if tkn.Body.AuthTokens != nil {
 		token = tkn.Body.AuthTokens.AccessToken
 	}
+	u := authDtos.UserFromModel(&tkn.Body.UserData)
 	resp := authDtos.SignInResponse{
-		User:       authDtos.UserToResponse(&tkn.Body.UserData),
+		User:       &u,
 		Token:      token,
 		Redirect:   false,
 		AuthTokens: tkn.Body.AuthTokens,

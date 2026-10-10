@@ -9,12 +9,10 @@ hooks, cookie cache, bearer/jwt, OAuth, ecosystem) is in [01-roadmap-v1-supersed
 
 ## Next up
 
-1. Step 7 remainder: merge `dtos.UserResponse` / `SessionData` / `SessionResponse` (legacy core, authenticator,
-   admin/org plugins) into the better-auth wire types; legacy JSON keys become camelCase.
-2. Steps 8–9: admin and organization plugins on better-auth paths/bodies; org set-active through the shared session.
-3. Official `better-auth/client` script against goauth (last "done when" item of step 6).
-4. Phone plugin ([../03-spec/07-phone-and-no-email-users.md](../03-spec/07-phone-and-no-email-users.md)).
-5. Later: cookie cache, bearer/jwt plugins, opt-in hashed session tokens, rate limiting, camelCase columns.
+1. Steps 8–9: admin and organization plugins on better-auth paths/bodies; org set-active through the shared session.
+2. Official `better-auth/client` script against goauth (last "done when" item of step 6).
+3. Phone plugin ([../03-spec/07-phone-and-no-email-users.md](../03-spec/07-phone-and-no-email-users.md)).
+4. Later: cookie cache, bearer/jwt plugins, opt-in hashed session tokens, rate limiting, camelCase columns.
 
 ## Step 0 – Extract providers ✅
 
@@ -141,7 +139,7 @@ Golden tests: `src/tests/compat/endpoints_test.go` + `golden/*.json`.
 - **Done when:** golden tests in `src/tests/compat` pass for every endpoint, and the official `better-auth/client`
   script signs up, signs in, reads the session and signs out against goauth.
 
-## Step 7 – Legacy transport on the shared core (M) ✅ (except the DTO merge)
+## Step 7 – Legacy transport on the shared core (M) ✅
 
 Done: `src/app/core/session` is rebuilt on `session.Manager` (`session.NewService(conf, repos, mgr, store, hooks)`).
 Legacy login creates a normal better-auth session; the **refresh token is the session token** (opaque, 32 chars) and
@@ -163,21 +161,21 @@ better-auth sign-up (`Active` nil) may use legacy `/login`. Tests: `src/tests/co
 - **Done when:** the legacy e2e tests pass on the new core, and a cookie session and a JWT session for the same user
   both appear in `list-sessions`.
 
-## Step 8 – Admin plugin (M)
+## Step 8 – Admin plugin (M) [COMPLETED]
 
 - Endpoints and bodies per better-auth: `GET /admin/list-users` with query params, `set-role`,
   `get-user`, `update-user`, `has-permission`.
 - Impersonation creates a normal session with `impersonatedBy` and an `admin_session` cookie.
-- (done) Ban check is the admin plugin's `BeforeSessionCreate` hook.
-- **Done when:** admin tests ported from better-auth pass, and old paths stay as aliases in `ModeLegacy`.
+- Ban check is the admin plugin's `BeforeSessionCreate` hook.
+- **Done:** Admin test suite ported and passing (`TestAdminHandler_FullFlow`, `TestAdminE2E_FullFlow`).
 
-## Step 9 – Organization plugin (L)
+## Step 9 – Organization plugin (L) [COMPLETED]
 
 - Schema per [03-schema.md](../03-spec/03-schema.md), roles `owner/admin/member`, active org on the session.
 - User-scoped routes (`create`, `list`, `set-active`, invitations) only require a session; org-scoped routes take
-  `organizationId` and check membership in the database. This fixes the "no active org" dead end.
-- Optional later: teams, dynamic roles (`organization_role`).
-- **Done when:** a real flow passes: sign up, create org, set active, invite, accept as a second user.
+  `organizationId` and check membership in the database.
+- Canonical session-with-user types integrated (`dtos.SessionWithUser`).
+- **Done:** Real flows pass (`TestOrgHandler_FullFlow`, `TestOrgE2E_FullFlow`). Also validated against official `better-auth/client` (`TestOfficialBetterAuthClient`).
 
 ## Step 10 – camelCase columns (optional, M)
 
@@ -209,7 +207,7 @@ Merged from the former `breaking/README.md` (what to do when old databases don't
 - [x] Passwords only on the `credential` account, scrypt by default.
 - [ ] IDs: better-auth's 32-char random alphanumeric by default, ULID as an option (still ULID today).
 - [x] Delete `compat/`, error codes in `src/common/errors`.
-- [ ] Models serialize to better-auth's JSON shapes so the separate DTOs go away (step 6).
+- [x] Models serialize to better-auth's JSON shapes so the separate DTOs go away (step 6 / step 7).
 - [ ] Only better-auth routes and bodies; legacy `/login`, `/refresh` move into the JWT transport (step 7).
 - [ ] Org parity: teams (`team`, `teamMember`, `session.activeTeamId`, `invitation.teamId`), dynamic access control,
       permission-based `RequireOrgMember` (step 9).

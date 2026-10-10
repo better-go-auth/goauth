@@ -46,6 +46,9 @@ type AdminSetUserRoleInput struct {
 	Role   enums.Role `json:"role" required:"true" doc:"New role to assign"`
 }
 
+// AdminSetRoleInput is an alias matching better-auth's POST /admin/set-role body.
+type AdminSetRoleInput = AdminSetUserRoleInput
+
 // AdminSetUserRoleResponse is the response for POST /api/auth/admin/set-user-role.
 type AdminSetUserRoleResponse struct {
 	User   *dtos.UserResponse `json:"user,omitempty"`
@@ -127,3 +130,43 @@ type AdminStatusResponse struct {
 	Status  bool   `json:"status"`
 	Message string `json:"message,omitempty"`
 }
+
+// AdminListUsersQuery represents query parameters for GET /api/auth/admin/list-users.
+type AdminListUsersQuery struct {
+	Limit          int    `query:"limit,omitempty" doc:"Max number of records to return"`
+	Offset         int    `query:"offset,omitempty" doc:"Number of records to skip"`
+	SearchValue    string `query:"searchValue,omitempty" doc:"Search query string"`
+	SearchField    string `query:"searchField,omitempty" doc:"Field to search against (name, email, etc.)"`
+	SortBy         string `query:"sortBy,omitempty" doc:"Field to sort results by"`
+	SortDirection  string `query:"sortDirection,omitempty" doc:"Sort direction: asc or desc"`
+	FilterField    string `query:"filterField,omitempty" doc:"Field to filter on (e.g. role, banned, email)"`
+	FilterOperator string `query:"filterOperator,omitempty" doc:"Operator: eq, ne, lt, lte, gt, gte, contains, starts_with, ends_with"`
+	FilterValue    string `query:"filterValue,omitempty" doc:"Value for the filter operator"`
+}
+
+// AdminGetUserInput represents input for GET/POST /api/auth/admin/get-user.
+type AdminGetUserInput struct {
+	ID     string `query:"id" json:"id,omitempty" doc:"ID of the user"`
+	UserID string `query:"userId" json:"userId,omitempty" doc:"Alias for user ID"`
+}
+
+// AdminUpdateUserInput represents payload for POST /api/auth/admin/update-user.
+type AdminUpdateUserInput struct {
+	UserID string                 `json:"userId" required:"true" doc:"ID of the user to update"`
+	Data   map[string]interface{} `json:"data" required:"true" doc:"Fields to update"`
+}
+
+// AdminHasPermissionInput represents payload for POST /api/auth/admin/has-permission.
+type AdminHasPermissionInput struct {
+	UserID      string              `json:"userId,omitempty" doc:"The user id to check"`
+	Role        string              `json:"role,omitempty" doc:"The role to check"`
+	Permission  map[string][]string `json:"permission,omitempty" doc:"Permission to check"`
+	Permissions map[string][]string `json:"permissions,omitempty" doc:"Permissions to check"`
+}
+
+// AdminHasPermissionResponse represents the response of POST /api/auth/admin/has-permission.
+type AdminHasPermissionResponse struct {
+	Success bool   `json:"success"`
+	Error   string `json:"error,omitempty"`
+}
+

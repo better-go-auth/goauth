@@ -345,3 +345,17 @@ func (r *AdminRepo) GetUserByEmail(ctx context.Context, email string) (*models.U
 	}
 	return &user, nil
 }
+
+// UpdateUser updates specific user fields by ID.
+func (r *AdminRepo) UpdateUser(ctx context.Context, userID string, updates map[string]interface{}) (*models.User, error) {
+	db := getDB(ctx, r.db)
+	user := userByID(userID)
+	res := db.Model(&models.User{}).Where(user, "ID").Updates(updates)
+	if res.Error != nil {
+		return nil, fmt.Errorf("gorm/admin: update user: %w", res.Error)
+	}
+	if res.RowsAffected == 0 {
+		return nil, autherr.ErrUserNotFound
+	}
+	return r.GetUserByID(ctx, userID)
+}

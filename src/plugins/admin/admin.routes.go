@@ -3,6 +3,7 @@ package admin
 import (
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	"github.com/better-go-auth/goauth/src/common/middleware"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -17,6 +18,7 @@ func (p *Plugin) SetupHumaRoutes(api huma.API, mdlware *middleware.AuthMiddlewar
 		handler.Cfg.BasePath = p.basePath
 	}
 	handler.AdminRepo = p.adminRepos.AdminRepo
+	handler.Cookies = cookies.New(handler.Cfg)
 	p.handler = handler
 	humaadmin.SetupAdminRoutes(api, handler)
 }

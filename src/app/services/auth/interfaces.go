@@ -30,7 +30,7 @@ type IAuthService interface {
 // ISessionService covers the session self-service endpoints.
 type ISessionService interface {
 	GetSession(ctx context.Context, token string, opt GetSessionOptions) (*GetSessionResult, error)
-	ListSessions(ctx context.Context, current *dtos.SessionWithUser) ([]dtos.BetterAuthSession, error)
+	ListSessions(ctx context.Context, current *dtos.SessionWithUser) ([]dtos.SessionData, error)
 	RevokeSession(ctx context.Context, current *dtos.SessionWithUser, token string) error
 	RevokeSessions(ctx context.Context, current *dtos.SessionWithUser) error
 	RevokeOtherSessions(ctx context.Context, current *dtos.SessionWithUser) error
@@ -50,7 +50,7 @@ type IUserService interface {
 // SignUpResult is better-auth's { token, user }; Session is set when the user was signed in.
 type SignUpResult struct {
 	Token        *string
-	User         dtos.BetterAuthUser
+	User         dtos.UserResponse
 	Session      *dtos.SessionWithUser
 	DontRemember bool
 }
@@ -60,7 +60,7 @@ type SignInResult struct {
 	Redirect     bool
 	Token        string
 	URL          *string
-	User         dtos.BetterAuthUser
+	User         dtos.UserResponse
 	Session      *dtos.SessionWithUser
 	DontRemember bool
 }
@@ -68,14 +68,14 @@ type SignInResult struct {
 // VerifyEmailResult is better-auth's { status, user }. Session is set when the session cookie must be (re)written.
 type VerifyEmailResult struct {
 	Status  bool
-	User    *dtos.BetterAuthUser
+	User    *dtos.UserResponse
 	Session *dtos.SessionWithUser
 }
 
 // ChangePasswordResult is better-auth's { token, user }; Session is the replacement session when others were revoked.
 type ChangePasswordResult struct {
 	Token   *string
-	User    dtos.BetterAuthUser
+	User    dtos.UserResponse
 	Session *dtos.SessionWithUser
 }
 

@@ -46,6 +46,15 @@ type IAdminService interface {
 	// RevokeUserSessions invalidates all active sessions for a target user.
 	RevokeUserSessions(ctx context.Context, input admindtos.AdminRevokeUserSessionsInput, adminUserID string) error
 
+	// GetUser retrieves a single user by ID.
+	GetUser(ctx context.Context, userID string) (*dtos.UserResponse, error)
+
+	// UpdateUser updates user fields.
+	UpdateUser(ctx context.Context, input admindtos.AdminUpdateUserInput) (*dtos.UserResponse, error)
+
+	// HasPermission checks permissions for a user or role.
+	HasPermission(ctx context.Context, input admindtos.AdminHasPermissionInput, adminUser *dtos.UserResponse) (*admindtos.AdminHasPermissionResponse, error)
+
 	// SetHooks sets the lifecycle hook registry.
 	SetHooks(hooks plugins.HookRegistry)
 }
