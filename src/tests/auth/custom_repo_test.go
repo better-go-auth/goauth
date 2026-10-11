@@ -6,12 +6,12 @@ import (
 	"testing"
 
 	bettergoauth "github.com/better-go-auth/goauth"
-	"github.com/better-go-auth/goauth/src/app/core/auth"
-	"github.com/better-go-auth/goauth/src/app/core/profile"
-	"github.com/better-go-auth/goauth/src/app/core/session"
-	"github.com/better-go-auth/goauth/src/app/core/verification"
 	"github.com/better-go-auth/goauth/src/app/repository/memory"
 	"github.com/better-go-auth/goauth/src/models"
+	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
+	plugin "github.com/better-go-auth/goauth/src/plugins"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -47,6 +47,7 @@ func TestSetupGoAuth_CustomRepositoriesWithoutGorm(t *testing.T) {
 		Repositories: mockRepos,
 		Migrator:     migrator,
 		TxManager:    txMgr,
+		Plugins:      []plugin.Plugin{accesstoken.New()},
 	}
 	opts.Secret = "super-secret-access-key-32-chars-long"
 
@@ -82,10 +83,11 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 
 	ctx := context.Background()
 
-	vSvc := verification.NewVerificationServiceWithRepo(mockRepos, opts.EmailVerification)
-	sSvc := session.NewService(opts.GoAuth.Session, mockRepos, app.Sessions, nil, app.Hooks)
-	authSvc := auth.NewAuthService(&opts.GoAuth.Session, app.Provider, vSvc, sSvc, mockRepos, app.Hooks)
-	profileSvc := profile.NewProfileServH(app.Provider, vSvc, sSvc, mockRepos)
+	vSvc := services.NewVerificationService(mockRepos, opts.EmailVerification)
+	sSvc := services.NewSessionService(opts.GoAuth.Session, mockRepos, app.Sessions, nil, app.Hooks)
+	passwords := authcrypto.NewPasswords(opts.AuthConfig)
+	authSvc := services.NewAuthService(&opts.GoAuth.Session, vSvc, sSvc, mockRepos, txMgr, passwords, app.Hooks)
+	profileSvc := services.NewProfileService(vSvc, sSvc, mockRepos, txMgr, passwords)
 
 	// 1. Register with email
 	regResp, err := authSvc.RegisterWithEmail(ctx, models.RegisterClientInput{

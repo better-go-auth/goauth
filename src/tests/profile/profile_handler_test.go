@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/better-go-auth/goauth/src/app/core/auth"
+	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"

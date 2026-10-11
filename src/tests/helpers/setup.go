@@ -14,9 +14,8 @@ import (
 	"time"
 
 	bettergoauth "github.com/better-go-auth/goauth"
-	coreauth "github.com/better-go-auth/goauth/src/app/core/auth"
-	"github.com/better-go-auth/goauth/src/app/core/profile"
-	"github.com/better-go-auth/goauth/src/app/core/session"
+	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
+	accesstokensvc "github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/common/consts"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
@@ -63,16 +62,16 @@ type TestEnv struct {
 	Teardown         func()
 
 	// Direct handlers for in-process debugging
-	AuthHandler    *coreauth.GinAuthHandler
-	ProfileHandler *profile.HProfileHandler
-	SessionHandler *session.HumaSessionHandler
+	AuthHandler    *humaaccesstoken.AccessTokenHandler
+	ProfileHandler *humaaccesstoken.AccessTokenHandler
+	SessionHandler *humaaccesstoken.AccessTokenHandler
 	AdminHandler   *humaadmin.AdminHandler
 	OrgHandler     *humaorg.OrgHandler
 
 	// Direct services for testing/debugging
-	AuthService    *coreauth.LegacyService
-	ProfileService *profile.Service
-	SessionService *session.Service
+	AuthService    *accesstokensvc.AuthService
+	ProfileService *accesstokensvc.ProfileService
+	SessionService *accesstokensvc.SessionService
 	AdminService   adminsvc.IAdminService
 	OrgService     orgsvc.IOrgService
 }
@@ -259,16 +258,10 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		prevTeardown()
 	}
 
-	sConf := loc_conf.SessionGoAuth{JWT: jwt}
-
-	// gormauth.NewAuthRepos(opts.Conn)
-	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.ILegacyAuthServices, auth.ILegacyAuthServices, auth.Repositories)
-	profileServ := profile.NewProfileServH(auth.Provider, auth.ILegacyAuthServices, auth.ILegacyAuthServices, auth.Repositories)
-	// Handlers
-	sSvc := session.NewService(sConf, auth.Repositories, auth.Sessions, secStorage)
-	authHandler := coreauth.NewAuthHandler(auth.Provider, authSvc)
-	profileHandler := profile.NewProfileHandler(auth.Provider, profileServ)
-	sessionHandler := session.NewSessionHandler(sSvc)
+	authHandler := accessTokenPlugin.Handler()
+	authSvc := accessTokenPlugin.AuthService()
+	profileServ := accessTokenPlugin.ProfileService()
+	sSvc := accessTokenPlugin.SessionService()
 	adminHandler := adminPlugin.Handler()
 	adminService := adminPlugin.Service()
 	orgHandler := orgPlugin.Handler()
@@ -287,8 +280,8 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		Teardown:         fullTeardown,
 		// handler
 		AuthHandler:    authHandler,
-		ProfileHandler: profileHandler,
-		SessionHandler: sessionHandler,
+		ProfileHandler: authHandler,
+		SessionHandler: authHandler,
 		AdminHandler:   adminHandler,
 		OrgHandler:     orgHandler,
 		// services

@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/better-go-auth/goauth/src/app/core/auth"
+	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/models"
 	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/tests/helpers"

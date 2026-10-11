@@ -235,6 +235,14 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		pluginMap[p.ID()] = p
 	}
 
+	// var legacyAuthSvc interfaces1.ILegacyAuthServices
+	// for _, p := range opts.Plugins {
+	// 	if lap, ok := p.(interface{ LegacyAuthServices() interfaces1.ILegacyAuthServices }); ok {
+	// 		legacyAuthSvc = lap.LegacyAuthServices()
+	// 		break
+	// 	}
+	// }
+
 	return &GoAuth{
 		Options: opts,
 		Plugins: pluginMap,

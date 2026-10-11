@@ -36,6 +36,11 @@ func (h *AccessTokenHandler) DeleteMySession(ctx context.Context, dto *types.Hum
 	return types.MakeRes(dtos.SuccessCreated(authDtos.StatusResponse{Status: true}, 1), 200), nil
 }
 
+// DelteMySession is an alias for DeleteMySession.
+func (h *AccessTokenHandler) DelteMySession(ctx context.Context, dto *types.HumaReqId) (*types.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
+	return h.DeleteMySession(ctx, dto)
+}
+
 // GetMySession handles GET /session.
 func (h *AccessTokenHandler) GetMySession(ctx context.Context, q *models.SessionQuery) (*types.HumaRes[dtos.PResp[[]authDtos.SessionData]], error) {
 	v, valid := authenticator.SessionFromContext(ctx)

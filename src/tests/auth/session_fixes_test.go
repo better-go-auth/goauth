@@ -5,7 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/app/core/auth"
+	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
@@ -161,11 +162,11 @@ func TestRefreshRejectsBlockedUsersAndExpiredSessions(t *testing.T) {
 }
 
 func TestTokenCookiesAttributes(t *testing.T) {
-	c := auth.CreateCookie("access-token", "v", time.Hour, auth.CookieAttrs{Secure: true, Domain: "example.com"})
+	c := humaaccesstoken.CreateCookie("access-token", "v", time.Hour, humaaccesstoken.CookieAttrs{Secure: true, Domain: "example.com"})
 	if !c.Secure || c.Domain != "example.com" || !c.HttpOnly || c.MaxAge != 3600 {
 		t.Fatalf("unexpected cookie: %+v", c)
 	}
-	e := auth.ExpireCookie("access-token", auth.CookieAttrs{Secure: true})
+	e := humaaccesstoken.ExpireCookie("access-token", humaaccesstoken.CookieAttrs{Secure: true})
 	if e.MaxAge >= 0 || e.Value != "" || !e.Secure {
 		t.Fatalf("unexpected expire cookie: %+v", e)
 	}
