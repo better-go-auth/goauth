@@ -8,7 +8,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	corerepo "github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
@@ -50,7 +50,7 @@ func (s *OrgService) SetHooks(hooks plugins.HookRegistry) {
 }
 
 // SetSessionService configures the normal session service on the org service.
-func (s *OrgService) SetSessionService(sessionServ serv_interfaces.ISessionService) {
+func (s *OrgService) SetSessionService(sessionServ serv_interfaces.ISessionManager) {
 	s.sessionMgr = sessionServ
 }
 

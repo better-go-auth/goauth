@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -25,10 +25,10 @@ import (
 const dontRememberLifetime = 24 * time.Hour
 
 // Meta is request metadata stored on new sessions.
-type Meta = serv_interfaces.SessionMeta
+type Meta = interfaces.SessionMeta
 
 // CreateOptions customises a new session.
-type CreateOptions = serv_interfaces.SessionCreateOptions
+type CreateOptions = interfaces.SessionCreateOptions
 
 // Manager creates, reads, refreshes and revokes sessions.
 type Manager struct {
@@ -40,7 +40,7 @@ type Manager struct {
 	now          func() time.Time
 }
 
-var _ serv_interfaces.ISessionService = (*Manager)(nil)
+var _ interfaces.ISessionManager = (*Manager)(nil)
 
 // NewManager builds a Manager; store and hooks may be nil.
 func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions repo_interfaces.ISessionRepo, store sec_storage.SecondaryStorage, hooks plugins.HookRegistry) *Manager {

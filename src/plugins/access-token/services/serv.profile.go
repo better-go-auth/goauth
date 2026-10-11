@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	ICnst "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
@@ -20,7 +20,7 @@ import (
 // ProfileService implements IAccessTokenProfileService.
 type ProfileService struct {
 	ProvServ    *providers.IProviderS
-	VSvc        serv_interfaces.IVerificationService
+	VSvc        interfaces1.IVerificationService
 	SesSvc      *SessionService
 	TxMgr       interfaces.ITransactionManager
 	UserRepo    repo_interfaces.IUserRepo
@@ -32,7 +32,7 @@ type ProfileService struct {
 var _ IAccessTokenProfileService = (*ProfileService)(nil)
 
 // NewProfileServH creates a ProfileService with IProviderS (backward compatibility).
-func NewProfileServH(genServ *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sesSvc *SessionService, authRepos repo_interfaces.IAuthRepos) *ProfileService {
+func NewProfileServH(genServ *providers.IProviderS, vSvc interfaces1.IVerificationService, sesSvc *SessionService, authRepos repo_interfaces.IAuthRepos) *ProfileService {
 	var txMgr interfaces.ITransactionManager
 	if genServ != nil {
 		txMgr = genServ.TxManager
@@ -53,7 +53,7 @@ func NewProfileServH(genServ *providers.IProviderS, vSvc serv_interfaces.IVerifi
 
 // NewProfileService creates a new ProfileService for the access-token plugin.
 func NewProfileService(
-	vSvc serv_interfaces.IVerificationService,
+	vSvc interfaces1.IVerificationService,
 	sesSvc *SessionService,
 	authRepos repo_interfaces.IAuthRepos,
 	txMgr interfaces.ITransactionManager,
@@ -166,7 +166,7 @@ func (aus *ProfileService) SendChangeEmail(ctx context.Context, userId string, i
 		return dtos.BadReqC[bool](ICnst.EmailExists), ICnst.EmailExistsErr
 	}
 
-	return aus.VSvc.SendVerification(ctx, input.NewEmail, models.PurposeChangeEmail, &serv_interfaces.VerOpt{UserId: user.ID})
+	return aus.VSvc.SendVerification(ctx, input.NewEmail, models.PurposeChangeEmail, &interfaces1.VerOpt{UserId: user.ID})
 }
 
 // VerifyChangeEmail updates the user's email, syncs account_id on the Account model, and revokes sessions.

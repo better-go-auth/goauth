@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"

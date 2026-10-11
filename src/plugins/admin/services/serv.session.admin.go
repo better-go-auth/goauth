@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"

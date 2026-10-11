@@ -5,7 +5,9 @@ import (
 	"fmt"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	leg_int"github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
+
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/common/middleware"
@@ -149,8 +151,14 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	}
 
 	// 1. Initialize services
+	sessMgr := ictx.SessionManager
+	if sessMgr == nil && ictx.Extras != nil {
+		if sm, ok := ictx.Extras["sessionManager"].(serv_interfaces.ISessionManager); ok {
+			sessMgr = sm
+		}
+	}
 	p.vSvc = services.NewVerificationService(repos, vConf)
-	p.sessionSvc = services.NewSessionService(sConf, repos, ictx.SessionManager, secStorage, ictx.Hooks)
+	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
 	p.authSvc = services.NewAuthService(&sConf, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
 	p.profileSvc = services.NewProfileService(p.vSvc, p.sessionSvc, repos, txMgr, p.passwords)
 
@@ -243,11 +251,11 @@ func (p *Plugin) VerificationService() *services.VerificationService {
 }
 
 // LegacyAuthServices returns the combined ILegacyAuthServices implementation.
-func (p *Plugin) LegacyAuthServices() serv_interfaces.ILegacyAuthServices {
+func (p *Plugin) LegacyAuthServices() leg_int.ILegacyAuthServices {
 	if p.vSvc == nil && p.sessionSvc == nil {
 		return nil
 	}
-	return serv_interfaces.LegacyAuthServiceImpl{
+	return leg_int.LegacyAuthServiceImpl{
 		IVerificationService: p.vSvc,
 		LegacySessionService: p.sessionSvc,
 	}

@@ -79,11 +79,12 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	)
 
 	initCtx := &plugins.InitContext{
-		Ctx:        context.Background(),
-		Api:        api,
-		IAuthRepos: repos,
-		TxManager:  txMgr,
-		Hooks:      hooks,
+		Ctx:            context.Background(),
+		Api:            api,
+		IAuthRepos:     repos,
+		TxManager:      txMgr,
+		SessionManager: sessionMgr,
+		Hooks:          hooks,
 		Config: config.AuthConfig{
 			Secret:            "test-app-secret-32-bytes-long!",
 			Session:           config.Session{ExpiresIn: 24 * time.Hour},

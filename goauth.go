@@ -8,11 +8,10 @@ import (
 	"time"
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
-	"github.com/better-go-auth/goauth/src/app/core"
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
@@ -38,7 +37,7 @@ type GoAuth struct {
 	Plugins map[string]plugin.Plugin
 	Hooks   plugin.HookRegistry
 	// todo: legacy service will be removed fromt he default goAuth
-	ILegacyAuthServices serv_interfaces.ILegacyAuthServices
+	ILegacyAuthServices interfaces1.ILegacyAuthServices
 	MiddleWare          middleware.AuthMiddleware
 	MiddlewareInt       middleware.IAuthMiddleware
 	RevocationStore     middleware.RevocationStore
@@ -173,7 +172,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	// 	}
 	// }
 	// TODO: remove this
-	authSvc := core.SetupAllAuthRoutesWithRepos(api, opts.AuthConfig, opts.EmailVerification, providerService, repos, sessionMgr, hooks)
+	// authSvc := core.SetupAllAuthRoutesWithRepos(api, opts.AuthConfig, opts.EmailVerification, providerService, repos, sessionMgr, hooks)
 
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
 	//=============   Register the better-auth compatable routes
@@ -237,20 +236,20 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	}
 
 	return &GoAuth{
-		Options:             opts,
-		Plugins:             pluginMap,
-		Hooks:               hooks,
-		ILegacyAuthServices: authSvc,
-		MiddleWare:          *mdlWare,
-		RevocationStore:     revocationStore,
-		TransactionManager:  txManager,
-		Provider:            providerService,
-		Repositories:        repos,
-		MiddlewareInt:       mdlWare,
-		Sessions:            sessionMgr,
-		Auth:                authService,
-		SessionResolver:     resolver,
-		Cookies:             cookieMgr,
+		Options: opts,
+		Plugins: pluginMap,
+		Hooks:   hooks,
+		// ILegacyAuthServices: authSvc,
+		MiddleWare:         *mdlWare,
+		RevocationStore:    revocationStore,
+		TransactionManager: txManager,
+		Provider:           providerService,
+		Repositories:       repos,
+		MiddlewareInt:      mdlWare,
+		Sessions:           sessionMgr,
+		Auth:               authService,
+		SessionResolver:    resolver,
+		Cookies:            cookieMgr,
 	}, nil
 }
 

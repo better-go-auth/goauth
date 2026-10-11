@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"

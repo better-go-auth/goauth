@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
@@ -27,7 +27,7 @@ type AuthService struct {
 	Config   *config.SessionGoAuth
 	Provider *providers.IProviderS
 	// services
-	VSvc   serv_interfaces.IVerificationService
+	VSvc   interfaces1.IVerificationService
 	SesSvc *SessionService
 	// repos
 	UserRepo    repo_interfaces.IUserRepo
@@ -45,7 +45,7 @@ var _ IAccessTokenAuthService = (*AuthService)(nil)
 // NewAuthService creates a new AuthService for the access-token plugin.
 func NewAuthService(
 	conf *config.SessionGoAuth,
-	vSvc serv_interfaces.IVerificationService,
+	vSvc interfaces1.IVerificationService,
 	sSvc *SessionService,
 	authRepos repo_interfaces.IAuthRepos,
 	txMgr interfaces.ITransactionManager,
@@ -142,7 +142,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 			}
 		}
 
-		_, err = aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &serv_interfaces.VerOpt{UserId: createdUser.ID})
+		_, err = aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &interfaces1.VerOpt{UserId: createdUser.ID})
 		if err != nil {
 			// todo: maybe we skip this error
 			return err
@@ -328,7 +328,7 @@ func (aus *AuthService) ForgotPwd(ctx context.Context, input accesstokendtos.Ver
 		return dtos.SuccessCreated(true, 0), nil
 	}
 
-	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &serv_interfaces.VerOpt{UserId: usr.ID})
+	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &interfaces1.VerOpt{UserId: usr.ID})
 }
 
 // ResetPwd [ID]

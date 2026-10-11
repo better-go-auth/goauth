@@ -7,7 +7,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/common/logger"
 	"github.com/better-go-auth/goauth/src/common/util"
@@ -25,7 +25,7 @@ type Service struct {
 }
 
 // NewVerificationService creates a VerificationService backed by a *gorm.DB (backward compatibility).
-func NewVerificationService(dg *gorm.DB, config config.EmailVerification) serv_interfaces.IVerificationService {
+func NewVerificationService(dg *gorm.DB, config config.EmailVerification) interfaces.IVerificationService {
 	var repo repo_interfaces.IVerificationRepo
 	if dg != nil {
 		repo = gormauth.NewVerificationRepo(dg)
@@ -39,7 +39,7 @@ func NewVerificationService(dg *gorm.DB, config config.EmailVerification) serv_i
 }
 
 // NewVerificationServiceWithRepo creates a VerificationService backed by any IVerificationRepo implementation.
-func NewVerificationServiceWithRepo(repo repo_interfaces.IVerificationRepo, config config.EmailVerification) serv_interfaces.IVerificationService {
+func NewVerificationServiceWithRepo(repo repo_interfaces.IVerificationRepo, config config.EmailVerification) interfaces.IVerificationService {
 	return &Service{
 		Repo: repo,
 		// VerificationCodeSender: config.VerificationCodeSender,
@@ -47,7 +47,7 @@ func NewVerificationServiceWithRepo(repo repo_interfaces.IVerificationRepo, conf
 	}
 }
 
-func (vSvc Service) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *serv_interfaces.VerOpt) (dtos.GResp[bool], error) {
+func (vSvc Service) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *interfaces.VerOpt) (dtos.GResp[bool], error) {
 	if vSvc.Config.GoAuth.CodeSender == nil {
 		return dtos.InternalErrMS[bool]("no verification code sender configured"), errors.New("no verification code sender configured")
 	}

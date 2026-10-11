@@ -8,7 +8,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/common/logger"
 
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
@@ -87,7 +87,7 @@ func (aus LegacyService) RegisterWithEmail(ctx context.Context, input models.Reg
 			}
 		}
 
-		_, err = aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &serv_interfaces.VerOpt{UserId: createdUser.ID})
+		_, err = aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &interfaces.VerOpt{UserId: createdUser.ID})
 		if err != nil {
 			// todo: maybe we skip this error
 			return err
@@ -273,7 +273,7 @@ func (aus LegacyService) ForgotPwd(ctx context.Context, input VerifyReqInput) (d
 		return dtos.SuccessCreated(true, 0), nil
 	}
 
-	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &serv_interfaces.VerOpt{UserId: usr.ID})
+	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &interfaces.VerOpt{UserId: usr.ID})
 }
 
 // ResetPwd [ID]

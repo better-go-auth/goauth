@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
+serv_interfaces	"github.com/better-go-auth/goauth/src/app/services/interfaces"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
+	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/oklog/ulid/v2"
 )
 
 // TestAdminHandler_FullFlow invokes the Admin handlers directly in-process
@@ -130,11 +131,11 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("07 List User Sessions", func(t *testing.T) {
-		userSessionID = ulid.Make().String()
-		_, err := env.Auth.ILegacyAuthServices.CreateSession(ctx, userSessionID, string(enums.User), managedUserID, nil)
+		userSession, err := env.Auth.Sessions.Create(ctx, &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 		if err != nil {
 			t.Fatalf("Failed to create session for managed user: %v", err)
 		}
+		userSessionID = userSession.Session.Token
 
 		listSessionsInput := admindtos.AdminListUserSessionsInput{
 			UserID: managedUserID,
@@ -168,8 +169,10 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("09 Revoke All User Sessions", func(t *testing.T) {
-		bulkSessionID := ulid.Make().String()
-		_, _ = env.Auth.ILegacyAuthServices.CreateSession(ctx, bulkSessionID, string(enums.User), managedUserID, nil)
+		_, err := env.Auth.Sessions.Create(ctx, &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create bulk session: %v", err)
+		}
 
 		revokeAllInput := admindtos.AdminRevokeUserSessionsInput{
 			UserID: managedUserID,

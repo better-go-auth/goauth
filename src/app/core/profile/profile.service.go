@@ -10,7 +10,7 @@ import (
 	ICnst "github.com/better-go-auth/goauth/src/common/errors"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/models"
@@ -20,8 +20,8 @@ import (
 
 type Service struct {
 	ProvServ    *providers.IProviderS
-	VSvc        serv_interfaces.IVerificationService
-	SesSvc      serv_interfaces.LegacySessionService
+	VSvc        interfaces1.IVerificationService
+	SesSvc      interfaces1.LegacySessionService
 	TxMgr       interfaces.ITransactionManager
 	userRepo    repo_interfaces.IUserRepo
 	accountRepo repo_interfaces.IOAuthAccountRepo
@@ -29,7 +29,7 @@ type Service struct {
 	Passwords *authcrypto.Passwords
 }
 
-func NewProfileServH(genServ *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sesSvc serv_interfaces.LegacySessionService, authRepos repo_interfaces.IAuthRepos) *Service {
+func NewProfileServH(genServ *providers.IProviderS, vSvc interfaces1.IVerificationService, sesSvc interfaces1.LegacySessionService, authRepos repo_interfaces.IAuthRepos) *Service {
 	var txMgr interfaces.ITransactionManager
 	if genServ != nil {
 		txMgr = genServ.TxManager
@@ -145,7 +145,7 @@ func (aus *Service) SendChangeEmail(ctx context.Context, userId string, input mo
 		return dtos.BadReqC[bool](ICnst.EmailExists), ICnst.EmailExistsErr
 	}
 
-	return aus.VSvc.SendVerification(ctx, input.NewEmail, models.PurposeChangeEmail, &serv_interfaces.VerOpt{UserId: user.ID})
+	return aus.VSvc.SendVerification(ctx, input.NewEmail, models.PurposeChangeEmail, &interfaces1.VerOpt{UserId: user.ID})
 }
 
 // VerifyChangeEmail updates the user's email, syncs account_id on the Account model, and revokes sessions.

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"testing"
 
+	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -14,7 +15,6 @@ import (
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/oklog/ulid/v2"
 )
 
 func isSuccess(status int) bool {
@@ -39,21 +39,18 @@ func setupOrgUser(t *testing.T, env *helpers.TestEnv, email string, orgID, orgRo
 		t.Fatalf("Failed to create user: %v", err)
 	}
 
-	sessionID := ulid.Make().String()
-	var opt *models.SessionOpt
+	var opt serv_interfaces.SessionCreateOptions
 	if orgID != "" && orgRole != "" {
-		opt = &models.SessionOpt{
-			ActiveOrgID: ptr(orgID),
-			OrgRoleID:   ptr(orgRole),
-		}
+		opt.ActiveOrganizationID = ptr(orgID)
+		opt.ActiveOrganizationRole = ptr(orgRole)
 	}
 
-	tokens, err := env.Auth.ILegacyAuthServices.CreateSession(context.Background(), sessionID, enums.User.S(), user.ID, opt)
+	swu, err := env.Auth.Sessions.Create(context.Background(), user, serv_interfaces.SessionMeta{}, opt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
-	return user.ID, map[string]string{"Authorization": "Bearer " + tokens.AccessToken}
+	return user.ID, map[string]string{"Authorization": "Bearer " + swu.Session.Token}
 }
 
 func TestOrgE2E_FullFlow(t *testing.T) {

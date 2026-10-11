@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
@@ -40,7 +40,7 @@ func NewService(conf config.SessionGoAuth, repos repo_interfaces.IAuthRepos, mgr
 	return &Service{SessionRepo: repos, users: repos, mgr: mgr, sConf: conf, sStore: sStore, Hooks: h}
 }
 
-var _ serv_interfaces.LegacySessionService = (*Service)(nil)
+var _ interfaces.LegacySessionService = (*Service)(nil)
 
 // tokens signs the access JWT for s and returns it with the session token as the refresh token.
 func (aus Service) tokens(s *models.Session, role string) (*models.AuthTokens, error) {

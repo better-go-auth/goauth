@@ -6,7 +6,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/core/session"
 	"github.com/better-go-auth/goauth/src/app/core/verification"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/plugins"
@@ -16,7 +16,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg config.EmailVerification, provServ *providers.IProviderS, repos repo_interfaces.IAuthRepos, sessions *sessionsvc.Manager, hooks ...plugins.HookRegistry) serv_interfaces.ILegacyAuthServices {
+func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg config.EmailVerification, provServ *providers.IProviderS, repos repo_interfaces.IAuthRepos, sessions *sessionsvc.Manager, hooks ...plugins.HookRegistry) interfaces.ILegacyAuthServices {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]
@@ -45,7 +45,7 @@ func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg conf
 		auth.SetupAuthRoutes(api, provServ, authSvc, conf)
 		profile.SetUserProfileRoutes(api, provServ, profileServ, conf)
 	}
-	return serv_interfaces.LegacyAuthServiceImpl{
+	return interfaces.LegacyAuthServiceImpl{
 		IVerificationService: vSvc,
 		LegacySessionService: sSvc,
 	}

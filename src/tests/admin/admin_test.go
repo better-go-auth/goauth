@@ -6,12 +6,12 @@ import (
 	"net/http"
 	"testing"
 
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/oklog/ulid/v2"
 )
 
 func isSuccess(status int) bool {
@@ -36,13 +36,12 @@ func setupAdminUser(t *testing.T, env *helpers.TestEnv) (string, map[string]stri
 		t.Fatalf("Failed to create admin user: %v", err)
 	}
 
-	sessionID := ulid.Make().String()
-	tokens, err := env.Auth.ILegacyAuthServices.CreateSession(context.Background(), sessionID, string(enums.Admin), adminUser.ID, nil)
+	swu, err := env.Auth.Sessions.Create(context.Background(), adminUser, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create admin session: %v", err)
 	}
 
-	return adminUser.ID, map[string]string{"Authorization": "Bearer " + tokens.AccessToken}
+	return adminUser.ID, map[string]string{"Authorization": "Bearer " + swu.Session.Token}
 }
 
 func TestAdminE2E_FullFlow(t *testing.T) {
@@ -202,11 +201,11 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("List User Sessions", func(t *testing.T) {
-		userSessionID = ulid.Make().String()
-		_, err := env.Auth.ILegacyAuthServices.CreateSession(context.Background(), userSessionID, string(enums.User), managedUserID, nil)
+		userSession, err := env.Auth.Sessions.Create(context.Background(), &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 		if err != nil {
 			t.Fatalf("Failed to create session for managed user: %v", err)
 		}
+		userSessionID = userSession.Session.Token
 
 		listSessionsInput := admindtos.AdminListUserSessionsInput{
 			UserID: managedUserID,
@@ -235,8 +234,10 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("Revoke All User Sessions", func(t *testing.T) {
-		bulkSessionID := ulid.Make().String()
-		_, _ = env.Auth.ILegacyAuthServices.CreateSession(context.Background(), bulkSessionID, string(enums.User), managedUserID, nil)
+		_, err := env.Auth.Sessions.Create(context.Background(), &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
+		if err != nil {
+			t.Fatalf("Failed to create bulk session: %v", err)
+		}
 
 		revokeAllInput := admindtos.AdminRevokeUserSessionsInput{
 			UserID: managedUserID,

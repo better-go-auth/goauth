@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 
-	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
+	"github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
@@ -22,7 +22,7 @@ type IAccessTokenAuthService interface {
 
 // IAccessTokenSessionService manages JWT access token + refresh token sessions.
 type IAccessTokenSessionService interface {
-	serv_interfaces.LegacySessionService
+	interfaces.LegacySessionService
 }
 
 // IAccessTokenProfileService handles user profile operations.
