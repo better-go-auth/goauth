@@ -11,6 +11,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -101,11 +102,11 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 	})
 
 	t.Run("Active session is not revoked", func(t *testing.T) {
-		sessionID := ulid.Make().String()
-		_, err := env.Auth.ILegacyAuthServices.CreateSession(ctx, sessionID, string(enums.User), testUser.ID, nil)
+		swu, err := env.Auth.Sessions.Create(ctx, &testUser, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 		if err != nil {
-			t.Fatalf("CreateSession failed: %v", err)
+			t.Fatalf("Create session failed: %v", err)
 		}
+		sessionID := swu.Session.ID
 
 		revoked, err := revStore.IsRevoked(ctx, sessionID)
 		if err != nil {

@@ -13,6 +13,7 @@ import (
 	// "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/models/migration"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -30,10 +31,11 @@ type InitContext struct {
 	// INormalAuthServices serv_interfaces.INormalAuthServices
 	// ILegacyAuthServices serv_interfaces.ILegacyAuthServices
 	//
-	IAuthRepos    repo_interfaces.IAuthRepos
-	MiddleWare    *middleware.AuthMiddleware
-	Authenticator authenticator.AuthenticateFunc
-	Hooks         HookRegistry
+	IAuthRepos       repo_interfaces.IAuthRepos
+	MiddleWare       *middleware.AuthMiddleware
+	Authenticator    authenticator.AuthenticateFunc
+	Hooks            HookRegistry
+	SecondaryStorage sec_storage.SecondaryStorage
 
 	// Extras allows plugins that need ORM-specific objects (e.g. *gorm.DB) to
 	// receive them without coupling the interface to any particular ORM.

@@ -119,10 +119,12 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	p.sessionMgr = ictx.SessionManager
 
-	// Resolve secondary storage from Extras if available
-	var secStorage sec_storage.SecondaryStorage
-	if ssVal, ok := ictx.Extras["secondaryStorage"].(sec_storage.SecondaryStorage); ok {
-		secStorage = ssVal
+	// Resolve secondary storage
+	secStorage := ictx.SecondaryStorage
+	if secStorage == nil && ictx.Extras != nil {
+		if ssVal, ok := ictx.Extras["secondaryStorage"].(sec_storage.SecondaryStorage); ok {
+			secStorage = ssVal
+		}
 	}
 	p.secStorage = secStorage
 

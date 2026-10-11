@@ -197,7 +197,7 @@ func (aus *ProfileService) VerifyChangeEmail(ctx context.Context, userId string,
 		newEmail = strings.ToLower(newEmail)
 
 		// 4. update the email on User
-		updated, err := aus.UserRepo.UpdateUser(txCtx, userId, map[string]interface{}{
+		updated, err := aus.UserRepo.UpdateUser(txCtx, userId, map[string]any{
 			"Email":         newEmail,
 			"EmailVerified": true,
 		})

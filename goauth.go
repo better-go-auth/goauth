@@ -196,11 +196,12 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		SessionManager: sessionMgr,
 		// INormalAuthServices: sessionMgr,
 
-		IAuthRepos:    repos,
-		MiddleWare:    mdlWare,
-		Authenticator: authenticate,
-		Hooks:         hooks,
-		Extras:        map[string]any{
+		IAuthRepos:       repos,
+		MiddleWare:       mdlWare,
+		Authenticator:    authenticate,
+		Hooks:            hooks,
+		SecondaryStorage: opts.SecondaryStorage,
+		Extras: map[string]any{
 			// "sessionManager":   sessionMgr,
 			// "secondaryStorage": opts.SecondaryStorage,
 			// "cookieManager":    cookieMgr,
