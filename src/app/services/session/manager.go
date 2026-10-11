@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -25,24 +25,10 @@ import (
 const dontRememberLifetime = 24 * time.Hour
 
 // Meta is request metadata stored on new sessions.
-type Meta struct {
-	IPAddress string
-	UserAgent string
-}
+type Meta = serv_interfaces.SessionMeta
 
 // CreateOptions customises a new session.
-type CreateOptions struct {
-	// DontRemember creates a 1-day session that is never refreshed (rememberMe=false).
-	DontRemember         bool
-	ExpiresIn            time.Duration
-	ImpersonatedBy       *string
-	ActiveOrganizationID *string
-	// ID sets the session id (legacy callers pick it before creating); empty generates one.
-	ID string
-	// goauth extras carried by legacy JWT sessions
-	ActiveOrganizationRole *string
-	DeviceToken            string
-}
+type CreateOptions = serv_interfaces.SessionCreateOptions
 
 // Manager creates, reads, refreshes and revokes sessions.
 type Manager struct {
@@ -54,9 +40,17 @@ type Manager struct {
 	now          func() time.Time
 }
 
+var _ serv_interfaces.ISessionService = (*Manager)(nil)
+
 // NewManager builds a Manager; store and hooks may be nil.
 func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions repo_interfaces.ISessionRepo, store sec_storage.SecondaryStorage, hooks plugins.HookRegistry) *Manager {
-	return &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now}
+	mgr := &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now}
+	if hooks != nil {
+		hooks.OnUserBanned(func(ctx context.Context, userID string, reason *string) error {
+			return mgr.DeleteUserSessions(ctx, userID)
+		})
+	}
+	return mgr
 }
 
 // Create starts a new session for user.

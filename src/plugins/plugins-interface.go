@@ -24,8 +24,12 @@ type InitContext struct {
 	// UserRepo    repoimpl2.IUserRepo
 	// SessionRepo repoimpl2.ISessionRepo
 	// EmailSender emailiface.IVerificationSender
-	TxManager     interfaces.ITransactionManager
-	IAuthServices serv_interfaces.IAuthServices
+	TxManager interfaces.ITransactionManager
+	// Auth services
+	SessionManager serv_interfaces.ISessionManager
+	// INormalAuthServices serv_interfaces.INormalAuthServices
+	// ILegacyAuthServices serv_interfaces.ILegacyAuthServices
+	//
 	IAuthRepos    repo_interfaces.IAuthRepos
 	MiddleWare    *middleware.AuthMiddleware
 	Authenticator authenticator.AuthenticateFunc

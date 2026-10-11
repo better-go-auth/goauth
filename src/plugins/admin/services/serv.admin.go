@@ -37,8 +37,9 @@ type AdminService struct {
 	authConfig       config.AuthConfig
 	adminConfig      adminmodels.AdminConfig
 	secondaryStorage sec_storage.SecondaryStorage
-	sessionServ      serv_interfaces.LegSessionService
-	hooks            plugins.HookRegistry
+	sessionMgr       serv_interfaces.ISessionManager
+	// legacy_sessionServ serv_interfaces.LegacySessionService
+	hooks plugins.HookRegistry
 }
 
 var _ IAdminService = (*AdminService)(nil)
@@ -48,9 +49,9 @@ func (s *AdminService) SetHooks(hooks plugins.HookRegistry) {
 	s.hooks = hooks
 }
 
-// SetSessionService configures the core session service used to create and revoke sessions.
-func (s *AdminService) SetSessionService(sessionServ serv_interfaces.LegSessionService) {
-	s.sessionServ = sessionServ
+// SetSessionService configures the normal session service used to create and revoke sessions.
+func (s *AdminService) SetSessionService(sessionServ serv_interfaces.ISessionManager) {
+	s.sessionMgr = sessionServ
 }
 
 // SetAuthConfig provides the core auth configuration.
@@ -151,8 +152,8 @@ func (s *AdminService) SetUserRole(ctx context.Context, input admindtos.AdminSet
 	}
 
 	// Refresh sessions
-	if s.sessionServ != nil {
-		if err := s.sessionServ.DeleteAllUserSessions(ctx, input.UserID); err != nil {
+	if s.sessionMgr != nil {
+		if err := s.sessionMgr.DeleteUserSessions(ctx, input.UserID); err != nil {
 			return nil, err
 		}
 	} else {
@@ -197,8 +198,8 @@ func (s *AdminService) RemoveUser(ctx context.Context, input admindtos.AdminRemo
 		return autherr.New(autherr.BadRequest, "userId is required", http.StatusBadRequest)
 	}
 
-	if s.sessionServ != nil {
-		if err := s.sessionServ.DeleteAllUserSessions(ctx, input.UserID); err != nil {
+	if s.sessionMgr != nil {
+		if err := s.sessionMgr.DeleteUserSessions(ctx, input.UserID); err != nil {
 			return fmt.Errorf("adminsvc: revoke user sessions: %w", err)
 		}
 	}
@@ -234,8 +235,8 @@ func (s *AdminService) BanUser(ctx context.Context, input admindtos.AdminBanUser
 
 	// Terminate all sessions for the banned user
 	deleteSecondaryStorageSessions(s.secondaryStorage, input.UserID)
-	if s.sessionServ != nil {
-		if err := s.sessionServ.DeleteAllUserSessions(ctx, input.UserID); err != nil {
+	if s.sessionMgr != nil {
+		if err := s.sessionMgr.DeleteUserSessions(ctx, input.UserID); err != nil {
 			return nil, fmt.Errorf("adminsvc: revoke sessions on ban: %w", err)
 		}
 	} else {
@@ -324,4 +325,3 @@ func (s *AdminService) HasPermission(ctx context.Context, input admindtos.AdminH
 
 	return &admindtos.AdminHasPermissionResponse{Success: false}, nil
 }
-

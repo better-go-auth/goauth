@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
-	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 )
 
@@ -78,7 +78,7 @@ func (h *OrgHandler) ListOrgs(ctx context.Context, input *ListOrgsInput) (*humat
 	}{Organizations: resps}, http.StatusOK), nil
 }
 
-func (h *OrgHandler) SetActiveOrg(ctx context.Context, input *SetActiveOrgInput) (*humatypes.HumaRes[*models.AuthTokens], error) {
+func (h *OrgHandler) SetActiveOrg(ctx context.Context, input *SetActiveOrgInput) (*humatypes.HumaRes[*dtos.SessionWithUser], error) {
 	session, err := h.Authenticate(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)

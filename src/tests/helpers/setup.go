@@ -20,6 +20,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/consts"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
+	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
@@ -193,6 +194,16 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		log.Fatalf("failed to initialize org plugin: %v", err)
 	}
 
+	accessTokenPlugin := accesstoken.New(
+		accesstoken.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}),
+		accesstoken.WithVerificationConfig(loc_conf.EmailVerification{
+			GoAuth: loc_conf.EmailVerificationGoAuth{
+				CodeExpiresIn: 15 * time.Minute,
+				CodeSender:    mockEmail,
+			},
+		}),
+	)
+
 	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn:             gormDB,
 		SecondaryStorage: secStorage,
@@ -210,6 +221,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		Plugins: []plugin.Plugin{
 			adminPlugin,
 			orgPlugin,
+			accessTokenPlugin,
 		},
 	})
 	if err != nil {
@@ -250,8 +262,8 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	sConf := loc_conf.SessionGoAuth{JWT: jwt}
 
 	// gormauth.NewAuthRepos(opts.Conn)
-	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)
-	profileServ := profile.NewProfileServH(auth.Provider, auth.IAuthServices, auth.IAuthServices, auth.Repositories)
+	authSvc := coreauth.NewAuthService(&sConf, auth.Provider, auth.ILegacyAuthServices, auth.ILegacyAuthServices, auth.Repositories)
+	profileServ := profile.NewProfileServH(auth.Provider, auth.ILegacyAuthServices, auth.ILegacyAuthServices, auth.Repositories)
 	// Handlers
 	sSvc := session.NewService(sConf, auth.Repositories, auth.Sessions, secStorage)
 	authHandler := coreauth.NewAuthHandler(auth.Provider, authSvc)

@@ -4,7 +4,7 @@ package orgsvc
 import (
 	"context"
 
-	coremodels "github.com/better-go-auth/goauth/src/models"
+	authdtos "github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 )
@@ -19,7 +19,7 @@ type IOrgService interface {
 	ListOrganizations(ctx context.Context, userID string) ([]models.Organization, error)
 
 	// Active org
-	SetActiveOrganization(ctx context.Context, sessionID string, orgID *string, userId, role string) (*coremodels.AuthTokens, error)
+	SetActiveOrganization(ctx context.Context, sessionID string, orgID *string, userId, role string) (*authdtos.SessionWithUser, error)
 
 	// Invitations
 	InviteMember(ctx context.Context, inviterUserID string, input dtos.InviteMemberInput) (*models.Invitation, error)

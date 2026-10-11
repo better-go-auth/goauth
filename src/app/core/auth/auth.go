@@ -20,7 +20,7 @@ type LegacyService struct {
 	Provider *providers.IProviderS
 	// services
 	VSvc   serv_interfaces.IVerificationService
-	SesSvc serv_interfaces.LegSessionService
+	SesSvc serv_interfaces.LegacySessionService
 	// repos
 	userRepo    repo_interfaces.IUserRepo
 	accountRepo repo_interfaces.IOAuthAccountRepo
@@ -32,7 +32,7 @@ type LegacyService struct {
 	Passwords *authcrypto.Passwords
 }
 
-func NewAuthService(conf *config.SessionGoAuth, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.LegSessionService, authRepos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) *LegacyService {
+func NewAuthService(conf *config.SessionGoAuth, provSvc *providers.IProviderS, vSvc serv_interfaces.IVerificationService, sSvc serv_interfaces.LegacySessionService, authRepos repo_interfaces.IAuthRepos, hooks ...plugins.HookRegistry) *LegacyService {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]

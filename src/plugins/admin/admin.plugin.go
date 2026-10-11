@@ -114,9 +114,9 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	if ictx != nil {
 		p.authenticate = ictx.Authenticator
 		svc.SetAuthConfig(ictx.Config)
-		if ictx.IAuthServices != nil {
-			svc.SetSessionService(ictx.IAuthServices)
-		}
+
+		svc.SetSessionService(ictx.SessionManager)
+
 		if ictx.Hooks != nil {
 			ictx.Hooks.Register(p.hookService)
 			p.service.SetHooks(ictx.Hooks)

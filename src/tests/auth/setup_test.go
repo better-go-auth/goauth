@@ -102,7 +102,7 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 
 	t.Run("Active session is not revoked", func(t *testing.T) {
 		sessionID := ulid.Make().String()
-		_, err := env.Auth.IAuthServices.CreateSession(ctx, sessionID, string(enums.User), testUser.ID, nil)
+		_, err := env.Auth.ILegacyAuthServices.CreateSession(ctx, sessionID, string(enums.User), testUser.ID, nil)
 		if err != nil {
 			t.Fatalf("CreateSession failed: %v", err)
 		}

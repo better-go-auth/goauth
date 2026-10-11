@@ -131,7 +131,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 
 	t.Run("07 List User Sessions", func(t *testing.T) {
 		userSessionID = ulid.Make().String()
-		_, err := env.Auth.IAuthServices.CreateSession(ctx, userSessionID, string(enums.User), managedUserID, nil)
+		_, err := env.Auth.ILegacyAuthServices.CreateSession(ctx, userSessionID, string(enums.User), managedUserID, nil)
 		if err != nil {
 			t.Fatalf("Failed to create session for managed user: %v", err)
 		}
@@ -169,7 +169,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 
 	t.Run("09 Revoke All User Sessions", func(t *testing.T) {
 		bulkSessionID := ulid.Make().String()
-		_, _ = env.Auth.IAuthServices.CreateSession(ctx, bulkSessionID, string(enums.User), managedUserID, nil)
+		_, _ = env.Auth.ILegacyAuthServices.CreateSession(ctx, bulkSessionID, string(enums.User), managedUserID, nil)
 
 		revokeAllInput := admindtos.AdminRevokeUserSessionsInput{
 			UserID: managedUserID,

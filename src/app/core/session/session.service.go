@@ -17,8 +17,6 @@ import (
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
-
-
 // Service is the legacy JWT transport on top of the shared better-auth sessions: every login is a normal
 // session row, the refresh token is that session's token, and the access token is a short JWT with sid = session id.
 type Service struct {
@@ -42,7 +40,7 @@ func NewService(conf config.SessionGoAuth, repos repo_interfaces.IAuthRepos, mgr
 	return &Service{SessionRepo: repos, users: repos, mgr: mgr, sConf: conf, sStore: sStore, Hooks: h}
 }
 
-var _ serv_interfaces.LegSessionService = (*Service)(nil)
+var _ serv_interfaces.LegacySessionService = (*Service)(nil)
 
 // tokens signs the access JWT for s and returns it with the session token as the refresh token.
 func (aus Service) tokens(s *models.Session, role string) (*models.AuthTokens, error) {

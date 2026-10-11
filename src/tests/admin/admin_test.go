@@ -37,7 +37,7 @@ func setupAdminUser(t *testing.T, env *helpers.TestEnv) (string, map[string]stri
 	}
 
 	sessionID := ulid.Make().String()
-	tokens, err := env.Auth.IAuthServices.CreateSession(context.Background(), sessionID, string(enums.Admin), adminUser.ID, nil)
+	tokens, err := env.Auth.ILegacyAuthServices.CreateSession(context.Background(), sessionID, string(enums.Admin), adminUser.ID, nil)
 	if err != nil {
 		t.Fatalf("Failed to create admin session: %v", err)
 	}
@@ -203,7 +203,7 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 
 	t.Run("List User Sessions", func(t *testing.T) {
 		userSessionID = ulid.Make().String()
-		_, err := env.Auth.IAuthServices.CreateSession(context.Background(), userSessionID, string(enums.User), managedUserID, nil)
+		_, err := env.Auth.ILegacyAuthServices.CreateSession(context.Background(), userSessionID, string(enums.User), managedUserID, nil)
 		if err != nil {
 			t.Fatalf("Failed to create session for managed user: %v", err)
 		}
@@ -236,7 +236,7 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 
 	t.Run("Revoke All User Sessions", func(t *testing.T) {
 		bulkSessionID := ulid.Make().String()
-		_, _ = env.Auth.IAuthServices.CreateSession(context.Background(), bulkSessionID, string(enums.User), managedUserID, nil)
+		_, _ = env.Auth.ILegacyAuthServices.CreateSession(context.Background(), bulkSessionID, string(enums.User), managedUserID, nil)
 
 		revokeAllInput := admindtos.AdminRevokeUserSessionsInput{
 			UserID: managedUserID,

@@ -9,6 +9,7 @@ import (
 
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
@@ -47,7 +48,7 @@ func setupOrgUser(t *testing.T, env *helpers.TestEnv, email string, orgID, orgRo
 		}
 	}
 
-	tokens, err := env.Auth.IAuthServices.CreateSession(context.Background(), sessionID, enums.User.S(), user.ID, opt)
+	tokens, err := env.Auth.ILegacyAuthServices.CreateSession(context.Background(), sessionID, enums.User.S(), user.ID, opt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
@@ -113,9 +114,9 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			t.Fatalf("SetActiveOrg failed: status %d, body: %s", setResp.StatusCode, setBody)
 		}
 		{
-			var tokenResp models.AuthTokens
-			if err := json.Unmarshal([]byte(setBody), &tokenResp); err == nil && tokenResp.AccessToken != "" {
-				ownerAuthHeader = map[string]string{"Authorization": "Bearer " + tokenResp.AccessToken}
+			var swu dtos.SessionWithUser
+			if err := json.Unmarshal([]byte(setBody), &swu); err == nil && swu.Session.Token != "" {
+				ownerAuthHeader = map[string]string{"Authorization": "Bearer " + swu.Session.Token}
 			}
 		}
 
@@ -163,12 +164,27 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			t.Fatalf("SetActiveOrg failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var tokenResp models.AuthTokens
-		if err := json.Unmarshal([]byte(body), &tokenResp); err != nil {
+		var swu dtos.SessionWithUser
+		if err := json.Unmarshal([]byte(body), &swu); err != nil {
 			t.Fatalf("Failed to decode SetActiveOrg response: %v, raw: %s", err, body)
 		}
-		if tokenResp.AccessToken != "" {
-			ownerAuthHeader = map[string]string{"Authorization": "Bearer " + tokenResp.AccessToken}
+		if swu.Session.Token == "" {
+			t.Fatalf("Expected valid session token in SetActiveOrg response")
+		}
+		ownerAuthHeader = map[string]string{"Authorization": "Bearer " + swu.Session.Token}
+
+		// Legacy client refresh flow: exchange session token for JWT access token with new org claim
+		refreshInput := map[string]string{"token": swu.Session.Token}
+		refResp, refBody := env.PostJSON("/api/auth/refresh", refreshInput, nil)
+		if isSuccess(refResp.StatusCode) {
+			var refData struct {
+				Body struct {
+					Token string `json:"token"`
+				} `json:"body"`
+			}
+			if err := json.Unmarshal([]byte(refBody), &refData); err == nil && refData.Body.Token != "" {
+				ownerAuthHeader = map[string]string{"Authorization": "Bearer " + refData.Body.Token}
+			}
 		}
 	})
 

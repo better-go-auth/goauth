@@ -72,8 +72,8 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SetActiveOrg handler failed: %v", err)
 		}
-		if setActResp != nil && setActResp.Body.AccessToken != "" {
-			ownerAuth.Authorization = "Bearer " + setActResp.Body.AccessToken
+		if setActResp != nil && setActResp.Body.Session.Token != "" {
+			ownerAuth.Authorization = "Bearer " + setActResp.Body.Session.Token
 		}
 
 		resp, err := env.OrgHandler.UpdateOrg(ctx, &humaorg.UpdateOrgInput{
@@ -113,10 +113,10 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SetActiveOrg handler failed: %v", err)
 		}
-		if resp == nil || resp.Body.AccessToken == "" {
-			t.Fatalf("Expected valid access token in SetActiveOrg response")
+		if resp == nil || resp.Body.Session.Token == "" {
+			t.Fatalf("Expected valid session token in SetActiveOrg response")
 		}
-		ownerAuth.Authorization = "Bearer " + resp.Body.AccessToken
+		ownerAuth.Authorization = "Bearer " + resp.Body.Session.Token
 	})
 
 	t.Run("06 Invite Member", func(t *testing.T) {

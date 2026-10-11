@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	authconf "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
@@ -78,15 +79,22 @@ func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
 	// 2. Resolve Migrator
 	p.migrator = p.orgRepos.IMigrator
 
+	var sessionServ serv_interfaces.ISessionManager
+	if ictx != nil {
+		sessionServ = ictx.SessionManager
+	}
+
 	// 3. Create Org Service
-	p.service = orgsvc.New(
+	svc := orgsvc.New(
 		p.orgRepos.IOrgRepo,
 		p.orgRepos.IMemberRepo,
 		p.orgRepos.IInvitationRepo,
 		ictx.TxManager,
 		ictx.IAuthRepos,
-		ictx.IAuthServices,
+		sessionServ,
 	)
+
+	p.service = svc
 
 	p.hookService = orgsvc.NewOrgHookService(p.orgRepos.IOrgRepo, p.orgRepos.IMemberRepo)
 

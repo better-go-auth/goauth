@@ -16,7 +16,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg config.EmailVerification, provServ *providers.IProviderS, repos repo_interfaces.IAuthRepos, sessions *sessionsvc.Manager, hooks ...plugins.HookRegistry) serv_interfaces.IAuthServices {
+func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg config.EmailVerification, provServ *providers.IProviderS, repos repo_interfaces.IAuthRepos, sessions *sessionsvc.Manager, hooks ...plugins.HookRegistry) serv_interfaces.ILegacyAuthServices {
 	var h plugins.HookRegistry
 	if len(hooks) > 0 {
 		h = hooks[0]
@@ -40,11 +40,13 @@ func SetupAllAuthRoutesWithRepos(api huma.API, conf config.AuthConfig, vCfg conf
 	profileServ.Passwords = passwords
 
 	// Set up the routes
-	session.SetupSessionRoutes(api, provServ, sSvc, conf)
-	auth.SetupAuthRoutes(api, provServ, authSvc, conf)
-	profile.SetUserProfileRoutes(api, provServ, profileServ, conf)
-	return serv_interfaces.AuthServiceImpl{
+	if api != nil {
+		session.SetupSessionRoutes(api, provServ, sSvc, conf)
+		auth.SetupAuthRoutes(api, provServ, authSvc, conf)
+		profile.SetUserProfileRoutes(api, provServ, profileServ, conf)
+	}
+	return serv_interfaces.LegacyAuthServiceImpl{
 		IVerificationService: vSvc,
-		LegSessionService:    sSvc,
+		LegacySessionService: sSvc,
 	}
 }

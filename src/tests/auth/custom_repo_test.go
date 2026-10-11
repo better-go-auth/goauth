@@ -54,7 +54,7 @@ func TestSetupGoAuth_CustomRepositoriesWithoutGorm(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotNil(t, app)
 	assert.True(t, migrator.migrated, "Custom migrator should be executed")
-	assert.NotNil(t, app.IAuthServices)
+	assert.NotNil(t, app.ILegacyAuthServices)
 }
 
 func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {

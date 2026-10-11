@@ -34,14 +34,15 @@ import (
 )
 
 type GoAuth struct {
-	Options            GoAuthOptions
-	Plugins            map[string]plugin.Plugin
-	Hooks              plugin.HookRegistry
-	IAuthServices      serv_interfaces.IAuthServices
-	MiddleWare         middleware.AuthMiddleware
-	MiddlewareInt      middleware.IAuthMiddleware
-	RevocationStore    middleware.RevocationStore
-	TransactionManager interfaces.ITransactionManager
+	Options GoAuthOptions
+	Plugins map[string]plugin.Plugin
+	Hooks   plugin.HookRegistry
+	// todo: legacy service will be removed fromt he default goAuth
+	ILegacyAuthServices serv_interfaces.ILegacyAuthServices
+	MiddleWare          middleware.AuthMiddleware
+	MiddlewareInt       middleware.IAuthMiddleware
+	RevocationStore     middleware.RevocationStore
+	TransactionManager  interfaces.ITransactionManager
 
 	Provider     *providers.IProviderS
 	Repositories repo_interfaces.IAuthRepos
@@ -163,7 +164,15 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	sessionMgr := sessionsvc.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks)
 	mdlWare.WithSessions(humaadapter.NewSessionClaims(sessionMgr, cookieMgr, repos))
 
-	// setup the auth routes
+	// setup the auth routes (skip mounting legacy routes on api if access-token plugin is present)
+	// var legacyAPI huma.API = api
+	// for _, p := range opts.Plugins {
+	// 	if p != nil && p.ID() == "access-token" {
+	// 		legacyAPI = nil
+	// 		break
+	// 	}
+	// }
+	// TODO: remove this
 	authSvc := core.SetupAllAuthRoutesWithRepos(api, opts.AuthConfig, opts.EmailVerification, providerService, repos, sessionMgr, hooks)
 
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
@@ -181,16 +190,23 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	// TODO: use the session function here
 	authenticate := authenticator.NewDefaultAuthenticator(opts.GoAuth.Session.JWT.AccessSecret, repos)
 	initCtx := &plugin.InitContext{
-		Ctx:           context.Background(),
-		Api:           api,
-		Config:        opts.AuthConfig,
-		TxManager:     txManager,
-		IAuthServices: authSvc,
+		Ctx:            context.Background(),
+		Api:            api,
+		Config:         opts.AuthConfig,
+		TxManager:      txManager,
+		SessionManager: sessionMgr,
+		// INormalAuthServices: sessionMgr,
+
 		IAuthRepos:    repos,
 		MiddleWare:    mdlWare,
 		Authenticator: authenticate,
 		Hooks:         hooks,
-		Extras:        map[string]any{},
+		Extras:        map[string]any{
+			// "sessionManager":   sessionMgr,
+			// "secondaryStorage": opts.SecondaryStorage,
+			// "cookieManager":    cookieMgr,
+			// "db":               opts.Conn,
+		},
 	}
 
 	// Phase 1: Run migrations for all plugins first
@@ -221,20 +237,20 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	}
 
 	return &GoAuth{
-		Options:            opts,
-		Plugins:            pluginMap,
-		Hooks:              hooks,
-		IAuthServices:      authSvc,
-		MiddleWare:         *mdlWare,
-		RevocationStore:    revocationStore,
-		TransactionManager: txManager,
-		Provider:           providerService,
-		Repositories:       repos,
-		MiddlewareInt:      mdlWare,
-		Sessions:           sessionMgr,
-		Auth:               authService,
-		SessionResolver:    resolver,
-		Cookies:            cookieMgr,
+		Options:             opts,
+		Plugins:             pluginMap,
+		Hooks:               hooks,
+		ILegacyAuthServices: authSvc,
+		MiddleWare:          *mdlWare,
+		RevocationStore:     revocationStore,
+		TransactionManager:  txManager,
+		Provider:            providerService,
+		Repositories:        repos,
+		MiddlewareInt:       mdlWare,
+		Sessions:            sessionMgr,
+		Auth:                authService,
+		SessionResolver:     resolver,
+		Cookies:             cookieMgr,
 	}, nil
 }
 

@@ -13,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
+	authdtos "github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
 
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
@@ -29,8 +30,9 @@ type OrgService struct {
 	inviteRepo orgrepo.IInvitationRepo
 	// sessionRepo repoimpl2.ISessionRepo
 	// emailSender emailiface.IVerificationSender
-	userRepo    corerepo.IUserRepo
-	sessionServ serv_interfaces.LegSessionService
+	userRepo   corerepo.IUserRepo
+	sessionMgr serv_interfaces.ISessionManager
+
 	// baseURL     string
 	// basePath    string
 	txManager interfaces.ITransactionManager
@@ -45,6 +47,11 @@ var _ IOrgService = (*OrgService)(nil)
 // SetHooks configures lifecycle hooks on the org service.
 func (s *OrgService) SetHooks(hooks plugins.HookRegistry) {
 	s.hooks = hooks
+}
+
+// SetSessionService configures the normal session service on the org service.
+func (s *OrgService) SetSessionService(sessionServ serv_interfaces.ISessionService) {
+	s.sessionMgr = sessionServ
 }
 
 // HandleUserDeleted cleans up a deleted user's memberships across organizations.
@@ -65,23 +72,15 @@ func New(
 	inviteRepo orgrepo.IInvitationRepo,
 	txManager interfaces.ITransactionManager,
 	authRepos repo_interfaces.IAuthRepos,
-	sessionServ serv_interfaces.LegSessionService,
+	sessionMgr serv_interfaces.ISessionManager,
 ) *OrgService {
-	// if basePath == "" {
-	// 	basePath = "/api/auth"
-	// }
 	return &OrgService{
-		orgRepo:     orgRepo,
-		memberRepo:  memberRepo,
-		inviteRepo:  inviteRepo,
-		userRepo:    authRepos,
-		sessionServ: sessionServ,
-		// sessionRepo: sessionRepo,
-		// userRepo:    userRepo,
-		// emailSender: emailSender,
-		// baseURL:     baseURL,
-		// basePath:    basePath,
-		txManager: txManager,
+		orgRepo:    orgRepo,
+		memberRepo: memberRepo,
+		inviteRepo: inviteRepo,
+		userRepo:   authRepos,
+		sessionMgr: sessionMgr,
+		txManager:  txManager,
 	}
 }
 
@@ -185,10 +184,10 @@ func (s *OrgService) ListOrganizations(ctx context.Context, userID string) ([]mo
 
 // ─── Active Organization ──────────────────────────────────────────────────────
 
-func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string, orgID *string, userId, role string) (*coremodels.AuthTokens, error) {
+func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string, orgID *string, userId, role string) (*authdtos.SessionWithUser, error) {
 	var member *models.Member
-	var err error
-	if orgID != nil {
+	var orgRole *string
+	if orgID != nil && *orgID != "" {
 		// Verify org exists and is active before allowing it to be set
 		org, err := s.orgRepo.GetOrgByID(ctx, *orgID)
 		if err != nil || org == nil {
@@ -203,7 +202,7 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 			return nil, orgerrors.ErrOrgNotActive
 		}
 
-		// users org role
+		// user's org role
 		member, err = s.memberRepo.GetMemberByOrgAndUser(ctx, *orgID, userId)
 		if err != nil {
 			return nil, err
@@ -211,20 +210,59 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 		if member == nil {
 			return nil, orgerrors.ErrMemberNotFound
 		}
+		r := member.Role.String()
+		orgRole = &r
 	}
-	sesOpt := coremodels.SessionOpt{
-		ActiveOrgID: orgID,
+
+	data := map[string]any{
+		"ActiveOrganizationID":   orgID,
+		"ActiveOrganizationRole": orgRole,
 	}
-	if member != nil {
-		sesOpt.OrgRole = new(member.Role.String())
+
+	var updatedSession *authdtos.SessionWithUser
+
+	// 1. Better-Auth flow: update session via normal session service
+	if s.sessionMgr != nil {
+		if sRepo, ok := s.userRepo.(repo_interfaces.ISessionRepo); ok && sessionID != "" {
+			dbSess, err := sRepo.FindSessionByID(ctx, sessionID)
+			if err == nil && dbSess != nil {
+				sw, err := s.sessionMgr.Get(ctx, dbSess.Token)
+				if err == nil && sw != nil {
+					updatedSession, _ = s.sessionMgr.Update(ctx, sw, data)
+				}
+			}
+		}
+		if updatedSession == nil && sessionID != "" {
+			sw, err := s.sessionMgr.Get(ctx, sessionID)
+			if err == nil && sw != nil {
+				updatedSession, _ = s.sessionMgr.Update(ctx, sw, data)
+			}
+		}
 	}
-	// TODO make sure cached tokens and etc are updated and same session with old org id is not used
-	// use some sort of version mechanism and etc
-	resp, err := s.sessionServ.CreateSession(ctx, sessionID, role, userId, &sesOpt)
-	if err == nil && s.hooks != nil && orgID != nil {
+
+	// 2. Direct DB fallback
+	if updatedSession == nil {
+		if sRepo, ok := s.userRepo.(repo_interfaces.ISessionRepo); ok && sessionID != "" {
+			sess, err := sRepo.UpdateSession(ctx, sessionID, data)
+			if err == nil && sess != nil {
+				user, _ := s.userRepo.FindUserByID(ctx, userId)
+				updatedSession = &authdtos.SessionWithUser{
+					Session: authdtos.SessionFromModel(sess),
+					User:    authdtos.UserFromModel(user),
+				}
+			}
+		}
+	}
+
+	if s.hooks != nil && orgID != nil && *orgID != "" {
 		_ = s.hooks.TriggerActiveOrgChanged(ctx, userId, *orgID)
 	}
-	return resp, err
+
+	if updatedSession == nil {
+		return nil, fmt.Errorf("orgsvc: failed to update active organization on session")
+	}
+
+	return updatedSession, nil
 }
 
 // ─── Admin Org Management ─────────────────────────────────────────────────────

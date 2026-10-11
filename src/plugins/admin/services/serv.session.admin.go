@@ -5,9 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
+	"github.com/better-go-auth/goauth/src/app/services/serv_interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
-	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
@@ -57,8 +58,8 @@ func (s *AdminService) RevokeUserSessions(ctx context.Context, input admindtos.A
 	}
 
 	deleteSecondaryStorageSessions(s.secondaryStorage, input.UserID)
-	if s.sessionServ != nil {
-		if err := s.sessionServ.DeleteAllUserSessions(ctx, input.UserID); err != nil {
+	if s.sessionMgr != nil {
+		if err := s.sessionMgr.DeleteUserSessions(ctx, input.UserID); err != nil {
 			return fmt.Errorf("adminsvc: revoke user sessions: %w", err)
 		}
 	} else {
@@ -86,40 +87,32 @@ func (s *AdminService) ImpersonateUser(ctx context.Context, input admindtos.Admi
 	if targetUser.Banned {
 		return nil, autherr.ErrUserBanned
 	}
-	if s.sessionServ == nil {
-		return nil, fmt.Errorf("adminsvc: session service not configured")
-	}
 
 	expiresIn := s.adminConfig.ImpersonationSessionExpiresIn
 	if expiresIn <= 0 {
-		expiresIn = s.authConfig.GoAuth.Session.JWT.RefreshExpiresIn
+		expiresIn = time.Hour
 	}
 
-	// Issue a regular JWT session so the impersonated token passes the auth middleware.
-	sessionID := models.NewSecureId()
-	tokens, err := s.sessionServ.CreateSession(ctx, sessionID, targetUser.Role.S(), targetUser.ID, &models.SessionOpt{
-		ImpersonatedBy: &adminUser.ID,
-		ExpiresIn:      expiresIn,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("adminsvc: create impersonation session: %w", err)
+	// 1. Better-Auth flow: create session via normal session service
+	if s.sessionMgr != nil {
+		sw, err := s.sessionMgr.Create(ctx, targetUser, serv_interfaces.SessionMeta{
+			IPAddress: reqMeta.IPAddress,
+			UserAgent: reqMeta.UserAgent,
+		}, serv_interfaces.SessionCreateOptions{
+			ImpersonatedBy: &adminUser.ID,
+			ExpiresIn:      expiresIn,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("adminsvc: create impersonation session: %w", err)
+		}
+		userResp := dtos.UserFromModel(targetUser)
+		return &dtos.SignInResponse{
+			User:        &userResp,
+			Token:       sw.Session.Token,
+			SessionData: &sw.Session,
+		}, nil
 	}
-
-	createdSession, err := s.adminRepo.GetSessionByID(ctx, sessionID)
-	if err != nil {
-		return nil, fmt.Errorf("adminsvc: load impersonation session: %w", err)
-	}
-
-	sessData := dtos.SessionFromModel(createdSession)
-	// The refresh token is deliberately not returned: impersonation must not outlive its session row.
-	sessData.Token = tokens.AccessToken
-	userResp := dtos.UserFromModel(targetUser)
-
-	return &dtos.SignInResponse{
-		User:        &userResp,
-		Token:       tokens.AccessToken,
-		SessionData: &sessData,
-	}, nil
+	return nil, fmt.Errorf("adminsvc: session service not configured")
 }
 
 // StopImpersonating terminates the impersonation session identified by sessionID.
@@ -137,9 +130,8 @@ func (s *AdminService) StopImpersonating(ctx context.Context, sessionID string) 
 		return autherr.New(autherr.BadRequest, "Not currently impersonating a user", http.StatusBadRequest)
 	}
 
-	if s.sessionServ != nil {
-		// also blacklists the session so the impersonation access token stops working
-		if err := s.sessionServ.DeleteSession(ctx, session.ID); err != nil {
+	if s.sessionMgr != nil {
+		if err := s.sessionMgr.Delete(ctx, session.Token); err != nil {
 			return fmt.Errorf("adminsvc: delete impersonation session: %w", err)
 		}
 		return nil
