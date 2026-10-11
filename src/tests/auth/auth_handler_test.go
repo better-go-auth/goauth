@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	access_dto "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
@@ -51,11 +51,11 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("02 Verify Email", func(t *testing.T) {
-		verifyInput := auth.VerificationInput{
+		verifyInput := access_dto.VerificationInput{
 			Info: email,
 			Code: token,
 		}
-		resp, err := env.AuthHandler.VerifyRegisteredAccount(ctx, &humatypes.HumaReqBody[auth.VerificationInput]{
+		resp, err := env.AuthHandler.VerifyRegisteredAccount(ctx, &humatypes.HumaReqBody[access_dto.VerificationInput]{
 			Body: verifyInput,
 		})
 		if err != nil {
@@ -67,11 +67,11 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("03 Success: User Login", func(t *testing.T) {
-		loginInput := auth.LoginData{
+		loginInput := access_dto.LoginData{
 			LoginInfo: email,
 			Password:  initialPassword,
 		}
-		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
+		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[access_dto.LoginData]{
 			Body: loginInput,
 		})
 		if err != nil {
@@ -89,10 +89,10 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("04 Refresh Token", func(t *testing.T) {
-		refreshInput := auth.RefreshTokenInput{
+		refreshInput := access_dto.RefreshTokenInput{
 			Token: refreshToken,
 		}
-		resp, err := env.AuthHandler.RefreshToken(ctx, &humatypes.HumaReqBody[auth.RefreshTokenInput]{
+		resp, err := env.AuthHandler.RefreshToken(ctx, &humatypes.HumaReqBody[access_dto.RefreshTokenInput]{
 			Body: refreshInput,
 		})
 		if err != nil {
@@ -104,10 +104,10 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("05 Forgot Password Request", func(t *testing.T) {
-		forgotInput := auth.VerifyReqInput{
+		forgotInput := access_dto.VerifyReqInput{
 			Email: email,
 		}
-		resp, err := env.AuthHandler.ForgotPwd(ctx, &humatypes.HumaReqBody[auth.VerifyReqInput]{
+		resp, err := env.AuthHandler.ForgotPwd(ctx, &humatypes.HumaReqBody[access_dto.VerifyReqInput]{
 			Body: forgotInput,
 		})
 		if err != nil {
@@ -125,12 +125,12 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("06 Reset Password", func(t *testing.T) {
-		resetInput := auth.PwdResetInput{
+		resetInput := access_dto.PwdResetInput{
 			Info:        email,
 			Code:        resetCode,
 			NewPassword: newPassword,
 		}
-		resp, err := env.AuthHandler.ResetPwd(ctx, &humatypes.HumaReqBody[auth.PwdResetInput]{
+		resp, err := env.AuthHandler.ResetPwd(ctx, &humatypes.HumaReqBody[access_dto.PwdResetInput]{
 			Body: resetInput,
 		})
 		if err != nil {
@@ -142,8 +142,8 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("07 Verify Old Password Fails", func(t *testing.T) {
-		_, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
-			Body: auth.LoginData{
+		_, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[access_dto.LoginData]{
+			Body: access_dto.LoginData{
 				LoginInfo: email,
 				Password:  initialPassword,
 			},
@@ -154,8 +154,8 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("08 Verify New Password Login", func(t *testing.T) {
-		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
-			Body: auth.LoginData{
+		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[access_dto.LoginData]{
+			Body: access_dto.LoginData{
 				LoginInfo: email,
 				Password:  newPassword,
 			},
@@ -170,8 +170,8 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("09 Logout", func(t *testing.T) {
-		resp, err := env.AuthHandler.Logout(ctx, &humatypes.HumaReqBody[auth.RefreshTokenInput]{
-			Body: auth.RefreshTokenInput{
+		resp, err := env.AuthHandler.Logout(ctx, &humatypes.HumaReqBody[access_dto.RefreshTokenInput]{
+			Body: access_dto.RefreshTokenInput{
 				Token: activeRefreshToken,
 			},
 		})

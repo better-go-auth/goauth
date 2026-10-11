@@ -76,9 +76,9 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 	if err == nil && usr != nil {
 		// If the User is still pending verification, throw error
 		// todo create a time out
-		if usr.AccountStatus != enums.AccountPendingVerification {
-			return dtos.BadReqC[models.User](errors.UserExists), errors.UserExistError
-		}
+		// if usr.AccountStatus != enums.AccountPendingVerification {
+		// 	return dtos.BadReqC[models.User](errors.UserExists), errors.UserExistError
+		// }
 	}
 
 	hash, err := aus.Passwords.Hash(input.Password)
@@ -95,7 +95,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 				// "password":       hash,
 				"FirstName":     input.FirstName,
 				"LastName":      input.LastName,
-				"AccountStatus": enums.AccountPendingVerification,
+				// "AccountStatus": enums.AccountPendingVerification,
 				// is this ptr or actual value
 				"Role":   enums.User.S(),
 				"Active": false,
@@ -112,7 +112,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 					Email:     input.Email,
 					// Password:      hash,
 					Role:          enums.User,
-					AccountStatus: enums.AccountPendingVerification,
+					// AccountStatus: enums.AccountPendingVerification,
 					Active:        new(bool), // false
 				},
 			}
@@ -180,7 +180,7 @@ func (aus *AuthService) VerifyRegisteredUser(ctx context.Context, input accessto
 
 		// Update the user's status
 		updatedUsr, err := aus.UserRepo.UpdateUser(txCtx, usr.ID, map[string]interface{}{
-			"AccountStatus": enums.AccountActive,
+			// "AccountStatus": enums.AccountActive,
 			"Active":        true,
 			"EmailVerified": true,
 		})

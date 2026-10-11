@@ -29,9 +29,9 @@ func validEmail(email string) bool {
 //  3. Optionally send the verification email.
 //  4. Optionally sign the user in (create a session).
 func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, meta Meta) (*SignUpResult, error) {
-	ep := s.cfg.EmailAndPassword
+	epCfg := s.cfg.EmailAndPassword
 	// config: EmailAndPassword.Enabled=false or DisableSignUp=true turns this endpoint off
-	if !s.emailPasswordEnabled() || ep.DisableSignUp {
+	if !s.emailPasswordEnabled() || epCfg.DisableSignUp {
 		return nil, ErrEmailPasswordSignUpDisabled
 	}
 	if !validEmail(in.Email) {
@@ -47,7 +47,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	// config: when users must verify their email (RequireEmailVerification) or are not signed in after
 	// sign-up (AutoSignIn=false), the response never contains a session. In that case a duplicate email
 	// gets the same success-looking response as a new one, so attackers can't probe which emails exist.
-	genericDuplicate := ep.RequireEmailVerification || (ep.AutoSignIn != nil && !*ep.AutoSignIn)
+	genericDuplicate := epCfg.RequireEmailVerification || (epCfg.AutoSignIn != nil && !*epCfg.AutoSignIn)
 	email := strings.ToLower(in.Email)
 	// rememberMe=false (explicitly) gives a 1-day session that is never extended
 	dontRemember := in.RememberMe != nil && !*in.RememberMe
@@ -68,8 +68,8 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 			// hash anyway so both branches take the same time
 			_, _ = s.passwords.Hash(in.Password)
 			// config: OnExistingUserSignUp lets the app warn the real owner (e.g. "someone tried to register")
-			if ep.OnExistingUserSignUp != nil {
-				_ = ep.OnExistingUserSignUp(config.ExistingUserSignUpData{User: *existing}, request(ctx))
+			if epCfg.OnExistingUserSignUp != nil {
+				_ = epCfg.OnExistingUserSignUp(config.ExistingUserSignUpData{User: *existing}, request(ctx))
 			}
 			// fake user with a fresh ID, shaped exactly like a real sign-up response; nothing is stored
 			now := time.Now().UTC()
@@ -113,7 +113,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 
 	// config: EmailVerification.SendOnSignUp decides whether to email a verification link;
 	// when unset it follows RequireEmailVerification (better-auth's default)
-	sendOnSignUp := ep.RequireEmailVerification
+	sendOnSignUp := epCfg.RequireEmailVerification
 	if v := s.cfg.EmailVerification.SendOnSignUp; v != nil {
 		sendOnSignUp = *v
 	}
