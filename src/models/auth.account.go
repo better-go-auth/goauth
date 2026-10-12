@@ -7,9 +7,9 @@ import "time"
 type Account struct {
 	// ===== better-auth fields =====
 	Base                             // id, createdAt, updatedAt
-	AccountID             string     `json:"accountId"             gorm:"not null"           bun:"account_id,notnull"` // provider's user id; the user id for "credential"
-	ProviderID            Providers  `json:"providerId"            gorm:"not null"           bun:"provider_id,notnull"`
-	UserID                string     `json:"userId"                gorm:"not null;index"     bun:"user_id,notnull"`
+	AccountID             string     `json:"accountId"             gorm:"not null;uniqueIndex:idx_provider_account"                               bun:"account_id,notnull"` // provider's user id; the user id for "credential"
+	ProviderID            Providers  `json:"providerId"            gorm:"not null;uniqueIndex:idx_provider_account;uniqueIndex:idx_user_provider"  bun:"provider_id,notnull"`
+	UserID                string     `json:"userId"                gorm:"not null;index;uniqueIndex:idx_user_provider"                            bun:"user_id,notnull"`
 	AccessToken           *string    `json:"accessToken"                    bun:"access_token"`
 	RefreshToken          *string    `json:"refreshToken"                   bun:"refresh_token"`
 	IDToken               *string    `json:"idToken"                        bun:"id_token"`

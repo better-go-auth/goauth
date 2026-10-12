@@ -29,9 +29,9 @@ func validEmail(email string) bool {
 //  3. Optionally send the verification email.
 //  4. Optionally sign the user in (create a session).
 func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, meta Meta) (*SignUpResult, error) {
-	epCfg := s.cfg.EmailAndPassword
+	emlpwdCfg := s.cfg.EmailAndPassword
 	// config: EmailAndPassword.Enabled=false or DisableSignUp=true turns this endpoint off
-	if !s.emailPasswordEnabled() || epCfg.DisableSignUp {
+	if !s.emailPasswordEnabled() || emlpwdCfg.DisableSignUp {
 		return nil, ErrEmailPasswordSignUpDisabled
 	}
 	if !validEmail(in.Email) {
@@ -44,10 +44,11 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	if err := s.checkPasswordLength(in.Password); err != nil {
 		return nil, err
 	}
-	// config: when users must verify their email (RequireEmailVerification) or are not signed in after
-	// sign-up (AutoSignIn=false), the response never contains a session. In that case a duplicate email
+	// config: when users must verify their email (RequireEmailVerification=true) or 
+	// are not signed in aftersign-up (AutoSignIn=false), 
+	// the response never contains a session. In that case a duplicate email
 	// gets the same success-looking response as a new one, so attackers can't probe which emails exist.
-	genericDuplicate := epCfg.RequireEmailVerification || (epCfg.AutoSignIn != nil && !*epCfg.AutoSignIn)
+	requireVerification := emlpwdCfg.RequireEmailVerification || (emlpwdCfg.AutoSignIn != nil && !*emlpwdCfg.AutoSignIn)
 	email := strings.ToLower(in.Email)
 	// rememberMe=false (explicitly) gives a 1-day session that is never extended
 	dontRemember := in.RememberMe != nil && !*in.RememberMe
@@ -62,14 +63,14 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		}
 		if existing != nil {
 			// the email is taken and revealing it is harmless here (the user would be signed in anyway)
-			if !genericDuplicate {
+			if !requireVerification {
 				return autherr.ErrUserAlreadyExistsUseAnotherEmail
 			}
 			// hash anyway so both branches take the same time
 			_, _ = s.passwords.Hash(in.Password)
 			// config: OnExistingUserSignUp lets the app warn the real owner (e.g. "someone tried to register")
-			if epCfg.OnExistingUserSignUp != nil {
-				_ = epCfg.OnExistingUserSignUp(config.ExistingUserSignUpData{User: *existing}, request(ctx))
+			if emlpwdCfg.OnExistingUserSignUp != nil {
+				_ = emlpwdCfg.OnExistingUserSignUp(config.ExistingUserSignUpData{User: *existing}, request(ctx))
 			}
 			// fake user with a fresh ID, shaped exactly like a real sign-up response; nothing is stored
 			now := time.Now().UTC()
@@ -113,7 +114,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 
 	// config: EmailVerification.SendOnSignUp decides whether to email a verification link;
 	// when unset it follows RequireEmailVerification (better-auth's default)
-	sendOnSignUp := epCfg.RequireEmailVerification
+	sendOnSignUp := emlpwdCfg.RequireEmailVerification
 	if v := s.cfg.EmailVerification.SendOnSignUp; v != nil {
 		sendOnSignUp = *v
 	}
@@ -125,7 +126,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 
 	res = &SignUpResult{User: dtos.UserFromModel(created)}
 	// config: RequireEmailVerification / AutoSignIn=false → user is created but not signed in (token: null)
-	if genericDuplicate {
+	if requireVerification {
 		return res, nil
 	}
 	// sign the user in: new session in the DB and/or secondary storage, depending on the session config

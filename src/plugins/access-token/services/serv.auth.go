@@ -89,6 +89,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 	var createdUser *models.User
 	err = aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
 		existingUser, getErr := aus.UserRepo.FindUserByEmail(txCtx, input.Email)
+		//user exists
 		if getErr == nil && existingUser != nil {
 			// Update pending verification user
 			updated, err := aus.UserRepo.UpdateUser(txCtx, existingUser.ID, map[string]interface{}{
