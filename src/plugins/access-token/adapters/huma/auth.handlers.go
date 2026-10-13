@@ -4,15 +4,15 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	Icnst "github.com/better-go-auth/goauth/src/common"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/models"
 	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
-	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
+	services "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 )
 
 // AccessTokenHandler provides Huma handlers for access-token / JWT flows.

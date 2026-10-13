@@ -11,11 +11,12 @@ import (
 	"net/http"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
 
@@ -47,6 +48,7 @@ type Service struct {
 	tx         interfaces.ITransactionManager
 	// sessionFields maps client-writable session JSON names to Go field names (GoAuth.Session.UpdatableFields)
 	sessionFields map[string]string
+	Hooks         plugins.HookRegistry
 }
 
 var (

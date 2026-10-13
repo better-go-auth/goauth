@@ -29,7 +29,7 @@ type ProfileService struct {
 	Passwords   *authcrypto.Passwords
 }
 
-var _ IAccessTokenProfileService = (*ProfileService)(nil)
+var _ interfaces1.IAccessTokenProfileService = (*ProfileService)(nil)
 
 // NewProfileServH creates a ProfileService with IProviderS (backward compatibility).
 func NewProfileServH(genServ *providers.IProviderS, vSvc interfaces1.IVerificationService, sesSvc *SessionService, authRepos repo_interfaces.IAuthRepos) *ProfileService {

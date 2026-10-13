@@ -8,79 +8,22 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
-	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	errors "github.com/better-go-auth/goauth/src/common/errors"
-	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/common/logger"
-	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	model_dtos "github.com/better-go-auth/goauth/src/models/dtos"
+	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	"github.com/better-go-auth/goauth/src/plugins"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	accTokInterfaces "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
-	"github.com/better-go-auth/goauth/src/providers"
-	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
-
-// AuthService implements IAccessTokenAuthService for legacy JWT/token authentication.
-type AuthService struct {
-	Config   *config.SessionGoAuth
-	Provider *providers.IProviderS
-	// services
-	VSvc        accTokInterfaces.IVerificationService
-	SesSvc      *SessionService
-	coreAuthSvc authint.IAuthService
-	// repos
-	UserRepo    repo_interfaces.IUserRepo
-	AccountRepo repo_interfaces.IOAuthAccountRepo
-	SessionRepo repo_interfaces.ISessionRepo
-	// hooks & txn
-	TxMgr interfaces.ITransactionManager
-	Hooks plugins.HookRegistry
-	// Passwords hashes/verifies passwords; nil means legacy bcrypt.
-	Passwords *authcrypto.Passwords
-}
-
-var _ IAccessTokenAuthService = (*AuthService)(nil)
-
-// NewAuthService creates a new AuthService for the access-token plugin.
-func NewAuthService(
-	conf *config.SessionGoAuth,
-	coreAuthSvc authint.IAuthService,
-	vSvc accTokInterfaces.IVerificationService,
-	sSvc *SessionService,
-	authRepos repo_interfaces.IAuthRepos,
-	txMgr interfaces.ITransactionManager,
-	passwords *authcrypto.Passwords,
-	hooks ...plugins.HookRegistry,
-) *AuthService {
-	var h plugins.HookRegistry
-	if len(hooks) > 0 {
-		h = hooks[0]
-	}
-	return &AuthService{
-		Config:      conf,
-		VSvc:        vSvc,
-		SesSvc:      sSvc,
-		UserRepo:    authRepos,
-		AccountRepo: authRepos,
-		SessionRepo: authRepos,
-		TxMgr:       txMgr,
-		Passwords:   passwords,
-		Hooks:       h,
-		coreAuthSvc: coreAuthSvc,
-	}
-}
 
 // RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
 func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (*svcint.SignUpResult, error) {
-
 	var res *svcint.SignUpResult
 	var created *models.User
 	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
@@ -91,13 +34,13 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 		if existing != nil {
 			// hash anyway so both branches take the same time
 			_, _ = aus.Passwords.Hash(input.Password)
-			//generate clone user
+			// generate clone user
 			now := time.Now().UTC()
 			res = &svcint.SignUpResult{User: modeldtos.UserResponse{
 				ID: models.NewID(), Name: input.FirstName, Email: input.Email, Image: &input.Avatar,
 				CreatedAt: modeldtos.Time(now), UpdatedAt: modeldtos.Time(now),
 			}}
-			//todo: add on existing user signup function here
+			// todo: add on existing user signup function here
 			return nil
 
 		}
@@ -123,7 +66,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 		if err != nil {
 			return autherr.ErrFailedToCreateUser
 		}
-		
+
 		_, err = aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &accTokInterfaces.VerOpt{UserId: created.ID})
 		if err != nil {
 			// todo: maybe we skip this error
@@ -180,7 +123,7 @@ func (aus *AuthService) VerifyRegisteredUser(ctx context.Context, input accessto
 		}
 
 		// Update the user's status
-		updatedUsr, err := aus.UserRepo.UpdateUser(txCtx, usr.ID, map[string]interface{}{
+		updatedUsr, err := aus.UserRepo.UpdateUser(txCtx, usr.ID, map[string]any{
 			// "AccountStatus": enums.AccountActive,
 			"Active":        true,
 			"EmailVerified": true,

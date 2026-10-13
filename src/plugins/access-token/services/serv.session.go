@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
@@ -29,7 +30,7 @@ type SessionService struct {
 	Hooks       plugins.HookRegistry
 }
 
-var _ IAccessTokenSessionService = (*SessionService)(nil)
+var _ interfaces1.IAccessTokenSessionService = (*SessionService)(nil)
 
 // NewSessionService builds the legacy session service; mgr is the shared session manager (goauth.GoAuth.Sessions).
 func NewSessionService(

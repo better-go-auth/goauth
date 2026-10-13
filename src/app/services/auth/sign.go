@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -45,8 +45,8 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	if err := s.checkPasswordLength(in.Password); err != nil {
 		return nil, err
 	}
-	// config: when users must verify their email (RequireEmailVerification=true) or 
-	// are not signed in aftersign-up (AutoSignIn=false), 
+	// config: when users must verify their email (RequireEmailVerification=true) or
+	// are not signed in aftersign-up (AutoSignIn=false),
 	// the response never contains a session. In that case a duplicate email
 	// gets the same success-looking response as a new one, so attackers can't probe which emails exist.
 	requireVerification := emlpwdCfg.RequireEmailVerification || (emlpwdCfg.AutoSignIn != nil && !*emlpwdCfg.AutoSignIn)
