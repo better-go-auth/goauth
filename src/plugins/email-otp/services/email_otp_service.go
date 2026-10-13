@@ -20,7 +20,6 @@ import (
 	"github.com/better-go-auth/goauth/src/models/enums"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -91,6 +90,12 @@ func validEmail(email string) bool {
 }
 
 func isNotFound(err error) bool {
+	if err == nil {
+		return false
+	}
+	if strings.Contains(err.Error(), "not found") {
+		return true
+	}
 	ae := autherr.AsAuthError(err)
 	return ae != nil && ae.StatusCode == http.StatusNotFound
 }
@@ -126,7 +131,7 @@ func (s *EmailOTPService) SendVerificationOTP(ctx context.Context, email string,
 		return fmt.Errorf("email-otp: failed to generate code: %w", err)
 	}
 
-	codeHash, err := authcrypto.HashPasswordBcrypt(code)
+	codeHash, err := s.passwords.Hash(code)
 	if err != nil {
 		return fmt.Errorf("email-otp: failed to hash code: %w", err)
 	}
@@ -162,7 +167,7 @@ func (s *EmailOTPService) CheckVerificationOTP(ctx context.Context, email, otp s
 		return ErrInvalidOTP
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(rec.Value), []byte(otp)); err != nil {
+	if ok, _, err := s.passwords.Verify(rec.Value, otp); err != nil || !ok {
 		return ErrInvalidOTP
 	}
 	return nil
@@ -182,7 +187,7 @@ func (s *EmailOTPService) VerifyEmail(ctx context.Context, email, otp string, me
 			return ErrInvalidOTP
 		}
 
-		if err := bcrypt.CompareHashAndPassword([]byte(rec.Value), []byte(otp)); err != nil {
+		if ok, _, err := s.passwords.Verify(rec.Value, otp); err != nil || !ok {
 			return ErrInvalidOTP
 		}
 
@@ -240,7 +245,7 @@ func (s *EmailOTPService) SignIn(ctx context.Context, email, otp string, meta au
 			return ErrInvalidOTP
 		}
 
-		if err := bcrypt.CompareHashAndPassword([]byte(rec.Value), []byte(otp)); err != nil {
+		if ok, _, err := s.passwords.Verify(rec.Value, otp); err != nil || !ok {
 			return ErrInvalidOTP
 		}
 
@@ -267,6 +272,13 @@ func (s *EmailOTPService) SignIn(ctx context.Context, email, otp string, meta au
 			if err != nil {
 				return autherr.ErrFailedToCreateUser
 			}
+			now := time.Now().UTC()
+			_, _ = s.repos.CreateAccount(txCtx, &models.Account{
+				Base:       models.Base{ID: models.NewID(), CreatedAt: now, UpdatedAt: now},
+				UserID:     created.ID,
+				ProviderID: models.ProvCredential,
+				AccountID:  created.ID,
+			})
 			user = created
 		} else {
 			user = existingUser
@@ -327,7 +339,7 @@ func (s *EmailOTPService) ResetPassword(ctx context.Context, email, otp, newPass
 			return ErrInvalidOTP
 		}
 
-		if err := bcrypt.CompareHashAndPassword([]byte(rec.Value), []byte(otp)); err != nil {
+		if ok, _, err := s.passwords.Verify(rec.Value, otp); err != nil || !ok {
 			return ErrInvalidOTP
 		}
 
@@ -426,7 +438,7 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 			return ErrInvalidOTP
 		}
 
-		if err := bcrypt.CompareHashAndPassword([]byte(rec.Value), []byte(otp)); err != nil {
+		if ok, _, err := s.passwords.Verify(rec.Value, otp); err != nil || !ok {
 			return ErrInvalidOTP
 		}
 
@@ -444,7 +456,6 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 			return ErrEmailAlreadyExists
 		}
 
-		oldEmail := user.Email
 		updated, err := s.repos.UpdateUser(txCtx, userID, map[string]interface{}{
 			"Email":         strings.ToLower(newEmail),
 			"EmailVerified": true,
@@ -454,12 +465,31 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 		}
 		updatedUser = updated
 
-		// If user has a credential account whose accountId was the old email, update it
+		// In Better Auth, for providerId "credential", accountId is the user ID.
 		acc, err := acceptNotFound(s.repos.FindAccountByUserAndProvider(txCtx, userID, models.ProvCredential))
-		if err == nil && acc != nil && acc.AccountID == oldEmail {
-			_, _ = s.repos.UpdateAccount(txCtx, acc.ID, map[string]interface{}{
-				"AccountID": strings.ToLower(newEmail),
+		if err != nil {
+			return err
+		}
+		if acc != nil {
+			if acc.AccountID != user.ID {
+				_, err = s.repos.UpdateAccount(txCtx, acc.ID, map[string]interface{}{
+					"AccountID": user.ID,
+				})
+				if err != nil {
+					return fmt.Errorf("email-otp: failed to update account: %w", err)
+				}
+			}
+		} else {
+			now := time.Now().UTC()
+			_, err = s.repos.CreateAccount(txCtx, &models.Account{
+				Base:       models.Base{ID: models.NewID(), CreatedAt: now, UpdatedAt: now},
+				UserID:     userID,
+				ProviderID: models.ProvCredential,
+				AccountID:  user.ID,
 			})
+			if err != nil {
+				return fmt.Errorf("email-otp: failed to create account: %w", err)
+			}
 		}
 
 		return nil

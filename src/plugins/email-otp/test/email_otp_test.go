@@ -364,7 +364,16 @@ func TestEmailOTP_ChangeEmail(t *testing.T) {
 		t.Fatalf("expected DB user email %s, got %s", newEmail, userInDB.Email)
 	}
 
-	// 5. Consuming the OTP a second time must fail
+	// 5. Verify credential account was created
+	acc, err := repos.FindAccountByUserAndProvider(ctx, createdUser.ID, models.ProvCredential)
+	if err != nil || acc == nil {
+		t.Fatalf("expected credential account to be created, got err=%v, acc=%v", err, acc)
+	}
+	if acc.AccountID != createdUser.ID {
+		t.Fatalf("expected credential account ID to match user ID %s, got %s", createdUser.ID, acc.AccountID)
+	}
+
+	// 6. Consuming the OTP a second time must fail
 	if _, err := svc.ChangeEmail(ctx, createdUser.ID, newEmail, changeOTP); err == nil {
 		t.Fatalf("expected second attempt with consumed OTP to fail, but it succeeded")
 	}
