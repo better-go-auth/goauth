@@ -1,30 +1,29 @@
-package auth
+package interfaces
 
 import (
 	"context"
 
-	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 )
 
 // Meta is the request metadata stored on sessions created by the service.
-type Meta = sessionsvc.Meta
+type Meta = SessionMeta
 
 // IAuthService covers sign-up/in/out, email verification and password flows.
 type IAuthService interface {
-	SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, meta Meta) (*SignUpResult, error)
-	SignInEmail(ctx context.Context, in dtos.SignInEmailInput, meta Meta) (*SignInResult, error)
+	SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, meta SessionMeta) (*SignUpResult, error)
+	SignInEmail(ctx context.Context, in dtos.SignInEmailInput, meta SessionMeta) (*SignInResult, error)
 	SignOut(ctx context.Context, token string) error
 	VerifyPassword(ctx context.Context, current *dtos.SessionWithUser, password string) error
 
 	SendVerificationEmail(ctx context.Context, current *dtos.SessionWithUser, in dtos.SendVerificationEmailInput) error
-	VerifyEmail(ctx context.Context, current *dtos.SessionWithUser, token, callbackURL string, meta Meta) (*VerifyEmailResult, error)
+	VerifyEmail(ctx context.Context, current *dtos.SessionWithUser, token, callbackURL string, meta SessionMeta) (*VerifyEmailResult, error)
 	ChangeEmail(ctx context.Context, current *dtos.SessionWithUser, in dtos.ChangeEmailInput) (*dtos.SessionWithUser, error)
 
 	RequestPasswordReset(ctx context.Context, in dtos.RequestPasswordResetInput) error
 	ValidateResetToken(ctx context.Context, token string) error
 	ResetPassword(ctx context.Context, in dtos.ResetPasswordInput) error
-	ChangePassword(ctx context.Context, current *dtos.SessionWithUser, in dtos.ChangePasswordInput, meta Meta) (*ChangePasswordResult, error)
+	ChangePassword(ctx context.Context, current *dtos.SessionWithUser, in dtos.ChangePasswordInput, meta SessionMeta) (*ChangePasswordResult, error)
 }
 
 // ISessionService covers the session self-service endpoints.

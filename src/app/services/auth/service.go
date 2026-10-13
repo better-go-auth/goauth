@@ -12,6 +12,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
@@ -50,9 +51,9 @@ type Service struct {
 
 var (
 	// compile-time checks that Service implements all three interfaces
-	_ IAuthService    = (*Service)(nil)
-	_ ISessionService = (*Service)(nil)
-	_ IUserService    = (*Service)(nil)
+	_ svcint.IAuthService    = (*Service)(nil)
+	_ svcint.ISessionService = (*Service)(nil)
+	_ svcint.IUserService    = (*Service)(nil)
 )
 
 // New builds a Service from its dependencies.

@@ -11,6 +11,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/memory"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -70,9 +71,9 @@ func errCode(err error) string {
 	return err.Error()
 }
 
-func (e *env) signUp(t *testing.T, email, password string) *authsvc.SignUpResult {
+func (e *env) signUp(t *testing.T, email, password string) *svcint.SignUpResult {
 	t.Helper()
-	res, err := e.svc.SignUpEmail(context.Background(), dtos.SignUpEmailInput{Email: email, Password: password, Name: "Test"}, authsvc.Meta{})
+	res, err := e.svc.SignUpEmail(context.Background(), dtos.SignUpEmailInput{Email: email, Password: password, Name: "Test"}, svcint.Meta{})
 	if err != nil {
 		t.Fatalf("sign up: %v", err)
 	}
@@ -104,12 +105,12 @@ func TestSignUpAndSignIn(t *testing.T) {
 		t.Fatalf("credential account should use the user id and scrypt: %+v %v", acc, err)
 	}
 
-	_, err = e.svc.SignUpEmail(ctx, dtos.SignUpEmailInput{Email: "alice@example.com", Password: "password123", Name: "x"}, authsvc.Meta{})
+	_, err = e.svc.SignUpEmail(ctx, dtos.SignUpEmailInput{Email: "alice@example.com", Password: "password123", Name: "x"}, svcint.Meta{})
 	if errCode(err) != "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL" {
 		t.Fatalf("duplicate sign-up: %v", err)
 	}
 
-	in, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "ALICE@example.com", Password: "password123", RememberMe: ptr(false)}, authsvc.Meta{IPAddress: "1.2.3.4"})
+	in, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "ALICE@example.com", Password: "password123", RememberMe: ptr(false)}, svcint.Meta{IPAddress: "1.2.3.4"})
 	if err != nil || in.Token == "" || !in.DontRemember {
 		t.Fatalf("sign in: %+v %v", in, err)
 	}
@@ -125,11 +126,11 @@ func TestSignUpAndSignIn(t *testing.T) {
 		{Email: "alice@example.com", Password: "wrong-password"},
 		{Email: "nobody@example.com", Password: "password123"},
 	} {
-		if _, err := e.svc.SignInEmail(ctx, tc, authsvc.Meta{}); errCode(err) != "INVALID_EMAIL_OR_PASSWORD" {
+		if _, err := e.svc.SignInEmail(ctx, tc, svcint.Meta{}); errCode(err) != "INVALID_EMAIL_OR_PASSWORD" {
 			t.Fatalf("%s: got %v", tc.Email, err)
 		}
 	}
-	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "not-an-email", Password: "x"}, authsvc.Meta{}); errCode(err) != "INVALID_EMAIL" {
+	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "not-an-email", Password: "x"}, svcint.Meta{}); errCode(err) != "INVALID_EMAIL" {
 		t.Fatalf("invalid email: %v", err)
 	}
 
@@ -143,14 +144,14 @@ func TestSignUpAndSignIn(t *testing.T) {
 
 func TestSignUpValidation(t *testing.T) {
 	e := newEnv(t, func(c *config.AuthConfig) { c.EmailAndPassword.DisableSignUp = true }, nil)
-	_, err := e.svc.SignUpEmail(context.Background(), dtos.SignUpEmailInput{Email: "a@b.co", Password: "password123"}, authsvc.Meta{})
+	_, err := e.svc.SignUpEmail(context.Background(), dtos.SignUpEmailInput{Email: "a@b.co", Password: "password123"}, svcint.Meta{})
 	if errCode(err) != "EMAIL_PASSWORD_SIGN_UP_DISABLED" {
 		t.Fatalf("got %v", err)
 	}
 
 	e = newEnv(t, nil, nil)
 	for pw, code := range map[string]string{"short": "PASSWORD_TOO_SHORT", strings.Repeat("x", 129): "PASSWORD_TOO_LONG"} {
-		_, err := e.svc.SignUpEmail(context.Background(), dtos.SignUpEmailInput{Email: "a@b.co", Password: pw}, authsvc.Meta{})
+		_, err := e.svc.SignUpEmail(context.Background(), dtos.SignUpEmailInput{Email: "a@b.co", Password: pw}, svcint.Meta{})
 		if errCode(err) != code {
 			t.Fatalf("want %s, got %v", code, err)
 		}
@@ -179,17 +180,17 @@ func TestRequireEmailVerification(t *testing.T) {
 		t.Fatalf("duplicate should return a synthetic user: %+v", dup)
 	}
 
-	_, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "bob@example.com", Password: "password123"}, authsvc.Meta{})
+	_, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "bob@example.com", Password: "password123"}, svcint.Meta{})
 	if errCode(err) != "EMAIL_NOT_VERIFIED" || len(e.mails) != 2 {
 		t.Fatalf("got %v, mails=%d", err, len(e.mails))
 	}
 
-	v, err := e.svc.VerifyEmail(ctx, nil, tokenFrom(t, e.mails[0].URL), "", authsvc.Meta{})
+	v, err := e.svc.VerifyEmail(ctx, nil, tokenFrom(t, e.mails[0].URL), "", svcint.Meta{})
 	if err != nil || !v.Status || v.Session != nil {
 		t.Fatalf("verify: %+v %v", v, err)
 	}
-	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "bob@example.com", Password: "password123"}, authsvc.Meta{}); err != nil {
-		t.Fatalf("sign-in after verification: %v", err)
+	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "bob@example.com", Password: "password123"}, svcint.Meta{}); err != nil {
+		t.Fatalf("sign-in after verification: %v", err		)
 	}
 }
 
@@ -208,10 +209,10 @@ func TestVerifyEmailTokens(t *testing.T) {
 		t.Fatalf("unexpected url %s", e.mails[0].URL)
 	}
 
-	if _, err := e.svc.VerifyEmail(ctx, nil, "garbage", "", authsvc.Meta{}); errCode(err) != "INVALID_TOKEN" {
+	if _, err := e.svc.VerifyEmail(ctx, nil, "garbage", "", svcint.Meta{}); errCode(err) != "INVALID_TOKEN" {
 		t.Fatalf("got %v", err)
 	}
-	v, err := e.svc.VerifyEmail(ctx, nil, tokenFrom(t, e.mails[0].URL), "", authsvc.Meta{})
+	v, err := e.svc.VerifyEmail(ctx, nil, tokenFrom(t, e.mails[0].URL), "", svcint.Meta{})
 	if err != nil || v.Session == nil || !v.Session.User.EmailVerified {
 		t.Fatalf("auto sign-in after verification: %+v %v", v, err)
 	}
@@ -263,7 +264,7 @@ func TestPasswordReset(t *testing.T) {
 	if len(resetFor) != 1 {
 		t.Fatal("OnPasswordReset not called")
 	}
-	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "dave@example.com", Password: "new-password"}, authsvc.Meta{}); err != nil {
+	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "dave@example.com", Password: "new-password"}, svcint.Meta{}); err != nil {
 		t.Fatalf("sign in with new password: %v", err)
 	}
 }
@@ -272,13 +273,13 @@ func TestChangePassword(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, nil, nil)
 	res := e.signUp(t, "erin@example.com", "password123")
-	other, _ := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "erin@example.com", Password: "password123"}, authsvc.Meta{})
+	other, _ := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "erin@example.com", Password: "password123"}, svcint.Meta{})
 
-	_, err := e.svc.ChangePassword(ctx, res.Session, dtos.ChangePasswordInput{CurrentPassword: "wrong", NewPassword: "new-password"}, authsvc.Meta{})
+	_, err := e.svc.ChangePassword(ctx, res.Session, dtos.ChangePasswordInput{CurrentPassword: "wrong", NewPassword: "new-password"}, svcint.Meta{})
 	if errCode(err) != "INVALID_PASSWORD" {
 		t.Fatalf("got %v", err)
 	}
-	out, err := e.svc.ChangePassword(ctx, res.Session, dtos.ChangePasswordInput{CurrentPassword: "password123", NewPassword: "new-password", RevokeOtherSessions: true}, authsvc.Meta{})
+	out, err := e.svc.ChangePassword(ctx, res.Session, dtos.ChangePasswordInput{CurrentPassword: "password123", NewPassword: "new-password", RevokeOtherSessions: true}, svcint.Meta{})
 	if err != nil || out.Token == nil || *out.Token == *res.Token {
 		t.Fatalf("change password: %+v %v", out, err)
 	}
@@ -322,7 +323,7 @@ func TestChangeEmail(t *testing.T) {
 	if len(e.mails) != 1 || e.mails[0].User.Email != "frank2@example.com" {
 		t.Fatalf("expected mail to the new address: %+v", e.mails)
 	}
-	v, err := e.svc.VerifyEmail(ctx, res.Session, tokenFrom(t, e.mails[0].URL), "", authsvc.Meta{})
+	v, err := e.svc.VerifyEmail(ctx, res.Session, tokenFrom(t, e.mails[0].URL), "", svcint.Meta{})
 	if err != nil || v.User == nil || v.User.Email != "frank2@example.com" || !v.User.EmailVerified || v.Session == nil {
 		t.Fatalf("verify change: %+v %v", v, err)
 	}
@@ -334,13 +335,13 @@ func TestChangeEmail(t *testing.T) {
 	if len(confirmations) != 1 || confirmations[0].User.Email != "frank2@example.com" {
 		t.Fatalf("expected confirmation to the old address: %+v", confirmations)
 	}
-	if _, err := e.svc.VerifyEmail(ctx, nil, tokenFrom(t, confirmations[0].URL), "", authsvc.Meta{}); err != nil {
+	if _, err := e.svc.VerifyEmail(ctx, nil, tokenFrom(t, confirmations[0].URL), "", svcint.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 	if len(e.mails) != 2 || e.mails[1].User.Email != "frank3@example.com" {
 		t.Fatalf("expected verification to the new address: %+v", e.mails)
 	}
-	v, err = e.svc.VerifyEmail(ctx, nil, tokenFrom(t, e.mails[1].URL), "", authsvc.Meta{})
+	v, err = e.svc.VerifyEmail(ctx, nil, tokenFrom(t, e.mails[1].URL), "", svcint.Meta{})
 	if err != nil || v.User.Email != "frank3@example.com" {
 		t.Fatalf("final verify: %+v %v", v, err)
 	}
@@ -356,7 +357,7 @@ func TestSessions(t *testing.T) {
 	ctx := context.Background()
 	e := newEnv(t, nil, nil)
 	a := e.signUp(t, "hank@example.com", "password123")
-	b, _ := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "hank@example.com", Password: "password123"}, authsvc.Meta{})
+	b, _ := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "hank@example.com", Password: "password123"}, svcint.Meta{})
 	other := e.signUp(t, "ivy@example.com", "password123")
 
 	list, err := e.svc.ListSessions(ctx, a.Session)
@@ -376,14 +377,14 @@ func TestSessions(t *testing.T) {
 	if sw, _ := e.sessions.Get(ctx, b.Token); sw != nil {
 		t.Fatal("other session should be revoked")
 	}
-	got, err := e.svc.GetSession(ctx, *a.Token, authsvc.GetSessionOptions{})
+	got, err := e.svc.GetSession(ctx, *a.Token, svcint.GetSessionOptions{})
 	if err != nil || got.Session == nil || got.Refreshed {
 		t.Fatalf("get session: %+v %v", got, err)
 	}
 	if err := e.svc.RevokeSessions(ctx, a.Session); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := e.svc.GetSession(ctx, *a.Token, authsvc.GetSessionOptions{}); got.Session != nil {
+	if got, _ := e.svc.GetSession(ctx, *a.Token, svcint.GetSessionOptions{}); got.Session != nil {
 		t.Fatal("all sessions should be revoked")
 	}
 }
@@ -393,16 +394,16 @@ func TestUpdateUserRefreshesCachedSessions(t *testing.T) {
 	e := newEnv(t, nil, memstore.New())
 	res := e.signUp(t, "jack@example.com", "password123")
 
-	if _, err := e.svc.UpdateUser(ctx, res.Session, authsvc.UpdateUserInput{Email: ptr("x@example.com")}); errCode(err) != "EMAIL_CAN_NOT_BE_UPDATED" {
+	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Email: ptr("x@example.com")}); errCode(err) != "EMAIL_CAN_NOT_BE_UPDATED" {
 		t.Fatalf("got %v", err)
 	}
-	if _, err := e.svc.UpdateUser(ctx, res.Session, authsvc.UpdateUserInput{Fields: map[string]any{"Role": "admin"}}); errCode(err) != "FIELD_NOT_ALLOWED" {
+	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Role": "admin"}}); errCode(err) != "FIELD_NOT_ALLOWED" {
 		t.Fatalf("role must not be updatable: %v", err)
 	}
-	if _, err := e.svc.UpdateUser(ctx, res.Session, authsvc.UpdateUserInput{}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
+	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
 		t.Fatalf("got %v", err)
 	}
-	sw, err := e.svc.UpdateUser(ctx, res.Session, authsvc.UpdateUserInput{Name: ptr("Jack"), Fields: map[string]any{"Bio": ptr("hi")}})
+	sw, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Name: ptr("Jack"), Fields: map[string]any{"Bio": ptr("hi")}})
 	if err != nil || sw.User.Name != "Jack" {
 		t.Fatalf("update: %+v %v", sw, err)
 	}
@@ -520,7 +521,7 @@ func TestSetPassword(t *testing.T) {
 	if err := e.svc.SetPassword(ctx, res.User.ID, "another-password"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "oli@example.com", Password: "another-password"}, authsvc.Meta{}); err != nil {
+	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "oli@example.com", Password: "another-password"}, svcint.Meta{}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -538,7 +539,7 @@ func TestSessionHookCanRejectSignIn(t *testing.T) {
 	svc := authsvc.New(authsvc.Deps{Config: cfg, Repos: e.repos, Sessions: mgr})
 
 	e.signUp(t, "leo@example.com", "password123")
-	if _, err := svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "leo@example.com", Password: "password123"}, authsvc.Meta{}); errCode(err) != "BANNED_USER" {
+	if _, err := svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "leo@example.com", Password: "password123"}, svcint.Meta{}); errCode(err) != "BANNED_USER" {
 		t.Fatalf("hook error must be returned as-is: %v", err)
 	}
 }

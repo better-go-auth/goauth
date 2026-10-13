@@ -24,7 +24,7 @@ type signUpOutput struct {
 	}
 }
 
-func (h *handler) signUpEmail(ctx context.Context, in *signUpInput) (*signUpOutput, error) {
+func (h *handler) SignUpEmail(ctx context.Context, in *signUpInput) (*signUpOutput, error) {
 	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ type signInOutput struct {
 	}
 }
 
-func (h *handler) signInEmail(ctx context.Context, in *signInInput) (*signInOutput, error) {
+func (h *handler) SignInEmail(ctx context.Context, in *signInInput) (*signInOutput, error) {
 	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ type signOutOutput struct {
 	}
 }
 
-func (h *handler) signOut(ctx context.Context, in *signOutInput) (*signOutOutput, error) {
+func (h *handler) SignOut(ctx context.Context, in *signOutInput) (*signOutOutput, error) {
 	if tok, ok := h.Cookies.SessionToken(in.Cookie); ok {
 		// like better-auth, a failed delete still clears the cookies
 		_ = h.Auth.SignOut(ctx, tok)
@@ -100,7 +100,7 @@ type verifyPasswordInput struct {
 	Body dtos.VerifyPasswordInput
 }
 
-func (h *handler) verifyPassword(ctx context.Context, in *verifyPasswordInput) (*statusOutput, error) {
+func (h *handler) VerifyPassword(ctx context.Context, in *verifyPasswordInput) (*statusOutput, error) {
 	if err := h.Auth.VerifyPassword(ctx, current(ctx), in.Body.Password); err != nil {
 		return nil, err
 	}
@@ -111,7 +111,7 @@ type sendVerificationEmailInput struct {
 	Body dtos.SendVerificationEmailInput
 }
 
-func (h *handler) sendVerificationEmail(ctx context.Context, in *sendVerificationEmailInput) (*statusOutput, error) {
+func (h *handler) SendVerificationEmail(ctx context.Context, in *sendVerificationEmailInput) (*statusOutput, error) {
 	if err := h.checkURL(in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
@@ -138,9 +138,9 @@ type verifyEmailBody struct {
 	User   *dtos.UserResponse `json:"user"`
 }
 
-// verifyEmail mirrors GET /verify-email: with a callbackURL every outcome is a redirect
+// VerifyEmail mirrors GET /verify-email: with a callbackURL every outcome is a redirect
 // (errors as ?error=CODE), otherwise JSON.
-func (h *handler) verifyEmail(ctx context.Context, in *verifyEmailInput) (*verifyEmailOutput, error) {
+func (h *handler) VerifyEmail(ctx context.Context, in *verifyEmailInput) (*verifyEmailOutput, error) {
 	if err := h.checkURL(in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ type changeEmailInput struct {
 	Body dtos.ChangeEmailInput
 }
 
-func (h *handler) changeEmail(ctx context.Context, in *changeEmailInput) (*statusOutput, error) {
+func (h *handler) ChangeEmail(ctx context.Context, in *changeEmailInput) (*statusOutput, error) {
 	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
 		return nil, err
 	}

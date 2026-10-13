@@ -11,7 +11,6 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
-	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
@@ -20,6 +19,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/migration"
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
+	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/origin"
@@ -177,12 +177,12 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
 	//=============   Register the better-auth compatable routes
 	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager})
-	if opts.GoAuth.Mode == config.ModeCompat {
-		humaadapter.RegisterRoutes(api, humaadapter.Deps{
-			Conf: opts.AuthConfig, Auth: authService, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver,
-			Origins: origin.New(opts.AuthConfig),
-		})
-	}
+	// if opts.GoAuth.Mode == config.ModeCompat {
+	humaadapter.RegisterRoutes(api, humaadapter.Deps{
+		Conf: opts.AuthConfig, Auth: authService, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver,
+		Origins: origin.New(opts.AuthConfig),
+	})
+	// }
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
@@ -194,6 +194,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		Config:         opts.AuthConfig,
 		TxManager:      txManager,
 		SessionManager: sessionMgr,
+		IAuthSvc:       authService,
 		// INormalAuthServices: sessionMgr,
 
 		IAuthRepos:       repos,
@@ -201,7 +202,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		Authenticator:    authenticate,
 		Hooks:            hooks,
 		SecondaryStorage: opts.SecondaryStorage,
-		Extras: map[string]any{
+		Extras:           map[string]any{
 			// "sessionManager":   sessionMgr,
 			// "secondaryStorage": opts.SecondaryStorage,
 			// "cookieManager":    cookieMgr,

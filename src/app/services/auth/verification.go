@@ -11,6 +11,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -130,7 +131,7 @@ func (s *Service) SendVerificationEmail(ctx context.Context, current *dtos.Sessi
 // a change-email token goes to verifyEmailChange; otherwise mark the email verified
 // (running the before/after hooks) and optionally sign the user in.
 // Errors use 401 like better-auth; the adapter turns them into ?error=CODE redirects when a callbackURL is set.
-func (s *Service) VerifyEmail(ctx context.Context, current *dtos.SessionWithUser, token, callbackURL string, meta Meta) (*VerifyEmailResult, error) {
+func (s *Service) VerifyEmail(ctx context.Context, current *dtos.SessionWithUser, token, callbackURL string, meta svcint.Meta) (*svcint.VerifyEmailResult, error) {
 	// config: Secret must be the one that signed the link
 	claims, err := authcrypto.VerifyJWT(token, s.cfg.Secret)
 	if err != nil {
@@ -164,7 +165,7 @@ func (s *Service) VerifyEmail(ctx context.Context, current *dtos.SessionWithUser
 
 	// already verified (link clicked twice): succeed without doing anything
 	if user.EmailVerified {
-		return &VerifyEmailResult{Status: true}, nil
+		return &svcint.VerifyEmailResult{Status: true}, nil
 	}
 	ev := s.cfg.EmailVerification
 	// config: BeforeEmailVerification can veto the verification by returning an error
@@ -185,7 +186,7 @@ func (s *Service) VerifyEmail(ctx context.Context, current *dtos.SessionWithUser
 			return nil, err
 		}
 	}
-	res := &VerifyEmailResult{Status: true}
+	res := &svcint.VerifyEmailResult{Status: true}
 	// config: AutoSignInAfterVerification signs the user in from the link
 	if ev.AutoSignInAfterVerification {
 		if current == nil || current.User.Email != email {
@@ -211,7 +212,7 @@ func (s *Service) VerifyEmail(ctx context.Context, current *dtos.SessionWithUser
 //   - "" (legacy): switch the email immediately, mark it unverified, and send a normal verification link to it.
 //
 // The last two need a session for the cookie: the current one, or a new one when signed out.
-func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWithUser, user *models.User, updateTo, requestType, callbackURL string, meta Meta) (*VerifyEmailResult, error) {
+func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWithUser, user *models.User, updateTo, requestType, callbackURL string, meta svcint.Meta) (*svcint.VerifyEmailResult, error) {
 	// user clicked the confirmation sent to the old address: now verify the new one
 	if requestType == changeEmailConfirmation {
 		tok, err := s.emailVerificationToken(user.Email, updateTo, changeEmailVerification)
@@ -226,7 +227,7 @@ func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWi
 				return nil, err
 			}
 		}
-		return &VerifyEmailResult{Status: true}, nil
+		return &svcint.VerifyEmailResult{Status: true}, nil
 	}
 
 	// the email is about to change: make sure there is a session to write the new user into
@@ -261,7 +262,7 @@ func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWi
 	sw := *active
 	sw.User = dtos.UserFromModel(updated)
 	out := dtos.UserFromModel(updated)
-	return &VerifyEmailResult{Status: true, User: &out, Session: &sw}, nil
+	return &svcint.VerifyEmailResult{Status: true, User: &out, Session: &sw}, nil
 }
 
 // ChangeEmail mirrors better-auth's POST /change-email. It returns the session to rewrite

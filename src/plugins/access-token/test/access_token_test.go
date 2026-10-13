@@ -120,8 +120,8 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RegisterWithEmail failed: %v", err)
 	}
-	if regResp.Body.Email != "john.doe@example.com" {
-		t.Fatalf("unexpected user email: %s", regResp.Body.Email)
+	if regResp.User.Email != "john.doe@example.com" {
+		t.Fatalf("unexpected user email: %s", regResp.User.Email)
 	}
 	if mockSender.lastCode == "" {
 		t.Fatalf("expected verification code to be sent")

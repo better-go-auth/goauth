@@ -7,11 +7,12 @@ import (
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 )
 
 // IAccessTokenAuthService defines authentication endpoints for access-token / JWT flow.
 type IAccessTokenAuthService interface {
-	RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (dtos.GResp[models.User], error)
+	RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (*svcint.SignUpResult, error)
 	VerifyRegisteredUser(ctx context.Context, input accesstokendtos.VerificationInput) (dtos.GResp[models.User], error)
 	Login(ctx context.Context, input accesstokendtos.LoginData) (dtos.GResp[accesstokendtos.TokenResponse], error)
 	ResetToken(ctx context.Context, token string) (dtos.GResp[accesstokendtos.TokenResponse], error)

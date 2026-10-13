@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 )
 
@@ -13,21 +14,21 @@ import (
 //
 // Sliding refresh: once Session.UpdateAge (default 1 day) has passed since the expiry was last set, the expiry
 // is pushed to now + Session.ExpiresIn (default 7 days), so active users stay signed in.
-func (s *Service) GetSession(ctx context.Context, token string, opt GetSessionOptions) (*GetSessionResult, error) {
+func (s *Service) GetSession(ctx context.Context, token string, opt svcint.GetSessionOptions) (*svcint.GetSessionResult, error) {
 	// the manager reads secondary storage first, then the DB (per the session config), and drops expired sessions
 	sw, err := s.sessionMgr.Get(ctx, token)
 	if err != nil {
 		return nil, autherr.ErrFailedToGetSession
 	}
 	if sw == nil {
-		return &GetSessionResult{}, nil
+		return &svcint.GetSessionResult{}, nil
 	}
 	// ShouldRefresh applies config: Session.UpdateAge and Session.DisableSessionRefresh;
 	// rememberMe=false sessions (dont_remember cookie) are never extended; the disableRefresh query skips it too
 	needsRefresh := !opt.DisableRefresh && s.sessionMgr.ShouldRefresh(sw, opt.DontRemember)
 	// config: Session.DeferSessionRefresh → GET only reports needsRefresh, a later POST does the write
 	if opt.DeferRefresh || !needsRefresh {
-		return &GetSessionResult{Session: sw, NeedsRefresh: needsRefresh}, nil
+		return &svcint.GetSessionResult{Session: sw, NeedsRefresh: needsRefresh}, nil
 	}
 	// extend the expiry in the DB and/or secondary storage
 	refreshed, err := s.sessionMgr.Refresh(ctx, sw)
@@ -39,7 +40,7 @@ func (s *Service) GetSession(ctx context.Context, token string, opt GetSessionOp
 		return nil, autherr.ErrFailedToGetSession.WithStatus(http.StatusUnauthorized)
 	}
 	// Refreshed tells the adapter to re-send the session cookie with the new Max-Age
-	return &GetSessionResult{Session: refreshed, Refreshed: true}, nil
+	return &svcint.GetSessionResult{Session: refreshed, Refreshed: true}, nil
 }
 
 // ListSessions mirrors better-auth's GET /list-sessions: the signed-in user's live sessions (one per device).

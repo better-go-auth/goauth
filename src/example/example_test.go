@@ -169,7 +169,7 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 		out := &TestLegacyAuthOutput{}
 		out.Body.Success = true
 		out.Body.Message = "Flow executed"
-		out.Body.UserID = regRes.Body.ID
+		out.Body.UserID = regRes.User.ID
 		out.Body.Email = testEmail
 		out.Body.AccessToken = tokens.AccessToken
 		out.Body.RefreshToken = tokens.RefreshToken

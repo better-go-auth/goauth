@@ -46,12 +46,12 @@ func (h *AccessTokenHandler) Register(ctx context.Context, inputs *humatypes.Hum
 	if err != nil {
 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 	}
-	u := authDtos.UserFromModel(&usr.Body)
+
 	resp := authDtos.SignUpResponse{
-		User:  &u,
+		User:  &usr.User,
 		Token: nil,
 	}
-	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
+	gresp := dtos.SuccessCreated(resp, 1)
 	return humatypes.MakeResPtr(&gresp, 200), nil
 }
 
@@ -81,9 +81,9 @@ func (h *AccessTokenHandler) Login(ctx context.Context, inputs *humatypes.HumaRe
 	if tkn.Body.AuthTokens != nil {
 		token = tkn.Body.AuthTokens.AccessToken
 	}
-	u := authDtos.UserFromModel(&tkn.Body.UserData)
+	// u := authDtos.UserFromModel(&tkn.Body.UserData)
 	resp := authDtos.SignInResponse{
-		User:       &u,
+		User:       &tkn.Body.UserData,
 		Token:      token,
 		Redirect:   false,
 		AuthTokens: tkn.Body.AuthTokens,
@@ -102,9 +102,9 @@ func (h *AccessTokenHandler) RefreshToken(ctx context.Context, inputs *humatypes
 	if tkn.Body.AuthTokens != nil {
 		token = tkn.Body.AuthTokens.AccessToken
 	}
-	u := authDtos.UserFromModel(&tkn.Body.UserData)
+	// u := authDtos.UserFromModel(&tkn.Body.UserData)
 	resp := authDtos.SignInResponse{
-		User:       &u,
+		User:       &tkn.Body.UserData,
 		Token:      token,
 		Redirect:   false,
 		AuthTokens: tkn.Body.AuthTokens,

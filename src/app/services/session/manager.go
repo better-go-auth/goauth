@@ -3,15 +3,16 @@
 package session
 
 import (
-	"maps"
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"reflect"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/interfaces"
+
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -329,7 +330,7 @@ func (mgr *Manager) DeleteUserSessions(ctx context.Context, userID string) error
 
 // Update writes session fields (keyed by Go field name) to the database and the cached copy.
 // It returns nil when the session no longer exists.
-//TODO: instead of map[string]any use a struct
+// TODO: instead of map[string]any use a struct
 func (mgr *Manager) Update(ctx context.Context, swu *dtos.SessionWithUser, data map[string]any) (*dtos.SessionWithUser, error) {
 	// 1. copy update fields and set UpdatedAt to current time
 	now := mgr.now().UTC()
@@ -392,8 +393,6 @@ func setSessionFields(s *dtos.SessionData, data map[string]any) error {
 	}
 	return nil
 }
-
-
 
 // List returns the live sessions of userID.
 func (mgr *Manager) List(ctx context.Context, userID string) ([]dtos.SessionData, error) {

@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 )
 
@@ -28,11 +28,11 @@ type getSessionOutput struct {
 	Body *getSessionBody
 }
 
-func (h *handler) getSession(ctx context.Context, in *getSessionInput) (*getSessionOutput, error) {
+func (h *handler) GetSession(ctx context.Context, in *getSessionInput) (*getSessionOutput, error) {
 	return h.session(ctx, in, h.Conf.Session.DeferSessionRefresh)
 }
 
-func (h *handler) postSession(ctx context.Context, in *getSessionInput) (*getSessionOutput, error) {
+func (h *handler) PostSession(ctx context.Context, in *getSessionInput) (*getSessionOutput, error) {
 	if !h.Conf.Session.DeferSessionRefresh {
 		return nil, autherr.ErrMethodNotAllowedDeferSessionRequired
 	}
@@ -47,7 +47,7 @@ func (h *handler) session(ctx context.Context, in *getSessionInput, deferRefresh
 		return out, nil
 	}
 	dontRemember := h.Cookies.DontRemember(in.Cookie)
-	res, err := h.Auth.GetSession(ctx, tok, authsvc.GetSessionOptions{
+	res, err := h.Auth.GetSession(ctx, tok, svcint.GetSessionOptions{
 		DisableRefresh: in.DisableRefresh,
 		DeferRefresh:   deferRefresh,
 		DontRemember:   dontRemember,
@@ -74,7 +74,7 @@ type listSessionsOutput struct {
 	Body []dtos.SessionData
 }
 
-func (h *handler) listSessions(ctx context.Context, _ *struct{}) (*listSessionsOutput, error) {
+func (h *handler) ListSessions(ctx context.Context, _ *struct{}) (*listSessionsOutput, error) {
 	list, err := h.Auth.ListSessions(ctx, current(ctx))
 	if err != nil {
 		return nil, err
@@ -88,21 +88,21 @@ type revokeSessionInput struct {
 	}
 }
 
-func (h *handler) revokeSession(ctx context.Context, in *revokeSessionInput) (*statusOutput, error) {
+func (h *handler) RevokeSession(ctx context.Context, in *revokeSessionInput) (*statusOutput, error) {
 	if err := h.Auth.RevokeSession(ctx, current(ctx), in.Body.Token); err != nil {
 		return nil, err
 	}
 	return statusOK(), nil
 }
 
-func (h *handler) revokeSessions(ctx context.Context, _ *struct{}) (*statusOutput, error) {
+func (h *handler) RevokeSessions(ctx context.Context, _ *struct{}) (*statusOutput, error) {
 	if err := h.Auth.RevokeSessions(ctx, current(ctx)); err != nil {
 		return nil, err
 	}
 	return statusOK(), nil
 }
 
-func (h *handler) revokeOtherSessions(ctx context.Context, _ *struct{}) (*statusOutput, error) {
+func (h *handler) RevokeOtherSessions(ctx context.Context, _ *struct{}) (*statusOutput, error) {
 	if err := h.Auth.RevokeOtherSessions(ctx, current(ctx)); err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ type updateSessionOutput struct {
 	}
 }
 
-func (h *handler) updateSession(ctx context.Context, in *updateSessionInput) (*updateSessionOutput, error) {
+func (h *handler) UpdateSession(ctx context.Context, in *updateSessionInput) (*updateSessionOutput, error) {
 	sw, err := h.Auth.UpdateSession(ctx, current(ctx), in.Body)
 	if err != nil {
 		return nil, err

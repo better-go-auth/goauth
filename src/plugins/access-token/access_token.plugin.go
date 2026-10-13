@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	leg_int"github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 
 	"github.com/better-go-auth/goauth/src/common/gormutil"
@@ -30,6 +30,7 @@ type Plugin struct {
 	config      accesstokenconfig.AccessTokenConfig
 	basePath    string
 	sessionConf config.SessionGoAuth
+	//
 	vConf       config.EmailVerification
 	passwords   *authcrypto.Passwords
 
@@ -37,10 +38,12 @@ type Plugin struct {
 	sessionSvc *services.SessionService
 	profileSvc *services.ProfileService
 	vSvc       *services.VerificationService
+	//
 	handler    *humaaccesstoken.AccessTokenHandler
 
 	repos      repo_interfaces.IAuthRepos
-	sessionMgr serv_interfaces.ISessionManager
+	sessionMgr authint.ISessionManager
+	IAuthSvc   authint.IAuthService
 	secStorage sec_storage.SecondaryStorage
 	txMgr      interfaces.ITransactionManager
 }
@@ -116,6 +119,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		}
 	}
 	p.txMgr = txMgr
+	
 
 	p.sessionMgr = ictx.SessionManager
 
@@ -127,6 +131,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		}
 	}
 	p.secStorage = secStorage
+
 
 	// Resolve configs
 	sConf := p.sessionConf
@@ -155,13 +160,19 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	// 1. Initialize services
 	sessMgr := ictx.SessionManager
 	if sessMgr == nil && ictx.Extras != nil {
-		if sm, ok := ictx.Extras["sessionManager"].(serv_interfaces.ISessionManager); ok {
+		if sm, ok := ictx.Extras["sessionManager"].(authint.ISessionManager); ok {
 			sessMgr = sm
 		}
 	}
+	coreAuthSvc:= ictx.IAuthSvc
+	if coreAuthSvc == nil {
+		return fmt.Errorf("access-token plugin: IAuthSvc is required")
+	}
+	p.IAuthSvc = coreAuthSvc
+	//initialize the legacy services
 	p.vSvc = services.NewVerificationService(repos, vConf)
 	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
-	p.authSvc = services.NewAuthService(&sConf, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
+	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc,p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
 	p.profileSvc = services.NewProfileService(p.vSvc, p.sessionSvc, repos, txMgr, p.passwords)
 
 	// TODO: is this how other plugins do it

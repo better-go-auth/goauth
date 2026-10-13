@@ -11,6 +11,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 )
 
@@ -25,7 +26,7 @@ var updatableUserFields = map[string]bool{
 //
 // Only name, image and the allowlisted profile fields can be changed. Email has its own flow (ChangeEmail),
 // and role/ban/verification fields are never writable here.
-func (s *Service) UpdateUser(ctx context.Context, current *dtos.SessionWithUser, in UpdateUserInput) (*dtos.SessionWithUser, error) {
+func (s *Service) UpdateUser(ctx context.Context, current *dtos.SessionWithUser, in svcint.UpdateUserInput) (*dtos.SessionWithUser, error) {
 	if current == nil {
 		return nil, autherr.ErrUnauthorized
 	}

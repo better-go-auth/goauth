@@ -197,7 +197,7 @@ func main() {
 		if err != nil {
 			return nil, huma.NewError(http.StatusInternalServerError, fmt.Sprintf("Register failed: %v", err))
 		}
-		steps = append(steps, fmt.Sprintf("1. Registered user %s (ID: %s)", testEmail, regRes.Body.ID))
+		steps = append(steps, fmt.Sprintf("1. Registered user %s (ID: %s)", testEmail, regRes.User.ID))
 
 		// 2. Verify account
 		code := emailSender.GetLastCode(testEmail)
@@ -244,7 +244,7 @@ func main() {
 		out := &TestLegacyAuthOutput{}
 		out.Body.Success = true
 		out.Body.Message = "Legacy authentication flow executed and verified successfully via access-token plugin"
-		out.Body.UserID = regRes.Body.ID
+		out.Body.UserID = regRes.User.ID
 		out.Body.Email = testEmail
 		out.Body.AccessToken = tokens.AccessToken
 		out.Body.RefreshToken = tokens.RefreshToken

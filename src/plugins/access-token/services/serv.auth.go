@@ -5,19 +5,25 @@ package services
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
+	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
+	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	errors "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/common/logger"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
+	model_dtos "github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/plugins"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	accTokInterfaces "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
@@ -27,8 +33,9 @@ type AuthService struct {
 	Config   *config.SessionGoAuth
 	Provider *providers.IProviderS
 	// services
-	VSvc   interfaces1.IVerificationService
-	SesSvc *SessionService
+	VSvc        accTokInterfaces.IVerificationService
+	SesSvc      *SessionService
+	coreAuthSvc authint.IAuthService
 	// repos
 	UserRepo    repo_interfaces.IUserRepo
 	AccountRepo repo_interfaces.IOAuthAccountRepo
@@ -45,7 +52,8 @@ var _ IAccessTokenAuthService = (*AuthService)(nil)
 // NewAuthService creates a new AuthService for the access-token plugin.
 func NewAuthService(
 	conf *config.SessionGoAuth,
-	vSvc interfaces1.IVerificationService,
+	coreAuthSvc authint.IAuthService,
+	vSvc accTokInterfaces.IVerificationService,
 	sSvc *SessionService,
 	authRepos repo_interfaces.IAuthRepos,
 	txMgr interfaces.ITransactionManager,
@@ -66,102 +74,94 @@ func NewAuthService(
 		TxMgr:       txMgr,
 		Passwords:   passwords,
 		Hooks:       h,
+		coreAuthSvc: coreAuthSvc,
 	}
 }
 
 // RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
-func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (res dtos.GResp[models.User], eror error) {
-	// Check if the email already exists
-	usr, err := aus.UserRepo.FindUserByEmail(ctx, input.Email)
-	if err == nil && usr != nil {
-		// If the User is still pending verification, throw error
-		// todo create a time out
-		// if usr.AccountStatus != enums.AccountPendingVerification {
-		// 	return dtos.BadReqC[models.User](errors.UserExists), errors.UserExistError
-		// }
-	}
+func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (*svcint.SignUpResult, error) {
 
-	hash, err := aus.Passwords.Hash(input.Password)
-	if err != nil {
-		return dtos.InternalErrMS[models.User]("Hashing Error"), err
-	}
+	var res *svcint.SignUpResult
+	var created *models.User
+	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
+		existing, err := acceptNotFound(aus.UserRepo.FindUserByEmail(ctx, input.Email))
+		if err != nil {
+			return err
+		}
+		if existing != nil {
+			// hash anyway so both branches take the same time
+			_, _ = aus.Passwords.Hash(input.Password)
+			//generate clone user
+			now := time.Now().UTC()
+			res = &svcint.SignUpResult{User: modeldtos.UserResponse{
+				ID: models.NewID(), Name: input.FirstName, Email: input.Email, Image: &input.Avatar,
+				CreatedAt: modeldtos.Time(now), UpdatedAt: modeldtos.Time(now),
+			}}
+			//todo: add on existing user signup function here
+			return nil
 
-	var createdUser *models.User
-	err = aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
-		existingUser, getErr := aus.UserRepo.FindUserByEmail(txCtx, input.Email)
-		//user exists
-		if getErr == nil && existingUser != nil {
-			// Update pending verification user
-			updated, err := aus.UserRepo.UpdateUser(txCtx, existingUser.ID, map[string]interface{}{
-				// "password":       hash,
-				"FirstName":     input.FirstName,
-				"LastName":      input.LastName,
-				// "AccountStatus": enums.AccountPendingVerification,
-				// is this ptr or actual value
-				"Role":   enums.User.S(),
-				"Active": false,
-			})
-			if err != nil {
-				return err
-			}
-			createdUser = updated
-		} else {
-			newUser := &models.User{
-				UserDto: models.UserDto{
-					FirstName: input.FirstName,
-					LastName:  input.LastName,
-					Email:     input.Email,
-					// Password:      hash,
-					Role:          enums.User,
-					// AccountStatus: enums.AccountPendingVerification,
-					Active:        new(bool), // false
-				},
-			}
-			created, err := aus.UserRepo.CreateUser(txCtx, newUser)
-			if err != nil {
-				logger.LogTrace("error crating", err)
-				return err
-			}
-			createdUser = created
 		}
 
-		now := time.Now()
-		// 5. Create email/password account record
-		pwdAccount := &models.Account{
-			Base:       models.Base{ID: models.NewID(), CreatedAt: now, UpdatedAt: now},
-			UserID:     createdUser.ID,
+		// new user: hash with the configured hasher (scrypt in compat mode)
+		hash, err := aus.Passwords.Hash(input.Password)
+		if err != nil {
+			return err
+		}
+		u := &models.User{Base: models.Base{ID: models.NewID()}}
+		u.Name, u.Email, u.Image, u.Role = input.FirstName, input.Email, &input.Avatar, enums.User
+		if created, err = aus.UserRepo.CreateUser(ctx, u); err != nil {
+			return autherr.ErrFailedToCreateUser
+		}
+		// better-auth keeps passwords on a "credential" account whose accountId is the user id, not on the user row
+		_, err = aus.AccountRepo.CreateAccount(ctx, &models.Account{
+			Base:       models.Base{ID: models.NewID()},
+			UserID:     created.ID,
 			ProviderID: models.ProvCredential,
-			AccountID:  input.Email,
+			AccountID:  created.ID,
 			Password:   &hash,
+		})
+		if err != nil {
+			return autherr.ErrFailedToCreateUser
 		}
-		if _, err := aus.AccountRepo.CreateAccount(txCtx, pwdAccount); err != nil {
-			// if account already exists for user and provider, update password
-			if existingAcc, _ := aus.AccountRepo.FindAccountByUserAndProvider(txCtx, createdUser.ID, models.ProvCredential); existingAcc != nil {
-				_, _ = aus.AccountRepo.UpdateAccount(txCtx, existingAcc.ID, map[string]interface{}{"Password": hash})
-			} else {
-				return fmt.Errorf("authsvc: create account: %w", err)
-			}
-		}
-
-		_, err = aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &interfaces1.VerOpt{UserId: createdUser.ID})
+		
+		_, err = aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &accTokInterfaces.VerOpt{UserId: created.ID})
 		if err != nil {
 			// todo: maybe we skip this error
 			return err
 		}
-
 		if aus.Hooks != nil {
-			if err := aus.Hooks.TriggerAfterUserCreate(txCtx, createdUser); err != nil {
+			if err := aus.Hooks.TriggerAfterUserCreate(txCtx, created); err != nil {
 				return fmt.Errorf("authsvc: after user create hook: %w", err)
 			}
 		}
-
 		return nil
 	})
 	if err != nil {
-		return dtos.InternalErrMS[models.User]("transaction Error"), err
+		return nil, err
+	}
+	// duplicate email handled generically: return the fake user, no email, no session
+	if res != nil {
+		return res, nil
 	}
 
-	return dtos.SuccessCreated(*createdUser, 1), nil
+	return res, nil
+}
+
+func isNotFound(err error) bool {
+	ae := autherr.AsAuthError(err)
+	return ae != nil && ae.StatusCode == http.StatusNotFound
+}
+
+// acceptNotFound turns a repository "not found" into (nil, nil), so callers can write
+// `if user == nil` instead of checking the error kind. Any other error is returned unchanged.
+func acceptNotFound[T any](v *T, err error) (*T, error) {
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return v, nil
 }
 
 // VerifyRegisteredUser (acc-01), [id]x
@@ -200,62 +200,86 @@ func (aus *AuthService) VerifyRegisteredUser(ctx context.Context, input accessto
 
 // Login (acc-03) [companyId, Role, Password]
 func (aus *AuthService) Login(ctx context.Context, input accesstokendtos.LoginData) (dtos.GResp[accesstokendtos.TokenResponse], error) {
-	// 1. check the user exists and is active
-	usr, err := aus.UserRepo.FindUserByEmail(ctx, input.LoginInfo)
-	// Active is goauth-only: nil means the user came from better-auth's sign-up and is allowed; false blocks login
-	if err != nil || usr == nil || (usr.Active != nil && !*usr.Active) {
-		_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
+	if aus.coreAuthSvc == nil {
+		return dtos.InternalErrMS[accesstokendtos.TokenResponse]("core auth service not available"), fmt.Errorf("core auth service not available")
+	}
+	// 1. Delegate verification, password check, rehash, bans, and session creation to core auth
+	signInResult, err := aus.coreAuthSvc.SignInEmail(ctx, model_dtos.SignInEmailInput{
+		Email:    input.LoginInfo,
+		Password: input.Password,
+	}, authint.SessionMeta{})
+	if err != nil {
+		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.EmailOrPassword), err
+	}
+
+	if signInResult == nil || signInResult.Session == nil {
 		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
 	}
+
+	// 2. Access Token Plugin Duty: Issue JWT Access Token + Refresh Token
+	tokens, err := aus.SesSvc.Tokens(&signInResult.Session.Session, signInResult.User.Role)
+	if err != nil {
+		return dtos.InternalErrMS[accesstokendtos.TokenResponse](err.Error()), err
+	}
+
+	// 1. check the user exists and is active
+	// usr, err := aus.UserRepo.FindUserByEmail(ctx, input.LoginInfo)
+	// // Active is goauth-only: nil means the user came from better-auth's sign-up and is allowed; false blocks login
+	// if err != nil || usr == nil || (usr.Active != nil && !*usr.Active) {
+	// 	_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
+	// 	return dtos.BadReqC[accesstokendtos.TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
+	// }
 
 	// 2. Get password from account record
-	account, err := aus.AccountRepo.FindAccountByUserAndProvider(ctx, usr.ID, models.ProvCredential)
-	if err != nil || account == nil || account.Password == nil {
-		_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
-		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.EmailOrPassword), errors.ErrInvalidCredentials
-	}
+	// account, err := aus.AccountRepo.FindAccountByUserAndProvider(ctx, usr.ID, models.ProvCredential)
+	// if err != nil || account == nil || account.Password == nil {
+	// 	_, _ = aus.Passwords.Hash(input.Password) // for security timing protection
+	// 	return dtos.BadReqC[accesstokendtos.TokenResponse](errors.EmailOrPassword), errors.ErrInvalidCredentials
+	// }
 
-	// 3. compare the password hash
-	valid, upgraded, _ := aus.Passwords.Verify(*account.Password, input.Password)
-	if !valid {
-		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
-	}
-	if upgraded != "" {
-		if _, err := aus.AccountRepo.UpdateAccount(ctx, account.ID, map[string]interface{}{"Password": upgraded}); err != nil {
-			logger.ErrorCtx(ctx, "could not upgrade password hash", err, nil)
-		}
-	}
+	// // 3. compare the password hash
+	// valid, upgraded, _ := aus.Passwords.Verify(*account.Password, input.Password)
+	// if !valid {
+	// 	return dtos.BadReqC[accesstokendtos.TokenResponse](errors.EmailOrPassword), errors.EmailOrPasswordErr
+	// }
+	// if upgraded != "" {
+	// 	if _, err := aus.AccountRepo.UpdateAccount(ctx, account.ID, map[string]interface{}{"Password": upgraded}); err != nil {
+	// 		logger.ErrorCtx(ctx, "could not upgrade password hash", err, nil)
+	// 	}
+	// }
 
 	// 4. Check ban (after credential check; expired bans are lifted silently)
-	if usr.Banned {
-		if usr.BanExpires == nil || usr.BanExpires.After(time.Now()) {
-			return dtos.BadReqM[accesstokendtos.TokenResponse](errors.ErrUserBanned.Message), errors.ErrUserBanned
-		}
-		// if the ban has expired lift the ban
-		_, _ = aus.UserRepo.UpdateUser(ctx, usr.ID, map[string]interface{}{
-			"Banned":     false,
-			"BanReason":  nil,
-			"BanExpires": nil,
-		})
-	}
+	// if usr.Banned {
+	// 	if usr.BanExpires == nil || usr.BanExpires.After(time.Now()) {
+	// 		return dtos.BadReqM[accesstokendtos.TokenResponse](errors.ErrUserBanned.Message), errors.ErrUserBanned
+	// 	}
+	// 	// if the ban has expired lift the ban
+	// 	_, _ = aus.UserRepo.UpdateUser(ctx, usr.ID, map[string]interface{}{
+	// 		"Banned":     false,
+	// 		"BanReason":  nil,
+	// 		"BanExpires": nil,
+	// 	})
+	// }
 	// setup active org id
-	now := time.Now()
-	updatedUsr, err := aus.UserRepo.UpdateUser(ctx, usr.ID, map[string]interface{}{
-		"LastLoginAt": now,
-	})
-	if err != nil {
-		logger.ErrorCtx(ctx, "could not update user last login at", err, nil)
-		return dtos.InternalErrMS[accesstokendtos.TokenResponse](err.Error()), err
-	}
+	// now := time.Now()
+	// updatedUsr, err := aus.UserRepo.UpdateUser(ctx, usr.ID, map[string]interface{}{
+	// 	"LastLoginAt": now,
+	// })
+	// if err != nil {
+	// 	logger.ErrorCtx(ctx, "could not update user last login at", err, nil)
+	// 	return dtos.InternalErrMS[accesstokendtos.TokenResponse](err.Error()), err
+	// }
 
-	sessionID := models.NewSecureId()
-	tokens, err := aus.SesSvc.CreateSession(ctx, sessionID, usr.Role.S(), usr.ID, &models.SessionOpt{
-		ClearSession: aus.Config != nil && aus.Config.SingleSession,
-		DeviceToken:  input.DeviceToken,
-	})
-	if err != nil {
-		return dtos.InternalErrMS[accesstokendtos.TokenResponse](err.Error()), err
-	}
+	// TODO: know hos the create Session translates to the TOken
+	// sessionID := models.NewSecureId()
+	// tokens, err := aus.SesSvc.CreateSession(ctx, sessionID, usr.Role.S(), usr.ID, &models.SessionOpt{
+	// 	ClearSession: aus.Config != nil && aus.Config.SingleSession,
+	// 	DeviceToken:  input.DeviceToken,
+	// })
+	// if err != nil {
+	// 	return dtos.InternalErrMS[accesstokendtos.TokenResponse](err.Error()), err
+	// }
+
 	// TODO: add audit log
 	// tasks.EnqueueAuditActivityLog(ctx, aus.Provider.QueueClient, aus.Provider.GormConn, tasks.AuditActivityLogPayload{
 	// 	CompanyID:   companyID,
@@ -270,7 +294,7 @@ func (aus *AuthService) Login(ctx context.Context, input accesstokendtos.LoginDa
 
 	return dtos.SuccessCreated(accesstokendtos.TokenResponse{
 		AuthTokens: tokens,
-		UserData:   *updatedUsr,
+		UserData:   signInResult.User,
 	}, 1), nil
 }
 
@@ -306,7 +330,7 @@ func (aus *AuthService) ResetToken(ctx context.Context, refreshToken string) (dt
 
 	return dtos.SuccessCreated(accesstokendtos.TokenResponse{
 		AuthTokens: tokens,
-		UserData:   *usr,
+		UserData:   model_dtos.UserFromModel(usr),
 	}, 1), nil
 }
 
@@ -329,7 +353,7 @@ func (aus *AuthService) ForgotPwd(ctx context.Context, input accesstokendtos.Ver
 		return dtos.SuccessCreated(true, 0), nil
 	}
 
-	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &interfaces1.VerOpt{UserId: usr.ID})
+	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &accTokInterfaces.VerOpt{UserId: usr.ID})
 }
 
 // ResetPwd [ID]

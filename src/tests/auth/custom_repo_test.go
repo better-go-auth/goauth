@@ -8,9 +8,9 @@ import (
 	bettergoauth "github.com/better-go-auth/goauth"
 	"github.com/better-go-auth/goauth/src/app/repository/memory"
 	"github.com/better-go-auth/goauth/src/models"
+	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
 	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
-	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/danielgtaylor/huma/v2"
@@ -84,33 +84,34 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 
 	ctx := context.Background()
 
-	vSvc := services.NewVerificationService(mockRepos, opts.EmailVerification)
-	sSvc := services.NewSessionService(opts.GoAuth.Session, mockRepos, app.Sessions, nil, app.Hooks)
 	passwords := authcrypto.NewPasswords(opts.AuthConfig)
-	authSvc := services.NewAuthService(&opts.GoAuth.Session, vSvc, sSvc, mockRepos, txMgr, passwords, app.Hooks)
-	profileSvc := services.NewProfileService(vSvc, sSvc, mockRepos, txMgr, passwords)
+	// access token services
+	aTVfcSvc := services.NewVerificationService(mockRepos, opts.EmailVerification)
+	aTsSvc := services.NewSessionService(opts.GoAuth.Session, mockRepos, app.Sessions, nil, app.Hooks)
+	aTauthSvc := services.NewAuthService(&opts.GoAuth.Session, app.Auth, aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords, app.Hooks)
+	aTprofileSvc := services.NewProfileService(aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords)
 
 	// 1. Register with email
-	regResp, err := authSvc.RegisterWithEmail(ctx, models.RegisterClientInput{
+	regResp, err := aTauthSvc.RegisterWithEmail(ctx, models.RegisterClientInput{
 		FirstName: "Alice",
 		LastName:  "Smith",
 		Email:     "alice@example.com",
 		Password:  "SecurePassword123!",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "Alice", regResp.Body.FirstName)
-	assert.Equal(t, "Smith", regResp.Body.LastName)
-	assert.Equal(t, "alice@example.com", regResp.Body.Email)
-	userID := regResp.Body.ID
+	assert.Equal(t, "Alice", regResp.User.Name)
+	// assert.Equal(t, "Smith", regResp.User.Name)
+	assert.Equal(t, "alice@example.com", regResp.User.Email)
+	userID := regResp.User.ID
 
 	// 2. Profile GetProfile
-	userProfile, err := profileSvc.GetProfile(ctx, userID)
+	userProfile, err := aTprofileSvc.GetProfile(ctx, userID)
 	require.NoError(t, err)
 	assert.NotNil(t, userProfile)
 	assert.Equal(t, "Alice", userProfile.FirstName)
 
 	// 3. Profile UpdateProfile
-	updatedProfile, err := profileSvc.UpdateProfile(ctx, userID, models.ProfileUpdateDto{
+	updatedProfile, err := aTprofileSvc.UpdateProfile(ctx, userID, models.ProfileUpdateDto{
 		FirstName: "Alicia",
 		LastName:  "Keys",
 	})

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -168,7 +169,7 @@ func (s *Service) ResetPassword(ctx context.Context, in dtos.ResetPasswordInput)
 //
 // Flow: validate the new password → load the credential account → check the current password →
 // store the new hash → optionally sign out everywhere and start a fresh session for this device.
-func (s *Service) ChangePassword(ctx context.Context, current *dtos.SessionWithUser, in dtos.ChangePasswordInput, meta Meta) (*ChangePasswordResult, error) {
+func (s *Service) ChangePassword(ctx context.Context, current *dtos.SessionWithUser, in dtos.ChangePasswordInput, meta svcint.Meta) (*svcint.ChangePasswordResult, error) {
 	if current == nil {
 		return nil, autherr.ErrUnauthorized
 	}
@@ -192,7 +193,7 @@ func (s *Service) ChangePassword(ctx context.Context, current *dtos.SessionWithU
 	if _, err := s.repos.UpdateAccount(ctx, account.ID, map[string]interface{}{"Password": hash}); err != nil {
 		return nil, err
 	}
-	res := &ChangePasswordResult{User: current.User}
+	res := &svcint.ChangePasswordResult{User: current.User}
 	// request flag revokeOtherSessions: without it, existing sessions stay valid and token is null
 	if !in.RevokeOtherSessions {
 		return res, nil

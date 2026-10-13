@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/token"
@@ -56,7 +57,7 @@ func NewSessionService(
 }
 
 // tokens signs the access JWT for s and returns it with the session token as the refresh token.
-func (aus *SessionService) Tokens(s *models.Session, role string) (*models.AuthTokens, error) {
+func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*models.AuthTokens, error) {
 	claims := token.CustomClaims{
 		Role:      role,
 		UserID:    s.UserID,
@@ -117,7 +118,8 @@ func (aus *SessionService) CreateSession(ctx context.Context, sessionId, role, u
 	if err != nil {
 		return nil, fmt.Errorf("session: load created session: %w", err)
 	}
-	return aus.Tokens(s, role)
+	sessionData := dtos.SessionFromModel(s)
+	return aus.Tokens(&sessionData, role)
 }
 
 // reissue writes the org context (nil clears it) and device token onto an existing session and signs new tokens.
@@ -140,7 +142,8 @@ func (aus *SessionService) reissue(ctx context.Context, s *models.Session, role 
 	if err != nil {
 		return nil, err
 	}
-	return aus.Tokens(updated, role)
+	sessionData := dtos.SessionFromModel(updated)
+	return aus.Tokens(&sessionData, role)
 }
 
 // FindByRefreshToken returns the live session behind a refresh token, or nil (unknown, expired or revoked).
@@ -178,7 +181,8 @@ func (aus *SessionService) RefreshTokens(ctx context.Context, s *models.Session,
 	if err != nil {
 		return nil, err
 	}
-	return aus.Tokens(updated, role)
+	sessionData := dtos.SessionFromModel(updated)
+	return aus.Tokens(&sessionData, role)
 }
 
 // BlacklistSession marks a session id as revoked in secondary storage, so access JWTs that carry it are

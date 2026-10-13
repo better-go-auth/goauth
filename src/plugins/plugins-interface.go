@@ -1,18 +1,17 @@
 package plugins
 
 import (
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"context"
 	"net/http"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
-	"github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/providers/authenticator"
-
 	// "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/common/middleware"
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
+	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -27,7 +26,8 @@ type InitContext struct {
 	// EmailSender emailiface.IVerificationSender
 	TxManager interfaces.ITransactionManager
 	// Auth services
-	SessionManager serv_interfaces.ISessionManager
+	SessionManager svcint.ISessionManager
+	IAuthSvc svcint.IAuthService
 	// INormalAuthServices serv_interfaces.INormalAuthServices
 	// ILegacyAuthServices serv_interfaces.ILegacyAuthServices
 	//

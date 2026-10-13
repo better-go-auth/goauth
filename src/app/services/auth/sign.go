@@ -7,6 +7,7 @@ import (
 	"time"
 
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -28,7 +29,7 @@ func validEmail(email string) bool {
 //     otherwise create the user and its "credential" account holding the password hash.
 //  3. Optionally send the verification email.
 //  4. Optionally sign the user in (create a session).
-func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, meta Meta) (*SignUpResult, error) {
+func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, meta svcint.Meta) (*svcint.SignUpResult, error) {
 	emlpwdCfg := s.cfg.EmailAndPassword
 	// config: EmailAndPassword.Enabled=false or DisableSignUp=true turns this endpoint off
 	if !s.emailPasswordEnabled() || emlpwdCfg.DisableSignUp {
@@ -53,7 +54,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	// rememberMe=false (explicitly) gives a 1-day session that is never extended
 	dontRemember := in.RememberMe != nil && !*in.RememberMe
 
-	var res *SignUpResult
+	var res *svcint.SignUpResult
 	var created *models.User
 	// user + account are created together: either both rows exist or neither
 	err := s.inTx(ctx, func(ctx context.Context) error {
@@ -74,7 +75,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 			}
 			// fake user with a fresh ID, shaped exactly like a real sign-up response; nothing is stored
 			now := time.Now().UTC()
-			res = &SignUpResult{User: dtos.UserResponse{
+			res = &svcint.SignUpResult{User: dtos.UserResponse{
 				ID: models.NewID(), Name: in.Name, Email: email, Image: in.Image,
 				CreatedAt: dtos.Time(now), UpdatedAt: dtos.Time(now),
 			}}
@@ -124,7 +125,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		}
 	}
 
-	res = &SignUpResult{User: dtos.UserFromModel(created)}
+	res = &svcint.SignUpResult{User: dtos.UserFromModel(created)}
 	// config: RequireEmailVerification / AutoSignIn=false → user is created but not signed in (token: null)
 	if requireVerification {
 		return res, nil
@@ -143,7 +144,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 // Flow: find the user and its credential account → verify the password (upgrading old hashes) →
 // enforce email verification → create a session (plugin hooks may veto it, e.g. bans) → record the login.
 // Every "wrong email" and "wrong password" case returns the same INVALID_EMAIL_OR_PASSWORD error.
-func (s *Service) SignInEmail(ctx context.Context, in dtos.SignInEmailInput, meta Meta) (*SignInResult, error) {
+func (s *Service) SignInEmail(ctx context.Context, in dtos.SignInEmailInput, meta svcint.Meta) (*svcint.SignInResult, error) {
 	// config: EmailAndPassword.Enabled=false turns email/password sign-in off
 	if !s.emailPasswordEnabled() {
 		return nil, ErrEmailPasswordDisabled
@@ -209,7 +210,7 @@ func (s *Service) SignInEmail(ctx context.Context, in dtos.SignInEmailInput, met
 	_, _ = s.repos.UpdateUser(ctx, user.ID, update)
 
 	// better-auth's response: redirect=true tells the client to follow URL (the callbackURL it sent)
-	return &SignInResult{
+	return &svcint.SignInResult{
 		Redirect:     in.CallbackURL != nil && *in.CallbackURL != "",
 		Token:        sw.Session.Token,
 		URL:          in.CallbackURL,

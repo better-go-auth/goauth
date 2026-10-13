@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/danielgtaylor/huma/v2"
 )
@@ -28,12 +28,12 @@ func (h *handler) requestContext() func(huma.Context, func(huma.Context)) {
 func requestOf(ctx context.Context) *http.Request { return config.GetHTTPRequest(ctx) }
 
 // meta returns the IP and user agent stored on new sessions.
-func (h *handler) meta(ctx context.Context) authsvc.Meta {
+func (h *handler) meta(ctx context.Context) svcint.Meta {
 	req := requestOf(ctx)
 	if req == nil {
-		return authsvc.Meta{}
+		return svcint.Meta{}
 	}
-	return authsvc.Meta{IPAddress: h.clientIP(req), UserAgent: req.Header.Get("User-Agent")}
+	return svcint.Meta{IPAddress: h.clientIP(req), UserAgent: req.Header.Get("User-Agent")}
 }
 
 // clientIP follows Advanced.IPAddress: the configured headers in order (default x-forwarded-for),

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 )
@@ -21,7 +22,7 @@ type requestPasswordResetOutput struct {
 	}
 }
 
-func (h *handler) requestPasswordReset(ctx context.Context, in *requestPasswordResetInput) (*requestPasswordResetOutput, error) {
+func (h *handler) RequestPasswordReset(ctx context.Context, in *requestPasswordResetInput) (*requestPasswordResetOutput, error) {
 	if err := h.checkURL(in.Body.RedirectTo, autherr.ErrInvalidRedirectURL); err != nil {
 		return nil, err
 	}
@@ -45,9 +46,9 @@ type redirectOutput struct {
 	SetCookie []http.Cookie `header:"Set-Cookie"`
 }
 
-// resetPasswordCallback is the link in the reset email: it redirects to callbackURL with ?token= when the
+// ResetPasswordCallback is the link in the reset email: it redirects to callbackURL with ?token= when the
 // token is valid, or ?error=INVALID_TOKEN.
-func (h *handler) resetPasswordCallback(ctx context.Context, in *resetPasswordCallbackInput) (*redirectOutput, error) {
+func (h *handler) ResetPasswordCallback(ctx context.Context, in *resetPasswordCallbackInput) (*redirectOutput, error) {
 	if err := h.checkURL(in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
@@ -68,7 +69,7 @@ type resetPasswordInput struct {
 	}
 }
 
-func (h *handler) resetPassword(ctx context.Context, in *resetPasswordInput) (*statusOutput, error) {
+func (h *handler) ResetPassword(ctx context.Context, in *resetPasswordInput) (*statusOutput, error) {
 	tok := in.Body.Token
 	if tok == "" {
 		tok = in.Token
@@ -91,7 +92,7 @@ type changePasswordOutput struct {
 	}
 }
 
-func (h *handler) changePassword(ctx context.Context, in *changePasswordInput) (*changePasswordOutput, error) {
+func (h *handler) ChangePassword(ctx context.Context, in *changePasswordInput) (*changePasswordOutput, error) {
 	res, err := h.Auth.ChangePassword(ctx, current(ctx), in.Body, h.meta(ctx))
 	if err != nil {
 		return nil, err
@@ -105,9 +106,9 @@ type updateUserInput struct {
 	Body map[string]any
 }
 
-// updateUser maps the JSON body (camelCase) to the service input; additional fields use their Go field names.
-func (h *handler) updateUser(ctx context.Context, in *updateUserInput) (*statusOutput, error) {
-	var upd authsvc.UpdateUserInput
+// UpdateUser maps the JSON body (camelCase) to the service input; additional fields use their Go field names.
+func (h *handler) UpdateUser(ctx context.Context, in *updateUserInput) (*statusOutput, error) {
+	var upd svcint.UpdateUserInput
 	for k, v := range in.Body {
 		switch k {
 		case "name", "image":
@@ -151,7 +152,7 @@ type deleteUserOutput struct {
 	}
 }
 
-func (h *handler) deleteUser(ctx context.Context, in *deleteUserInput) (*deleteUserOutput, error) {
+func (h *handler) DeleteUser(ctx context.Context, in *deleteUserInput) (*deleteUserOutput, error) {
 	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
@@ -182,7 +183,7 @@ type deleteUserCallbackOutput struct {
 	}
 }
 
-func (h *handler) deleteUserCallback(ctx context.Context, in *deleteUserCallbackInput) (*deleteUserCallbackOutput, error) {
+func (h *handler) DeleteUserCallback(ctx context.Context, in *deleteUserCallbackInput) (*deleteUserCallbackOutput, error) {
 	if err := h.checkURL(in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
@@ -205,7 +206,7 @@ type listAccountsOutput struct {
 	Body []dtos.AccountResponse
 }
 
-func (h *handler) listAccounts(ctx context.Context, _ *struct{}) (*listAccountsOutput, error) {
+func (h *handler) ListAccounts(ctx context.Context, _ *struct{}) (*listAccountsOutput, error) {
 	accounts, err := h.Auth.ListAccounts(ctx, current(ctx))
 	if err != nil {
 		return nil, err
@@ -217,7 +218,7 @@ type unlinkAccountInput struct {
 	Body dtos.UnlinkAccountInput
 }
 
-func (h *handler) unlinkAccount(ctx context.Context, in *unlinkAccountInput) (*statusOutput, error) {
+func (h *handler) UnlinkAccount(ctx context.Context, in *unlinkAccountInput) (*statusOutput, error) {
 	if err := h.Auth.UnlinkAccount(ctx, current(ctx), in.Body); err != nil {
 		return nil, err
 	}

@@ -2,6 +2,7 @@ package dtos
 
 import (
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 )
 
 // VerificationInput is for verifying registration email.
@@ -27,7 +28,7 @@ type RefreshTokenInput struct {
 // TokenResponse represents a token issue response with user payload.
 type TokenResponse struct {
 	AuthTokens *models.AuthTokens `json:"auth_tokens"`
-	UserData   models.User        `json:"user_data"`
+	UserData   dtos.UserResponse  `json:"user_data"`
 }
 
 // =========================. password reset related
