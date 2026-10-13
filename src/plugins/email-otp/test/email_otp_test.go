@@ -57,12 +57,12 @@ func TestEmailOTPPlugin_LifecycleAndEndpoints(t *testing.T) {
 	sessionMgr := sessionsvc.NewManager(config.Session{ExpiresIn: 24 * time.Hour}, repos, repos, store, hooks)
 
 	sender := &mockOTPSender{}
-	otpPlugin := emailotp.New(
-		emailotp.WithSendVerificationOTP(sender.Send),
-		emailotp.WithOtpLength(6),
-		emailotp.WithExpiresIn(5*time.Minute),
-		emailotp.WithSendVerificationOnSignUp(true),
-	)
+	otpPlugin := emailotp.New(emailotpconfig.EmailOTPConfig{
+		SendVerificationOTP:      sender.Send,
+		OtpLength:                6,
+		ExpiresIn:                5 * time.Minute,
+		SendVerificationOnSignUp: true,
+	})
 
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Email OTP Test API", "1.0.0"))
@@ -220,10 +220,10 @@ func TestEmailOTP_OverrideDefaultEmailVerification_SuppressesNormalEmail(t *test
 	})
 
 	otpSender := &mockOTPSender{}
-	otpPlugin := emailotp.New(
-		emailotp.WithSendVerificationOTP(otpSender.Send),
-		emailotp.WithOverrideDefaultEmailVerification(true),
-	)
+	otpPlugin := emailotp.New(emailotpconfig.EmailOTPConfig{
+		SendVerificationOTP:              otpSender.Send,
+		OverrideDefaultEmailVerification: true,
+	})
 
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Email OTP Test API", "1.0.0"))
@@ -286,12 +286,15 @@ func TestEmailOTP_ChangeEmail(t *testing.T) {
 	sessionMgr := sessionsvc.NewManager(config.Session{ExpiresIn: 24 * time.Hour}, repos, repos, store, hooks)
 
 	sender := &mockOTPSender{}
-	otpPlugin := emailotp.New(
-		emailotp.WithSendVerificationOTP(sender.Send),
-		emailotp.WithOtpLength(6),
-		emailotp.WithExpiresIn(5*time.Minute),
-		emailotp.WithChangeEmail(true, false),
-	)
+	otpPlugin := emailotp.New(emailotpconfig.EmailOTPConfig{
+		SendVerificationOTP: sender.Send,
+		OtpLength:           6,
+		ExpiresIn:           5 * time.Minute,
+		ChangeEmail: emailotpconfig.EmailOTPChangeEmailConfig{
+			Enabled:            true,
+			VerifyCurrentEmail: false,
+		},
+	})
 
 	authCfg := config.AuthConfig{
 		AppName: "Change Email Test",

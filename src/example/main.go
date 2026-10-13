@@ -16,6 +16,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	"github.com/better-go-auth/goauth/src/plugins/org"
@@ -116,22 +117,22 @@ func main() {
 		log.Fatalf("failed to create org plugin: %v", err)
 	}
 
-	accessTokenPlugin := accesstoken.New(
-		accesstoken.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}),
-		accesstoken.WithVerificationConfig(loc_conf.EmailVerification{
+	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
+		Session: loc_conf.SessionGoAuth{JWT: jwt},
+		Verification: loc_conf.EmailVerification{
 			GoAuth: loc_conf.EmailVerificationGoAuth{
 				CodeExpiresIn: 15 * time.Minute,
 				CodeSender:    emailSender,
 			},
-		}),
-	)
+		},
+	})
 
-	emailOtpPlugin := emailotp.New(
-		emailotp.WithSendVerificationOTP(emailSender.SendOTP),
-		emailotp.WithExpiresIn(15*time.Minute),
-		emailotp.WithSendVerificationOnSignUp(true),
-		emailotp.WithOverrideDefaultEmailVerification(true),
-	)
+	emailOtpPlugin := emailotp.New(emailotpconfig.EmailOTPConfig{
+		SendVerificationOTP:              emailSender.SendOTP,
+		ExpiresIn:                        15 * time.Minute,
+		SendVerificationOnSignUp:         true,
+		OverrideDefaultEmailVerification: true,
+	})
 
 	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn: db,

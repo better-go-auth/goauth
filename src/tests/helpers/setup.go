@@ -20,6 +20,7 @@ import (
 	loc_conf "github.com/better-go-auth/goauth/src/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
@@ -193,15 +194,15 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		log.Fatalf("failed to initialize org plugin: %v", err)
 	}
 
-	accessTokenPlugin := accesstoken.New(
-		accesstoken.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}),
-		accesstoken.WithVerificationConfig(loc_conf.EmailVerification{
+	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
+		Session: loc_conf.SessionGoAuth{JWT: jwt},
+		Verification: loc_conf.EmailVerification{
 			GoAuth: loc_conf.EmailVerificationGoAuth{
 				CodeExpiresIn: 15 * time.Minute,
 				CodeSender:    mockEmail,
 			},
-		}),
-	)
+		},
+	})
 
 	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn:             gormDB,

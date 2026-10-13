@@ -14,6 +14,7 @@ import (
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/danielgtaylor/huma/v2"
@@ -74,10 +75,10 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Access Token Test API", "1.0.0"))
 
-	plugin := accesstoken.New(
-		accesstoken.WithSessionConfig(sConf),
-		accesstoken.WithVerificationConfig(vConf),
-	)
+	plugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
+		Session:      sConf,
+		Verification: vConf,
+	})
 
 	authCfg := config.AuthConfig{
 		Secret:            "test-app-secret-32-bytes-long!",

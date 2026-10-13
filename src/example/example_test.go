@@ -14,10 +14,12 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
+	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/plugins/org"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/danielgtaylor/huma/v2"
@@ -62,22 +64,22 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 		t.Fatalf("failed to create org plugin: %v", err)
 	}
 
-	accessTokenPlugin := accesstoken.New(
-		accesstoken.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}),
-		accesstoken.WithVerificationConfig(loc_conf.EmailVerification{
+	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
+		Session: loc_conf.SessionGoAuth{JWT: jwt},
+		Verification: loc_conf.EmailVerification{
 			GoAuth: loc_conf.EmailVerificationGoAuth{
 				CodeExpiresIn: 15 * time.Minute,
 				CodeSender:    emailSender,
 			},
-		}),
-	)
+		},
+	})
 
-	emailOtpPlugin := emailotp.New(
-		emailotp.WithSendVerificationOTP(emailSender.SendOTP),
-		emailotp.WithExpiresIn(15*time.Minute),
-		emailotp.WithSendVerificationOnSignUp(true),
-		emailotp.WithOverrideDefaultEmailVerification(true),
-	)
+	emailOtpPlugin := emailotp.New(emailotpconfig.EmailOTPConfig{
+		SendVerificationOTP:              emailSender.SendOTP,
+		ExpiresIn:                        15 * time.Minute,
+		SendVerificationOnSignUp:         true,
+		OverrideDefaultEmailVerification: true,
+	})
 
 	_, err = bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn: db,

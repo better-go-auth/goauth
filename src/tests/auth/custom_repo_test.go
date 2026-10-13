@@ -10,6 +10,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
@@ -47,7 +48,7 @@ func TestSetupGoAuth_CustomRepositoriesWithoutGorm(t *testing.T) {
 		Repositories: mockRepos,
 		Migrator:     migrator,
 		TxManager:    txMgr,
-		Plugins:      []plugin.Plugin{accesstoken.New()},
+		Plugins:      []plugin.Plugin{accesstoken.New(accesstokenconfig.DefaultAccessTokenConfig())},
 	}
 	opts.Secret = "super-secret-access-key-32-chars-long"
 

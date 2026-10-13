@@ -17,6 +17,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/google/uuid"
 	"gorm.io/driver/sqlite"
@@ -68,7 +69,7 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 	o := goauth.GoAuthOptions{
 		Conn:             db,
 		SecondaryStorage: store,
-		Plugins:          []plugin.Plugin{accesstoken.New()},
+		Plugins:          []plugin.Plugin{accesstoken.New(accesstokenconfig.DefaultAccessTokenConfig())},
 		AuthConfig: config.AuthConfig{
 			Secret: TestSecret,
 		},

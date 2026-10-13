@@ -100,9 +100,22 @@ func WithBasePath(basePath string) Option {
 }
 
 // New creates a new Email OTP plugin instance.
-func New(opts ...Option) *Plugin {
+// Directly accepts the config struct so users can configure it directly (mimicking Better Auth's plugin pattern),
+// with functional options supported as additional optional overrides.
+func New(cfg emailotpconfig.EmailOTPConfig, opts ...Option) *Plugin {
+	defaultCfg := emailotpconfig.DefaultConfig()
+	if cfg.OtpLength <= 0 {
+		cfg.OtpLength = defaultCfg.OtpLength
+	}
+	if cfg.ExpiresIn <= 0 {
+		cfg.ExpiresIn = defaultCfg.ExpiresIn
+	}
+	if !cfg.ChangeEmail.Enabled && !cfg.ChangeEmail.VerifyCurrentEmail {
+		cfg.ChangeEmail.Enabled = true
+	}
+
 	p := &Plugin{
-		config: emailotpconfig.DefaultConfig(),
+		config: cfg,
 	}
 	for _, opt := range opts {
 		opt(p)

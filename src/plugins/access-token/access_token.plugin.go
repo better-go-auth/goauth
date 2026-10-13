@@ -53,6 +53,15 @@ var _ plugins.Plugin = (*Plugin)(nil)
 // Option configures the access-token Plugin.
 type Option func(*Plugin)
 
+// WithConfig sets the entire AccessTokenConfig.
+func WithConfig(conf accesstokenconfig.AccessTokenConfig) Option {
+	return func(p *Plugin) {
+		p.config = conf
+		p.sessionConf = conf.Session
+		p.vConf = conf.Verification
+	}
+}
+
 // WithBasePath sets custom base path (e.g. "/api/auth").
 func WithBasePath(basePath string) Option {
 	return func(p *Plugin) {
@@ -84,9 +93,27 @@ func WithPasswords(passwords *authcrypto.Passwords) Option {
 }
 
 // New creates a new access-token Plugin.
-func New(opts ...Option) *Plugin {
+// Directly accepts the config struct so users can configure it directly (mimicking Better Auth's plugin pattern),
+// with functional options supported as additional optional overrides.
+func New(cfg accesstokenconfig.AccessTokenConfig, opts ...Option) *Plugin {
+	defaultCfg := accesstokenconfig.DefaultAccessTokenConfig()
+	if cfg.BasePath == "" {
+		cfg.BasePath = defaultCfg.BasePath
+	}
+	if cfg.Session.JWT.AccessExpiresIn <= 0 {
+		cfg.Session.JWT.AccessExpiresIn = defaultCfg.Session.JWT.AccessExpiresIn
+	}
+	if cfg.Session.JWT.RefreshExpiresIn <= 0 {
+		cfg.Session.JWT.RefreshExpiresIn = defaultCfg.Session.JWT.RefreshExpiresIn
+	}
+	if cfg.Verification.GoAuth.CodeExpiresIn <= 0 {
+		cfg.Verification.GoAuth.CodeExpiresIn = defaultCfg.Verification.GoAuth.CodeExpiresIn
+	}
+
 	p := &Plugin{
-		config: accesstokenconfig.DefaultAccessTokenConfig(),
+		config:      cfg,
+		sessionConf: cfg.Session,
+		vConf:       cfg.Verification,
 	}
 	for _, opt := range opts {
 		opt(p)
