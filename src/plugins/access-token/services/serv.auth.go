@@ -12,7 +12,6 @@ import (
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	errors "github.com/better-go-auth/goauth/src/common/errors"
-	"github.com/better-go-auth/goauth/src/common/logger"
 	"github.com/better-go-auth/goauth/src/models"
 	model_dtos "github.com/better-go-auth/goauth/src/models/dtos"
 	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
@@ -51,6 +50,8 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 		}
 		u := &models.User{Base: models.Base{ID: models.NewID()}}
 		u.Name, u.Email, u.Image, u.Role = input.FirstName, input.Email, &input.Avatar, enums.User
+		u.FirstName, u.LastName = input.FirstName, input.LastName
+		// u.AccountStatus = enums.AccountPendingVerification
 		if created, err = aus.UserRepo.CreateUser(ctx, u); err != nil {
 			return autherr.ErrFailedToCreateUser
 		}
@@ -86,42 +87,41 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 		return res, nil
 	}
 
-	return res, nil
+	return &svcint.SignUpResult{User: modeldtos.UserFromModel(created)}, nil
 }
 
-// VerifyRegisteredUser (acc-01), [id]x
-func (aus *AuthService) VerifyRegisteredUser(ctx context.Context, input accesstokendtos.VerificationInput) (res dtos.GResp[models.User], eror error) {
-	var verifiedUser *models.User
-	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
-		usr, err := aus.UserRepo.FindUserByEmail(txCtx, input.Info)
-		if err != nil || usr == nil || usr.AccountStatus != enums.AccountPendingVerification {
-			return errors.InfoOrCodeErr
-		}
+// VerifyRegisteredUser (acc-01), [id]x: TODO: we dont need this method, we can use the email otp method for verification
+// func (aus *AuthService) VerifyRegisteredUser(ctx context.Context, input accesstokendtos.VerificationInput) (res dtos.GResp[models.User], eror error) {
+// 	var verifiedUser *models.User
+// 	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
+// 		usr, err := aus.UserRepo.FindUserByEmail(txCtx, input.Info)
+// 		if err != nil || usr == nil || usr.EmailVerified {
+// 			return errors.InfoOrCodeErr
+// 		}
 
-		// Validate the code
-		_, err = aus.VSvc.VerifyCode(txCtx, usr.GetEmail(), models.PurposeEmailVerification, input.Code)
-		if err != nil {
-			return errors.InfoOrCodeErr
-		}
+// 		// Validate the code
+// 		_, err = aus.VSvc.VerifyCode(txCtx, usr.GetEmail(), models.PurposeEmailVerification, input.Code)
+// 		if err != nil {
+// 			return errors.InfoOrCodeErr
+// 		}
 
-		// Update the user's status
-		updatedUsr, err := aus.UserRepo.UpdateUser(txCtx, usr.ID, map[string]any{
-			// "AccountStatus": enums.AccountActive,
-			"Active":        true,
-			"EmailVerified": true,
-		})
-		if err != nil {
-			return err
-		}
-		verifiedUser = updatedUsr
-		return nil
-	})
-	if err != nil {
-		return dtos.InternalErrMS[models.User]("transaction Error"), err
-	}
-	// TODO: create a method that returns the verifid user
-	return dtos.SuccessCreated(*verifiedUser, 1), nil
-}
+// 		// Update the user's status
+// 		updatedUsr, err := aus.UserRepo.UpdateUser(txCtx, usr.ID, map[string]any{
+// 			"Active":        true,
+// 			"EmailVerified": true,
+// 		})
+// 		if err != nil {
+// 			return err
+// 		}
+// 		verifiedUser = updatedUsr
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		return dtos.InternalErrMS[models.User]("transaction Error"), err
+// 	}
+// 	// TODO: create a method that returns the verifid user
+// 	return dtos.SuccessCreated(*verifiedUser, 1), nil
+// }
 
 // Login (acc-03) [companyId, Role, Password]
 func (aus *AuthService) Login(ctx context.Context, input accesstokendtos.LoginData) (dtos.GResp[accesstokendtos.TokenResponse], error) {
@@ -272,64 +272,64 @@ func (aus *AuthService) Logout(ctx context.Context, refreshToken string) (dtos.G
 }
 
 // ForgotPwd [ID]
-func (aus *AuthService) ForgotPwd(ctx context.Context, input accesstokendtos.VerifyReqInput) (dtos.GResp[bool], error) {
-	usr, err := aus.UserRepo.FindUserByEmail(ctx, input.Email)
-	if err != nil || usr == nil {
-		return dtos.SuccessCreated(true, 0), nil
-	}
+// func (aus *AuthService) ForgotPwd(ctx context.Context, input accesstokendtos.VerifyReqInput) (dtos.GResp[bool], error) {
+// 	usr, err := aus.UserRepo.FindUserByEmail(ctx, input.Email)
+// 	if err != nil || usr == nil {
+// 		return dtos.SuccessCreated(true, 0), nil
+// 	}
 
-	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &accTokInterfaces.VerOpt{UserId: usr.ID})
-}
+// 	return aus.VSvc.SendVerification(ctx, input.Email, models.PurposePasswordReset, &accTokInterfaces.VerOpt{UserId: usr.ID})
+// }
 
 // ResetPwd [ID]
-func (aus *AuthService) ResetPwd(ctx context.Context, input accesstokendtos.PwdResetInput) (dtos.GResp[bool], error) {
-	hash, err := aus.Passwords.Hash(input.NewPassword)
-	if err != nil {
-		return dtos.InternalErrMS[bool]("Hashing Error"), err
-	}
+// func (aus *AuthService) ResetPwd(ctx context.Context, input accesstokendtos.PwdResetInput) (dtos.GResp[bool], error) {
+// 	hash, err := aus.Passwords.Hash(input.NewPassword)
+// 	if err != nil {
+// 		return dtos.InternalErrMS[bool]("Hashing Error"), err
+// 	}
 
-	usr, err := aus.UserRepo.FindUserByEmail(ctx, input.Info)
-	if err != nil || usr == nil {
-		return dtos.BadReqC[bool](errors.InfoOrCode), errors.InfoOrCodeErr
-	}
-	// Fetch sessions first so we don't lose their SessionId values upon deletion
-	// sessions, fetchErr := generic.DbFetchManyWithOffset[models.Session](aus.Provider.GormConn, ctx, models.Session{UserID: usr.Body.ID}, dtos.PaginationInput{Limit: 10000}, nil)
+// 	usr, err := aus.UserRepo.FindUserByEmail(ctx, input.Info)
+// 	if err != nil || usr == nil {
+// 		return dtos.BadReqC[bool](errors.InfoOrCode), errors.InfoOrCodeErr
+// 	}
+// 	// Fetch sessions first so we don't lose their SessionId values upon deletion
+// 	// sessions, fetchErr := generic.DbFetchManyWithOffset[models.Session](aus.Provider.GormConn, ctx, models.Session{UserID: usr.Body.ID}, dtos.PaginationInput{Limit: 10000}, nil)
 
-	err = aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
-		// 1. Validate the code
-		_, err = aus.VSvc.VerifyCode(txCtx, input.Info, models.PurposePasswordReset, input.Code)
-		if err != nil {
-			return errors.InfoOrCodeErr
-		}
+// 	err = aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
+// 		// 1. Validate the code
+// 		_, err = aus.VSvc.VerifyCode(txCtx, input.Info, models.PurposePasswordReset, input.Code)
+// 		if err != nil {
+// 			return errors.InfoOrCodeErr
+// 		}
 
-		// 2. Update user's password
-		account, err := aus.AccountRepo.FindAccountByUserAndProvider(txCtx, usr.ID, models.ProvCredential)
-		if err != nil {
-			return err
-		}
-		if account == nil {
-			return errors.ErrInvalidCredentials
-		}
-		_, err = aus.AccountRepo.UpdateAccount(txCtx, account.ID, map[string]interface{}{"Password": hash})
-		if err != nil {
-			return fmt.Errorf("authsvc: update password: %w", err)
-		}
+// 		// 2. Update user's password
+// 		account, err := aus.AccountRepo.FindAccountByUserAndProvider(txCtx, usr.ID, models.ProvCredential)
+// 		if err != nil {
+// 			return err
+// 		}
+// 		if account == nil {
+// 			return errors.ErrInvalidCredentials
+// 		}
+// 		_, err = aus.AccountRepo.UpdateAccount(txCtx, account.ID, map[string]interface{}{"Password": hash})
+// 		if err != nil {
+// 			return fmt.Errorf("authsvc: update password: %w", err)
+// 		}
 
-		// 3. Clean up token
-		if err := aus.VSvc.DeleteByIdentifier(txCtx, input.Info, models.PurposePasswordReset); err != nil {
-			return fmt.Errorf("authsvc: deleting verification code: %w", err)
-		}
+// 		// 3. Clean up token
+// 		if err := aus.VSvc.DeleteByIdentifier(txCtx, input.Info, models.PurposePasswordReset); err != nil {
+// 			return fmt.Errorf("authsvc: deleting verification code: %w", err)
+// 		}
 
-		// 4. Delete all user sessions
-		err = aus.SesSvc.DeleteAllUserSessions(txCtx, usr.ID)
-		if err != nil {
-			logger.LogError("Deleting user sessions errors", err.Error())
-		}
-		return nil
-	})
-	if err != nil {
-		return dtos.InternalErrMS[bool]("transaction Error"), err
-	}
+// 		// 4. Delete all user sessions
+// 		err = aus.SesSvc.DeleteAllUserSessions(txCtx, usr.ID)
+// 		if err != nil {
+// 			logger.LogError("Deleting user sessions errors", err.Error())
+// 		}
+// 		return nil
+// 	})
+// 	if err != nil {
+// 		return dtos.InternalErrMS[bool]("transaction Error"), err
+// 	}
 
-	return dtos.SuccessCreated(true, 1), nil
-}
+// 	return dtos.SuccessCreated(true, 1), nil
+// }

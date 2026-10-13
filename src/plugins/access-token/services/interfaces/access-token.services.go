@@ -44,12 +44,12 @@ type LegacyAuthServiceImpl struct {
 // IAccessTokenAuthService defines authentication endpoints for access-token / JWT flow.
 type IAccessTokenAuthService interface {
 	RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (*svcint.SignUpResult, error)
-	VerifyRegisteredUser(ctx context.Context, input accesstokendtos.VerificationInput) (dtos.GResp[models.User], error)
+	// VerifyRegisteredUser(ctx context.Context, input accesstokendtos.VerificationInput) (dtos.GResp[models.User], error)
 	Login(ctx context.Context, input accesstokendtos.LoginData) (dtos.GResp[accesstokendtos.TokenResponse], error)
 	ResetToken(ctx context.Context, token string) (dtos.GResp[accesstokendtos.TokenResponse], error)
 	Logout(ctx context.Context, token string) (dtos.GResp[bool], error)
-	ForgotPwd(ctx context.Context, input accesstokendtos.VerifyReqInput) (dtos.GResp[bool], error)
-	ResetPwd(ctx context.Context, input accesstokendtos.PwdResetInput) (dtos.GResp[bool], error)
+	// ForgotPwd(ctx context.Context, input accesstokendtos.VerifyReqInput) (dtos.GResp[bool], error)
+	// ResetPwd(ctx context.Context, input accesstokendtos.PwdResetInput) (dtos.GResp[bool], error)
 }
 
 // IAccessTokenSessionService manages JWT access token + refresh token sessions.

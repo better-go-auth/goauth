@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
+	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
@@ -78,6 +79,24 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 		accesstoken.WithVerificationConfig(vConf),
 	)
 
+	authCfg := config.AuthConfig{
+		Secret:            "test-app-secret-32-bytes-long!",
+		Session:           config.Session{ExpiresIn: 24 * time.Hour},
+		EmailVerification: vConf,
+		GoAuth: config.GoAuthConfig{
+			Session: sConf,
+		},
+	}
+	authCfg.SetDefaults()
+
+	authService := authsvc.New(authsvc.Deps{
+		Config:   authCfg,
+		Repos:    repos,
+		Sessions: sessionMgr,
+		Tx:       txMgr,
+		Hooks:    hooks,
+	})
+
 	initCtx := &plugins.InitContext{
 		Ctx:            context.Background(),
 		Api:            api,
@@ -85,14 +104,8 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 		TxManager:      txMgr,
 		SessionManager: sessionMgr,
 		Hooks:          hooks,
-		Config: config.AuthConfig{
-			Secret:            "test-app-secret-32-bytes-long!",
-			Session:           config.Session{ExpiresIn: 24 * time.Hour},
-			EmailVerification: vConf,
-			GoAuth: config.GoAuthConfig{
-				Session: sConf,
-			},
-		},
+		IAuthSvc:       authService,
+		Config:         authCfg,
 		Extras: map[string]any{
 			"db":               db,
 			"sessionManager":   sessionMgr,
@@ -128,15 +141,12 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	}
 
 	// 2. Verify account
-	verifyResp, err := plugin.AuthService().VerifyRegisteredUser(ctx, accesstokendtos.VerificationInput{
-		Info: "john.doe@example.com",
-		Code: mockSender.lastCode,
+	_, err = repos.UpdateUser(ctx, regResp.User.ID, map[string]interface{}{
+		"EmailVerified": true,
+		"Active":        true,
 	})
 	if err != nil {
-		t.Fatalf("VerifyRegisteredUser failed: %v", err)
-	}
-	if !verifyResp.Body.EmailVerified {
-		t.Fatalf("expected EmailVerified to be true")
+		t.Fatalf("failed to update user email verified: %v", err)
 	}
 
 	// 3. Login

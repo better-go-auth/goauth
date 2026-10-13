@@ -80,12 +80,18 @@ type HookRegistry interface {
 	TriggerBeforeSessionCreate(ctx context.Context, session *models.Session, claims *token.CustomClaims) error
 	TriggerSessionRevoked(ctx context.Context, sessionID string) error
 	TriggerActiveOrgChanged(ctx context.Context, userID, newOrgID string) error
+
+	// Verification Override allows plugins (e.g. email-otp) to suppress the core default verification email.
+	OverrideEmailVerification()
+	IsEmailVerificationOverridden() bool
 }
 
 // DefaultHookRegistry provides thread-safe lifecycle hook registration and dispatch.
 type DefaultHookRegistry struct {
 	mu       sync.RWMutex
 	services []HookService
+
+	emailVerificationOverridden bool
 
 	beforeUserCreate    []func(ctx context.Context, user *models.User) error
 	afterUserCreate     []func(ctx context.Context, user *models.User) error
@@ -99,6 +105,18 @@ type DefaultHookRegistry struct {
 // NewHookRegistry creates a new HookRegistry instance.
 func NewHookRegistry() HookRegistry {
 	return &DefaultHookRegistry{}
+}
+
+func (h *DefaultHookRegistry) OverrideEmailVerification() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.emailVerificationOverridden = true
+}
+
+func (h *DefaultHookRegistry) IsEmailVerificationOverridden() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.emailVerificationOverridden
 }
 
 func (h *DefaultHookRegistry) Register(service HookService) {

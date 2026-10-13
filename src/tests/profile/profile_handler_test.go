@@ -43,19 +43,11 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 		}
 		_ = regResp
 
-		token, ok := env.MockEmail.LastToken(email)
-		if !ok || token == "" {
-			t.Fatalf("Expected verification token for %s", email)
-		}
-
-		_, err = env.AuthHandler.VerifyRegisteredAccount(ctx, &humatypes.HumaReqBody[auth.VerificationInput]{
-			Body: auth.VerificationInput{
-				Info: email,
-				Code: token,
-			},
-		})
-		if err != nil {
-			t.Fatalf("Verify failed: %v", err)
+		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(map[string]any{
+			"email_verified": true,
+			"active":         true,
+		}).Error; err != nil {
+			t.Fatalf("Failed to verify user: %v", err)
 		}
 	})
 
@@ -176,14 +168,14 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 			Code:     changeCode,
 			NewEmail: newEmail,
 		}
-		resp, err := env.ProfileHandler.VerifyMyChangeEmailReq(reAuthCtx, &humatypes.HumaReqBody[models.VerifyEmailDto]{
+		resp, err := env.ProfileHandler.UpdateMyEmailVerify(reAuthCtx, &humatypes.HumaReqBody[models.VerifyEmailDto]{
 			Body: verifyChangeEmailReq,
 		})
 		if err != nil {
-			t.Fatalf("VerifyMyChangeEmailReq handler failed: %v", err)
+			t.Fatalf("UpdateMyEmailVerify handler failed: %v", err)
 		}
-		if resp == nil || !resp.Body.Body {
-			t.Fatalf("Expected status true, got %+v", resp)
+		if resp == nil || resp.Body.Body.Email != newEmail {
+			t.Fatalf("Expected updated email %s, got %+v", newEmail, resp)
 		}
 	})
 

@@ -273,7 +273,7 @@ func testAccounts(t *testing.T, r repo_interfaces.IAuthRepos) {
 	all, _ = r.FindAccounts(ctx, u.ID)
 	require.Len(t, all, 1)
 
-	other, err := r.CreateAccount(ctx, &models.Account{UserID: u.ID, AccountID: "gh-2", ProviderID: models.ProvGithub})
+	other, err := r.CreateAccount(ctx, &models.Account{UserID: u.ID, AccountID: "google-1", ProviderID: models.ProvGoogle})
 	require.NoError(t, err)
 	_, err = r.CreateAccount(ctx, &models.Account{UserID: u.ID, AccountID: "gh-3", ProviderID: models.ProvGithub})
 	require.NoError(t, err)

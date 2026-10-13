@@ -19,6 +19,9 @@ import (
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	"github.com/better-go-auth/goauth/src/plugins/org"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
+	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/danielgtaylor/huma/v2"
@@ -49,6 +52,17 @@ func (c *ConsoleEmailSender) GetLastCode(to string) string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.codes[to]
+}
+
+func (c *ConsoleEmailSender) SendOTP(data emailotpconfig.SendVerificationOTPData, req *http.Request) error {
+	c.mu.Lock()
+	if c.codes == nil {
+		c.codes = make(map[string]string)
+	}
+	c.codes[data.Email] = data.OTP
+	c.mu.Unlock()
+	log.Printf("[EMAIL-OTP] %s OTP for %s: %s", data.Type, data.Email, data.OTP)
+	return nil
 }
 
 func main() {
@@ -112,6 +126,13 @@ func main() {
 		}),
 	)
 
+	emailOtpPlugin := emailotp.New(
+		emailotp.WithSendVerificationOTP(emailSender.SendOTP),
+		emailotp.WithExpiresIn(15*time.Minute),
+		emailotp.WithSendVerificationOnSignUp(true),
+		emailotp.WithOverrideDefaultEmailVerification(true),
+	)
+
 	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn: db,
 		AuthConfig: loc_conf.AuthConfig{
@@ -129,6 +150,7 @@ func main() {
 			adminPlugin,
 			orgPlugin,
 			accessTokenPlugin,
+			emailOtpPlugin,
 		},
 	})
 	if err != nil {
@@ -199,21 +221,16 @@ func main() {
 		}
 		steps = append(steps, fmt.Sprintf("1. Registered user %s (ID: %s)", testEmail, regRes.User.ID))
 
-		// 2. Verify account
-		code := emailSender.GetLastCode(testEmail)
-		if code == "" {
-			return nil, huma.NewError(http.StatusInternalServerError, "Verification code not found")
+		// 2. Verify account via email-otp plugin
+		otpCode := emailSender.GetLastCode(testEmail)
+		if otpCode == "" {
+			return nil, huma.NewError(http.StatusInternalServerError, fmt.Sprintf("No OTP found for %s", testEmail))
 		}
-		steps = append(steps, fmt.Sprintf("2. Retrieved verification code: %s", code))
-
-		verRes, err := authSvc.VerifyRegisteredUser(ctx, accesstokendtos.VerificationInput{
-			Info: testEmail,
-			Code: code,
-		})
+		_, _, err = emailOtpPlugin.Service().VerifyEmail(ctx, testEmail, otpCode, sessionsvc.Meta{}, nil)
 		if err != nil {
-			return nil, huma.NewError(http.StatusInternalServerError, fmt.Sprintf("Verification failed: %v", err))
+			return nil, huma.NewError(http.StatusInternalServerError, fmt.Sprintf("Email OTP verification failed: %v", err))
 		}
-		steps = append(steps, fmt.Sprintf("3. Verified account (Status: %s)", verRes.Body.AccountStatus))
+		steps = append(steps, fmt.Sprintf("2. Verified account via email-otp plugin (OTP: %s)", otpCode))
 
 		// 3. Login
 		loginRes, err := authSvc.Login(ctx, accesstokendtos.LoginData{

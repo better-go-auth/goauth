@@ -47,13 +47,13 @@ func SetupAccessTokenRoutes(api huma.API, handler *AccessTokenHandler, mdlware *
 		Tags:        authTags,
 	}, handler.Register)
 
-	huma.Register(api, huma.Operation{
-		OperationID: VerifyUser.Str(),
-		Method:      http.MethodPost,
-		Path:        basePath + "/verify",
-		Summary:     "Verify Email (Access Token)",
-		Tags:        authTags,
-	}, handler.VerifyRegisteredAccount)
+	// huma.Register(api, huma.Operation{
+	// 	OperationID: VerifyUser.Str(),
+	// 	Method:      http.MethodPost,
+	// 	Path:        basePath + "/verify",
+	// 	Summary:     "Verify Email (Access Token)",
+	// 	Tags:        authTags,
+	// }, handler.VerifyRegisteredAccount)
 
 	huma.Register(api, huma.Operation{
 		OperationID: LoginUser.Str(),
@@ -79,21 +79,21 @@ func SetupAccessTokenRoutes(api huma.API, handler *AccessTokenHandler, mdlware *
 		Tags:        authTags,
 	}, handler.Logout)
 
-	huma.Register(api, huma.Operation{
-		OperationID: ForgotPwdUser.Str(),
-		Method:      http.MethodPost,
-		Path:        basePath + "/forgot_password",
-		Summary:     "Forgot Password (Access Token)",
-		Tags:        authTags,
-	}, handler.ForgotPwd)
+	// huma.Register(api, huma.Operation{
+	// 	OperationID: ForgotPwdUser.Str(),
+	// 	Method:      http.MethodPost,
+	// 	Path:        basePath + "/forgot_password",
+	// 	Summary:     "Forgot Password (Access Token)",
+	// 	Tags:        authTags,
+	// }, handler.ForgotPwd)
 
-	huma.Register(api, huma.Operation{
-		OperationID: ResetPwdUser.Str(),
-		Method:      http.MethodPost,
-		Path:        basePath + "/reset_password",
-		Summary:     "Reset Password (Access Token)",
-		Tags:        authTags,
-	}, handler.ResetPwd)
+	// huma.Register(api, huma.Operation{
+	// 	OperationID: ResetPwdUser.Str(),
+	// 	Method:      http.MethodPost,
+	// 	Path:        basePath + "/reset_password",
+	// 	Summary:     "Reset Password (Access Token)",
+	// 	Tags:        authTags,
+	// }, handler.ResetPwd)
 
 	// Middlewares for protected routes
 	var authMiddlewares huma.Middlewares

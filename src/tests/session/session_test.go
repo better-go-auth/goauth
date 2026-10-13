@@ -32,17 +32,11 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 			t.Fatalf("SignUp failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		token, ok := env.MockEmail.LastToken(email)
-		if !ok || token == "" {
-			t.Fatalf("Expected verification token sent to %s, got none", email)
-		}
-
-		resp, body = env.PostJSON("/api/auth/verify", auth.VerificationInput{
-			Info: email,
-			Code: token,
-		})
-		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-			t.Fatalf("Verify failed: status %d, body: %s", resp.StatusCode, body)
+		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(map[string]any{
+			"email_verified": true,
+			"active":         true,
+		}).Error; err != nil {
+			t.Fatalf("Failed to verify user: %v", err)
 		}
 	})
 

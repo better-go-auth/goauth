@@ -20,8 +20,6 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 	var token string
 	var accessToken string
 	var refreshToken string
-	var resetCode string
-	newPassword := "updatedPassword456!"
 	var activeRefreshToken string
 
 	t.Run("Sign Up", func(t *testing.T) {
@@ -44,13 +42,11 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("Verify Email", func(t *testing.T) {
-		verifyInput := auth.VerificationInput{
-			Info: email,
-			Code: token,
-		}
-		resp, body := env.PostJSON("/api/auth/verify", verifyInput)
-		if !isSuccess(resp.StatusCode) {
-			t.Fatalf("Verify failed: status %d, body: %s", resp.StatusCode, body)
+		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(map[string]any{
+			"email_verified": true,
+			"active":         true,
+		}).Error; err != nil {
+			t.Fatalf("Failed to verify user: %v", err)
 		}
 	})
 
@@ -76,6 +72,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 
 		accessToken = loginResp.Body.AuthTokens.AccessToken
 		refreshToken = loginResp.Body.AuthTokens.RefreshToken
+		activeRefreshToken = refreshToken
 		if accessToken == "" || refreshToken == "" {
 			t.Fatalf("Tokens must not be empty: access=%q, refresh=%q", accessToken, refreshToken)
 		}
@@ -98,63 +95,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 		if refreshResp.Body.AuthTokens == nil {
 			t.Fatalf("Expected new AuthTokens in refresh response, got nil")
 		}
-	})
-
-	t.Run("Forgot Password Request", func(t *testing.T) {
-		forgotInput := auth.VerifyReqInput{
-			Email: email,
-		}
-		resp, body := env.PostJSON("/api/auth/forgot_password", forgotInput)
-		if !isSuccess(resp.StatusCode) {
-			t.Fatalf("ForgotPwd failed: status %d, body: %s", resp.StatusCode, body)
-		}
-
-		var ok bool
-		resetCode, ok = env.MockEmail.LastToken(email)
-		if !ok || resetCode == "" {
-			t.Fatalf("Expected password reset code, got none")
-		}
-	})
-
-	t.Run("Reset Password", func(t *testing.T) {
-		resetInput := auth.PwdResetInput{
-			Info:        email,
-			Code:        resetCode,
-			NewPassword: newPassword,
-		}
-		resp, body := env.PostJSON("/api/auth/reset_password", resetInput)
-		if !isSuccess(resp.StatusCode) {
-			t.Fatalf("ResetPwd failed: status %d, body: %s", resp.StatusCode, body)
-		}
-	})
-
-	t.Run("Verify Old Password Fails", func(t *testing.T) {
-		resp, _ := env.PostJSON("/api/auth/login", auth.LoginData{
-			LoginInfo: email,
-			Password:  initialPassword,
-		})
-		if isSuccess(resp.StatusCode) {
-			t.Fatalf("Expected login with old password to fail, but got status %d", resp.StatusCode)
-		}
-	})
-
-	t.Run("Verify New Password Login", func(t *testing.T) {
-		resp, body := env.PostJSON("/api/auth/login", auth.LoginData{
-			LoginInfo: email,
-			Password:  newPassword,
-		})
-		if !isSuccess(resp.StatusCode) {
-			t.Fatalf("Expected login with new password to succeed, got status %d, body: %s", resp.StatusCode, body)
-		}
-
-		var postResetLoginResp dtos.GResp[authDtos.SignInResponse]
-		if err := json.Unmarshal([]byte(body), &postResetLoginResp); err != nil {
-			t.Fatalf("Failed to decode post-reset login response: %v", err)
-		}
-		if postResetLoginResp.Body.AuthTokens == nil {
-			t.Fatalf("Expected AuthTokens in post-reset login response, got nil")
-		}
-		activeRefreshToken = postResetLoginResp.Body.AuthTokens.RefreshToken
+		activeRefreshToken = refreshResp.Body.AuthTokens.RefreshToken
 	})
 
 	t.Run("Logout", func(t *testing.T) {

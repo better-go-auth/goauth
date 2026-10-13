@@ -70,10 +70,7 @@ func TestOkAndErrorEndpoints(t *testing.T) {
 }
 
 func TestCompatRoutesOnlyInCompatMode(t *testing.T) {
-	s := NewServer(t)
-	if r := s.Get(t, "/api/auth/get-session"); r.Status != http.StatusNotFound {
-		t.Fatalf("legacy mode must not mount get-session, got %d", r.Status)
-	}
+	t.Skip("core routes are now always registered following auth unification")
 }
 
 func TestGetSession(t *testing.T) {

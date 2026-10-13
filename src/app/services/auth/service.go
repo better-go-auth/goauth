@@ -37,6 +37,7 @@ type Deps struct {
 	Sessions  *sessionsvc.Manager            // creates/reads/revokes sessions in the DB and/or secondary storage
 	Passwords *authcrypto.Passwords          // hashes and verifies passwords; built from Config when nil
 	Tx        interfaces.ITransactionManager // groups multi-row writes; nil runs them without a transaction
+	Hooks     plugins.HookRegistry           // auth lifecycle hooks
 }
 
 // Service implements IAuthService, ISessionService and IUserService.
@@ -67,7 +68,7 @@ func New(d Deps) *Service {
 	}
 	// invalid names are reported by ValidateConfig at setup; here they just disable update-session
 	fields, _ := updatableSessionFields(d.Config)
-	return &Service{cfg: d.Config, repos: d.Repos, sessionMgr: d.Sessions, passwords: d.Passwords, tx: d.Tx, sessionFields: fields}
+	return &Service{cfg: d.Config, repos: d.Repos, sessionMgr: d.Sessions, passwords: d.Passwords, tx: d.Tx, sessionFields: fields, Hooks: d.Hooks}
 }
 
 // inTx runs fn inside a database transaction when a transaction manager was injected.

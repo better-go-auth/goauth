@@ -113,11 +113,22 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		return res, nil
 	}
 
+	if s.Hooks != nil && created != nil {
+		if err := s.Hooks.TriggerAfterUserCreate(ctx, created); err != nil {
+			return nil, err
+		}
+	}
+
 	// config: EmailVerification.SendOnSignUp decides whether to email a verification link;
-	// when unset it follows RequireEmailVerification (better-auth's default)
+	// when unset it follows RequireEmailVerification (better-auth's default).
+	// When OverrideDefaultEmailVerification is set or a plugin (such as email-otp) has overridden
+	// email verification via hooks, suppress the default magic-link email.
 	sendOnSignUp := emlpwdCfg.RequireEmailVerification
 	if v := s.cfg.EmailVerification.SendOnSignUp; v != nil {
 		sendOnSignUp = *v
+	}
+	if s.Hooks != nil && s.Hooks.IsEmailVerificationOverridden() {
+		sendOnSignUp = false
 	}
 	if sendOnSignUp {
 		if err := s.sendVerificationEmail(ctx, created, deref(in.CallbackURL)); err != nil {

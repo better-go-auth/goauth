@@ -46,7 +46,7 @@ type UserDto struct {
 	Locale        string              `json:"locale,omitempty"       gorm:"default:en" bun:"locale,default:en"`
 	Timezone      *string             `json:"timezone,omitempty"     bun:"timezone"`
 	Active        *bool               `json:"active,omitempty"       gorm:"index:idx_users_lookup,priority:4"` // can the user login
-	AccountStatus enums.AccountStatus `json:"-"`
+	// AccountStatus enums.AccountStatus `json:"-"`
 	LastLoginIP   *string             `json:"lastLoginIP,omitempty"  bun:"last_login_ip"`
 	LastLoginAt   *time.Time          `json:"lastLoginAt,omitempty"`
 }

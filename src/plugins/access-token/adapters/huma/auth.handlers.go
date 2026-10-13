@@ -56,19 +56,19 @@ func (h *AccessTokenHandler) Register(ctx context.Context, inputs *humatypes.Hum
 }
 
 // VerifyRegisteredAccount handles POST /verify.
-func (h *AccessTokenHandler) VerifyRegisteredAccount(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerificationInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
-	usr, err := h.AuthServ.VerifyRegisteredUser(ctx, inputs.Body)
-	if err != nil {
-		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
-	}
-	u := authDtos.UserFromModel(&usr.Body)
-	resp := authDtos.VerifyEmailResponse{
-		User:   &u,
-		Status: true,
-	}
-	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
-	return humatypes.MakeRes(gresp, 200), nil
-}
+// func (h *AccessTokenHandler) VerifyRegisteredAccount(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerificationInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
+// 	usr, err := h.AuthServ.VerifyRegisteredUser(ctx, inputs.Body)
+// 	if err != nil {
+// 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
+// 	}
+// 	u := authDtos.UserFromModel(&usr.Body)
+// 	resp := authDtos.VerifyEmailResponse{
+// 		User:   &u,
+// 		Status: true,
+// 	}
+// 	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
+// 	return humatypes.MakeRes(gresp, 200), nil
+// }
 
 // Login handles POST /login.
 func (h *AccessTokenHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.LoginData]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
@@ -129,30 +129,30 @@ func (h *AccessTokenHandler) Logout(ctx context.Context, inputs *humatypes.HumaR
 }
 
 // ForgotPwd handles POST /forgot_password.
-func (h *AccessTokenHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerifyReqInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
-	tkn, err := h.AuthServ.ForgotPwd(ctx, inputs.Body)
-	if err != nil {
-		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
-	}
-	resp := authDtos.StatusResponse{
-		Status:  tkn.Body,
-		Message: "Password reset verification code sent",
-	}
-	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
-}
+// func (h *AccessTokenHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerifyReqInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
+// 	tkn, err := h.AuthServ.ForgotPwd(ctx, inputs.Body)
+// 	if err != nil {
+// 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
+// 	}
+// 	resp := authDtos.StatusResponse{
+// 		Status:  tkn.Body,
+// 		Message: "Password reset verification code sent",
+// 	}
+// 	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
+// }
 
 // ResetPwd handles POST /reset_password.
-func (h *AccessTokenHandler) ResetPwd(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.PwdResetInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
-	tkn, err := h.AuthServ.ResetPwd(ctx, inputs.Body)
-	if err != nil {
-		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
-	}
-	resp := authDtos.StatusResponse{
-		Status:  tkn.Body,
-		Message: "Password reset successfully",
-	}
-	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
-}
+// func (h *AccessTokenHandler) ResetPwd(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.PwdResetInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
+// 	tkn, err := h.AuthServ.ResetPwd(ctx, inputs.Body)
+// 	if err != nil {
+// 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
+// 	}
+// 	resp := authDtos.StatusResponse{
+// 		Status:  tkn.Body,
+// 		Message: "Password reset successfully",
+// 	}
+// 	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
+// }
 
 // func (ah *GinAuthHandler[T]) ChangeActiveCompany(ctx context.Context, inputs *dtos.HumaReqBody[ChangeActiveCompanyInput]) (*dtos.HumaResponse[dtos.GResp[TokenResponse]], error) {
 // 	userID := ctx.Value(consts.CTXUser_ID.Str()).(string)

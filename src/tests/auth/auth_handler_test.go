@@ -18,12 +18,10 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 
 	email := "direct_handler_user@example.com"
 	initialPassword := "securePassword123!"
-	newPassword := "updatedPassword456!"
 
 	var token string
 	var accessToken string
 	var refreshToken string
-	var resetCode string
 	var activeRefreshToken string
 
 	t.Run("01 Sign Up", func(t *testing.T) {
@@ -51,18 +49,11 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("02 Verify Email", func(t *testing.T) {
-		verifyInput := access_dto.VerificationInput{
-			Info: email,
-			Code: token,
-		}
-		resp, err := env.AuthHandler.VerifyRegisteredAccount(ctx, &humatypes.HumaReqBody[access_dto.VerificationInput]{
-			Body: verifyInput,
-		})
-		if err != nil {
-			t.Fatalf("VerifyRegisteredAccount handler failed: %v", err)
-		}
-		if resp == nil || !resp.Body.Body.Status {
-			t.Fatalf("Expected successful verification, got %+v", resp)
+		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(map[string]any{
+			"email_verified": true,
+			"active":         true,
+		}).Error; err != nil {
+			t.Fatalf("Failed to verify user: %v", err)
 		}
 	})
 
@@ -83,6 +74,7 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 
 		accessToken = resp.Body.Body.AuthTokens.AccessToken
 		refreshToken = resp.Body.Body.AuthTokens.RefreshToken
+		activeRefreshToken = refreshToken
 		if accessToken == "" || refreshToken == "" {
 			t.Fatalf("Expected non-empty tokens, got access=%q, refresh=%q", accessToken, refreshToken)
 		}
@@ -101,75 +93,10 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 		if resp == nil || resp.Body.Body.AuthTokens == nil {
 			t.Fatalf("Expected new AuthTokens in refresh response, got nil")
 		}
-	})
-
-	t.Run("05 Forgot Password Request", func(t *testing.T) {
-		forgotInput := access_dto.VerifyReqInput{
-			Email: email,
-		}
-		resp, err := env.AuthHandler.ForgotPwd(ctx, &humatypes.HumaReqBody[access_dto.VerifyReqInput]{
-			Body: forgotInput,
-		})
-		if err != nil {
-			t.Fatalf("ForgotPwd handler failed: %v", err)
-		}
-		if resp == nil || !resp.Body.Body.Status {
-			t.Fatalf("Expected status true, got %+v", resp)
-		}
-
-		var ok bool
-		resetCode, ok = env.MockEmail.LastToken(email)
-		if !ok || resetCode == "" {
-			t.Fatalf("Expected password reset code, got none")
-		}
-	})
-
-	t.Run("06 Reset Password", func(t *testing.T) {
-		resetInput := access_dto.PwdResetInput{
-			Info:        email,
-			Code:        resetCode,
-			NewPassword: newPassword,
-		}
-		resp, err := env.AuthHandler.ResetPwd(ctx, &humatypes.HumaReqBody[access_dto.PwdResetInput]{
-			Body: resetInput,
-		})
-		if err != nil {
-			t.Fatalf("ResetPwd handler failed: %v", err)
-		}
-		if resp == nil || !resp.Body.Body.Status {
-			t.Fatalf("Expected status true, got %+v", resp)
-		}
-	})
-
-	t.Run("07 Verify Old Password Fails", func(t *testing.T) {
-		_, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[access_dto.LoginData]{
-			Body: access_dto.LoginData{
-				LoginInfo: email,
-				Password:  initialPassword,
-			},
-		})
-		if err == nil {
-			t.Fatalf("Expected login with old password to fail, but succeeded")
-		}
-	})
-
-	t.Run("08 Verify New Password Login", func(t *testing.T) {
-		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[access_dto.LoginData]{
-			Body: access_dto.LoginData{
-				LoginInfo: email,
-				Password:  newPassword,
-			},
-		})
-		if err != nil {
-			t.Fatalf("Login with new password failed: %v", err)
-		}
-		if resp == nil || resp.Body.Body.AuthTokens == nil {
-			t.Fatalf("Expected AuthTokens in login response, got nil")
-		}
 		activeRefreshToken = resp.Body.Body.AuthTokens.RefreshToken
 	})
 
-	t.Run("09 Logout", func(t *testing.T) {
+	t.Run("05 Logout", func(t *testing.T) {
 		resp, err := env.AuthHandler.Logout(ctx, &humatypes.HumaReqBody[access_dto.RefreshTokenInput]{
 			Body: access_dto.RefreshTokenInput{
 				Token: activeRefreshToken,

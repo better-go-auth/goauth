@@ -40,19 +40,11 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 			t.Fatalf("SignUp failed: %v", err)
 		}
 
-		token, ok := env.MockEmail.LastToken(email)
-		if !ok || token == "" {
-			t.Fatalf("Expected verification token for %s", email)
-		}
-
-		_, err = env.AuthHandler.VerifyRegisteredAccount(ctx, &humatypes.HumaReqBody[auth.VerificationInput]{
-			Body: auth.VerificationInput{
-				Info: email,
-				Code: token,
-			},
-		})
-		if err != nil {
-			t.Fatalf("Verify failed: %v", err)
+		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(map[string]any{
+			"email_verified": true,
+			"active":         true,
+		}).Error; err != nil {
+			t.Fatalf("Failed to verify user: %v", err)
 		}
 	})
 

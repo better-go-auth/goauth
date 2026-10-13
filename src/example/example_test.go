@@ -16,6 +16,8 @@ import (
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
 	"github.com/better-go-auth/goauth/src/plugins/org"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/danielgtaylor/huma/v2"
@@ -70,6 +72,13 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 		}),
 	)
 
+	emailOtpPlugin := emailotp.New(
+		emailotp.WithSendVerificationOTP(emailSender.SendOTP),
+		emailotp.WithExpiresIn(15*time.Minute),
+		emailotp.WithSendVerificationOnSignUp(true),
+		emailotp.WithOverrideDefaultEmailVerification(true),
+	)
+
 	_, err = bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
 		Conn: db,
 		AuthConfig: loc_conf.AuthConfig{
@@ -87,6 +96,7 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 			adminPlugin,
 			orgPlugin,
 			accessTokenPlugin,
+			emailOtpPlugin,
 		},
 	})
 	if err != nil {
@@ -129,16 +139,16 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 		}
 		steps = append(steps, "1. Registered user")
 
-		// 2. Verify account
-		code := emailSender.GetLastCode(testEmail)
-		_, err = authSvc.VerifyRegisteredUser(ctx, accesstokendtos.VerificationInput{
-			Info: testEmail,
-			Code: code,
-		})
+		// 2. Verify account via email-otp plugin
+		otpCode := emailSender.GetLastCode(testEmail)
+		if otpCode == "" {
+			return nil, huma.NewError(http.StatusInternalServerError, "no OTP found for user")
+		}
+		_, _, err = emailOtpPlugin.Service().VerifyEmail(ctx, testEmail, otpCode, sessionsvc.Meta{}, nil)
 		if err != nil {
 			return nil, huma.NewError(http.StatusInternalServerError, err.Error())
 		}
-		steps = append(steps, "2. Verified account")
+		steps = append(steps, "2. Verified account via email-otp plugin")
 
 		// 3. Login
 		loginRes, err := authSvc.Login(ctx, accesstokendtos.LoginData{

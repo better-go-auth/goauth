@@ -79,24 +79,4 @@ func (h *AccessTokenHandler) UpdateMyEmailVerify(ctx context.Context, input *hum
 	return humatypes.MakeRes(resp, 200), nil
 }
 
-// VerifyMyChangeEmailReq handles email change verification and returns a boolean status.
-func (h *AccessTokenHandler) VerifyMyChangeEmailReq(ctx context.Context, input *humatypes.HumaReqBody[models.VerifyEmailDto]) (*humatypes.HumaRes[dtos.GResp[bool]], error) {
-	v, valid := authenticator.SessionFromContext(ctx)
-	if !valid {
-		return nil, humatypes.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
-	}
-	_, err := h.ProfileServ.VerifyChangeEmail(ctx, v.User.ID, v.Session.ID, input.Body)
-	if err != nil {
-		return nil, humatypes.NewError(http.StatusInternalServerError, err.Error())
-	}
-	return humatypes.MakeRes(dtos.SuccessCreated(true, 1), 200), nil
-}
 
-// func (uh *HProfileHandler) DeleteMyProfile(ctx context.Context, _ *dtos.AuthParam) (*dtos.HumaResponse[dtos.GResp[models.User]], error) {
-// v, valid := authenticator.SessionFromContext(ctx)
-// 	if !valid {
-// 		return nil, huma.NewError(http.StatusUnauthorized, "The Token is Not Correct Form")
-// 	}
-// 	resp, err := sql_db.DbUpdateOneById[models.User](uh.CmnServ.GormConn, ctx, v.User.ID, models.UserDto{Active: false, AccountStatus: enums.AccountDeleted}, nil)
-// 	return dtos.HumaReturn[models.User](resp, err)
-// }
