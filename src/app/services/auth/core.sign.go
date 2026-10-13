@@ -28,7 +28,7 @@ func validEmail(email string) bool {
 //  2. In one transaction: if the email is taken, either fail or return a fake user (see genericDuplicate);
 //     otherwise create the user and its "credential" account holding the password hash.
 //  3. Optionally send the verification email.
-//  4. Optionally sign the user in (create a session).
+//  4. Optionally sign the user in (create a session).Meta
 func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, meta svcint.Meta) (*svcint.SignUpResult, error) {
 	emlpwdCfg := s.cfg.EmailAndPassword
 	// config: EmailAndPassword.Enabled=false or DisableSignUp=true turns this endpoint off

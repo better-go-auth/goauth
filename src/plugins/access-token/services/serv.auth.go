@@ -5,7 +5,6 @@ package services
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"time"
 
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
@@ -88,23 +87,6 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.Regi
 	}
 
 	return res, nil
-}
-
-func isNotFound(err error) bool {
-	ae := autherr.AsAuthError(err)
-	return ae != nil && ae.StatusCode == http.StatusNotFound
-}
-
-// acceptNotFound turns a repository "not found" into (nil, nil), so callers can write
-// `if user == nil` instead of checking the error kind. Any other error is returned unchanged.
-func acceptNotFound[T any](v *T, err error) (*T, error) {
-	if err != nil {
-		if isNotFound(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return v, nil
 }
 
 // VerifyRegisteredUser (acc-01), [id]x

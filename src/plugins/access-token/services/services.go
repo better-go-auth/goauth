@@ -1,6 +1,8 @@
 package services
 
 import (
+	"net/http"
+
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
@@ -9,6 +11,7 @@ import (
 	accTokInterfaces "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 )
 
 // AuthService implements IAccessTokenAuthService for legacy JWT/token authentication.
@@ -59,4 +62,21 @@ func NewAuthService(
 		Hooks:       h,
 		coreAuthSvc: coreAuthSvc,
 	}
+}
+
+func isNotFound(err error) bool {
+	ae := autherr.AsAuthError(err)
+	return ae != nil && ae.StatusCode == http.StatusNotFound
+}
+
+// acceptNotFound turns a repository "not found" into (nil, nil), so callers can write
+// `if user == nil` instead of checking the error kind. Any other error is returned unchanged.
+func acceptNotFound[T any](v *T, err error) (*T, error) {
+	if err != nil {
+		if isNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return v, nil
 }
