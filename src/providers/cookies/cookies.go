@@ -38,6 +38,16 @@ func New(conf config.AuthConfig) *Manager {
 	}
 }
 
+// Secret returns the auth secret used for cookie signing.
+func (c *Manager) Secret() string {
+	return c.secret
+}
+
+// Signed returns the signed and encoded cookie value for v.
+func (c *Manager) Signed(v string) string {
+	return c.signed(v)
+}
+
 // Name returns the full cookie name, e.g. "__Secure-better-auth.session_token".
 func (c *Manager) Name(base string) string {
 	name := c.prefix + "." + base

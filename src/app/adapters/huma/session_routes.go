@@ -4,8 +4,8 @@ import (
 	"context"
 	"net/http"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 )
 
@@ -13,6 +13,7 @@ type getSessionInput struct {
 	DisableCookieCache bool   `query:"disableCookieCache" doc:"Bypass the cookie cache (no-op until the cookie cache is implemented)"`
 	DisableRefresh     bool   `query:"disableRefresh" doc:"Do not extend the session expiry"`
 	Cookie             string `header:"Cookie"`
+	Authorization      string `header:"Authorization"`
 }
 
 type getSessionBody struct {
@@ -42,7 +43,16 @@ func (h *handler) PostSession(ctx context.Context, in *getSessionInput) (*getSes
 // session mirrors better-auth's getSession endpoint; when deferRefresh is set it reports needsRefresh instead of writing.
 func (h *handler) session(ctx context.Context, in *getSessionInput, deferRefresh bool) (*getSessionOutput, error) {
 	out := &getSessionOutput{CacheControl: "no-store", Pragma: "no-cache"}
+	if sw, ok := FromContext(ctx); ok && sw != nil {
+		out.Body = &getSessionBody{SessionWithUser: *sw}
+		return out, nil
+	}
 	tok, ok := h.Cookies.SessionToken(in.Cookie)
+	if !ok {
+		if btok, bok := FromBearerContext(ctx); bok {
+			tok, ok = btok, true
+		}
+	}
 	if !ok {
 		return out, nil
 	}

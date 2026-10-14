@@ -11,6 +11,7 @@ const (
 	ModelOrganization = "organization"
 	ModelMember       = "member"
 	ModelInvitation   = "invitation"
+	ModelJWKS         = "jwks"
 )
 
 var (

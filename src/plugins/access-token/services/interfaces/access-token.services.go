@@ -62,6 +62,6 @@ type IAccessTokenProfileService interface {
 	GetProfile(ctx context.Context, userID string) (*models.User, error)
 	UpdateProfile(ctx context.Context, userID string, update models.ProfileUpdateDto) (*models.User, error)
 	ChangePassword(ctx context.Context, userID, sessionID string, update models.PasswordUpdateDto) (dtos.GResp[models.User], error)
-	SendChangeEmail(ctx context.Context, userID string, update models.ChangeEmailReqDto) (dtos.GResp[bool], error)
-	VerifyChangeEmail(ctx context.Context, userID, sessionID string, update models.VerifyEmailDto) (dtos.GResp[models.User], error)
+	// SendChangeEmail(ctx context.Context, userID string, update models.ChangeEmailReqDto) (dtos.GResp[bool], error)
+	// VerifyChangeEmail(ctx context.Context, userID, sessionID string, update models.VerifyEmailDto) (dtos.GResp[models.User], error)
 }

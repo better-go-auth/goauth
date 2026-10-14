@@ -214,6 +214,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 					CodeSender:    mockEmail,
 				},
 			},
+			TrustedOrigins: []string{"http://127.0.0.1:*", "http://localhost:*"},
 			GoAuth: loc_conf.GoAuthConfig{
 				Session: loc_conf.SessionGoAuth{JWT: jwt},
 			},

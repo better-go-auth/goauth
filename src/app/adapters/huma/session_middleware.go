@@ -24,7 +24,20 @@ func FromContext(ctx context.Context) (*dtos.SessionWithUser, bool) {
 	return sw, ok && sw != nil
 }
 
-// Resolver turns the signed session cookie into a session for Huma operations.
+type bearerCtxKey struct{}
+
+// WithBearerToken stores the resolved raw bearer session token in ctx.
+func WithBearerToken(ctx context.Context, token string) context.Context {
+	return context.WithValue(ctx, bearerCtxKey{}, token)
+}
+
+// FromBearerContext returns the bearer token stored in ctx, if any.
+func FromBearerContext(ctx context.Context) (string, bool) {
+	tok, ok := ctx.Value(bearerCtxKey{}).(string)
+	return tok, ok && tok != ""
+}
+
+// Resolver turns the signed session cookie or bearer token into a session for Huma operations.
 type Resolver struct {
 	mgr     *sessionsvc.Manager
 	cookies *cookies.Manager
@@ -34,9 +47,17 @@ func NewResolver(mgr *sessionsvc.Manager, cm *cookies.Manager) *Resolver {
 	return &Resolver{mgr: mgr, cookies: cm}
 }
 
-// Resolve returns the session for a Cookie header, or nil when there is none.
+// Resolve returns the session for a Cookie header or bearer context, or nil when there is none.
 func (r *Resolver) Resolve(ctx context.Context, cookieHeader string) (*dtos.SessionWithUser, error) {
+	if sw, ok := FromContext(ctx); ok && sw != nil {
+		return sw, nil
+	}
 	tok, ok := r.cookies.SessionToken(cookieHeader)
+	if !ok {
+		if btok, bok := FromBearerContext(ctx); bok {
+			tok, ok = btok, true
+		}
+	}
 	if !ok {
 		return nil, nil
 	}

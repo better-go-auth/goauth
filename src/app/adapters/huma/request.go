@@ -78,6 +78,10 @@ func (h *handler) originCheck(formCSRF bool) func(huma.Context, func(huma.Contex
 			next(ctx)
 			return
 		}
+		// if authHeader := ctx.Header("Authorization"); strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		// 	next(ctx)
+		// 	return
+		// }
 		if err := h.validateOrigin(ctx, formCSRF); err != nil {
 			writeError(ctx, err)
 			return
@@ -87,7 +91,19 @@ func (h *handler) originCheck(formCSRF bool) func(huma.Context, func(huma.Contex
 }
 
 func (h *handler) validateOrigin(ctx huma.Context, formCSRF bool) *autherr.AuthError {
-	hasCookies := ctx.Header("Cookie") != ""
+	req := requestOf(ctx.Context())
+	hasCookies := false
+	if req != nil {
+		hasCookies = req.Header.Get("Cookie") != ""
+	} else {
+		hasCookies = ctx.Header("Cookie") != ""
+	}
+
+	o := ctx.Header("Origin")
+	if o == "" {
+		o = ctx.Header("Referer")
+	}
+
 	force := false
 	if formCSRF && !hasCookies {
 		site, mode, dest := ctx.Header("Sec-Fetch-Site"), ctx.Header("Sec-Fetch-Mode"), ctx.Header("Sec-Fetch-Dest")
@@ -97,19 +113,15 @@ func (h *handler) validateOrigin(ctx huma.Context, formCSRF bool) *autherr.AuthE
 				return autherr.ErrCrossSiteNavigationLoginBlocked
 			}
 			force = true
-		case ctx.Header("Origin") != "" || ctx.Header("Referer") != "":
+		case o != "":
 			force = true
 		default:
 			// no browser signals at all (curl, server-to-server)
 			return nil
 		}
 	}
-	if !hasCookies && !force {
+	if !hasCookies && !force && o == "" {
 		return nil
-	}
-	o := ctx.Header("Origin")
-	if o == "" {
-		o = ctx.Header("Referer")
 	}
 	if o == "" || o == "null" {
 		return autherr.ErrMissingOrNullOrigin

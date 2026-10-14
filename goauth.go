@@ -177,13 +177,6 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
 	//=============   Register the better-auth compatable routes
 	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager, Hooks: hooks})
-	// if opts.GoAuth.Mode == config.ModeCompat {
-	humaadapter.RegisterRoutes(api, humaadapter.Deps{
-		Conf: opts.AuthConfig, Auth: authService, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver,
-		Origins: origin.New(opts.AuthConfig),
-	})
-	// }
-
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
 	// TODO: use the session function here
@@ -202,28 +195,15 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		Authenticator:    authenticate,
 		Hooks:            hooks,
 		SecondaryStorage: opts.SecondaryStorage,
-		Extras:           map[string]any{
-			// "sessionManager":   sessionMgr,
-			// "secondaryStorage": opts.SecondaryStorage,
-			// "cookieManager":    cookieMgr,
-			// "db":               opts.Conn,
+		Extras: map[string]any{
+			"db":               opts.Conn,
+			"sessionManager":   sessionMgr,
+			"secondaryStorage": opts.SecondaryStorage,
+			"cookieManager":    cookieMgr,
 		},
 	}
 
-	// Phase 1: Run migrations for all plugins first
-	for _, p := range opts.Plugins {
-		if p == nil {
-			continue
-		}
-		if mig := p.Migrator(); mig != nil {
-			if err := mig.Migrate(context.Background()); err != nil {
-				return nil, fmt.Errorf("goauth: plugin migration failed for %s: %w", p.ID(), err)
-			}
-			slog.Info("migrated plugin", "plugin", p.ID())
-		}
-	}
-
-	// Phase 2: Initialize plugins and mount routes
+	// Phase 1: Initialize plugins (repos, services, and migrators configured via initCtx)
 	for _, p := range opts.Plugins {
 		if p == nil {
 			continue
@@ -236,6 +216,26 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		}
 		pluginMap[p.ID()] = p
 	}
+
+	// Phase 2: Run migrations for all plugins (now fully configured with DB)
+	for _, p := range opts.Plugins {
+		if p == nil {
+			continue
+		}
+		if mig := p.Migrator(); mig != nil {
+			if err := mig.Migrate(context.Background()); err != nil {
+				return nil, fmt.Errorf("goauth: plugin migration failed for %s: %w", p.ID(), err)
+			}
+			slog.Info("migrated plugin", "plugin", p.ID())
+		}
+	}
+
+	//=============   Register the better-auth compatable routes
+	// Register after plugins so plugin middlewares (like bearer) wrap all routes
+	humaadapter.RegisterRoutes(api, humaadapter.Deps{
+		Conf: opts.AuthConfig, Auth: authService, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver,
+		Origins: origin.New(opts.AuthConfig),
+	})
 
 	// var legacyAuthSvc interfaces1.ILegacyAuthServices
 	// for _, p := range opts.Plugins {

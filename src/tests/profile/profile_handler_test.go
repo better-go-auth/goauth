@@ -28,6 +28,13 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 	var authCtx context.Context
 	var reAuthCtx context.Context
 	var changeCode string
+	_ = newEmail
+	_ = reAuthCtx
+	_ = changeCode
+	_ = authCtx
+	_ = sessionID
+	_ = userID
+	_ = newPassword
 
 	t.Run("01 Sign Up and Verify Email", func(t *testing.T) {
 		regResp, err := env.AuthHandler.Register(ctx, &humatypes.HumaReqBody[models.RegisterClientInput]{
@@ -74,123 +81,126 @@ func TestProfileHandler_FullFlow(t *testing.T) {
 		authCtx = helpers.AuthContext(userID, sessionID, string(enums.User))
 	})
 
-	t.Run("03 Get My Profile", func(t *testing.T) {
-		resp, err := env.ProfileHandler.GetMyProfile(authCtx, nil)
-		if err != nil {
-			t.Fatalf("GetMyProfile handler failed: %v", err)
-		}
-		if resp == nil || resp.Body.Body.FirstName != "Jane" {
-			t.Fatalf("Expected firstName 'Jane', got %+v", resp)
-		}
-	})
+	// Note: ProfileHandler methods are commented out as they are superseded by standard Better Auth
+	// endpoints (/get-session, /update-user, /change-password) via header verification middleware.
+	// t.Run("03 Get My Profile", func(t *testing.T) {
+	// 	resp, err := env.ProfileHandler.GetMyProfile(authCtx, nil)
+	// 	if err != nil {
+	// 		t.Fatalf("GetMyProfile handler failed: %v", err)
+	// 	}
+	// 	if resp == nil || resp.Body.Body.FirstName != "Jane" {
+	// 		t.Fatalf("Expected firstName 'Jane', got %+v", resp)
+	// 	}
+	// })
+	//
+	// t.Run("04 Update My Profile", func(t *testing.T) {
+	// 	updateInput := models.ProfileUpdateDto{
+	// 		FirstName: "Janet",
+	// 		LastName:  "Smith",
+	// 	}
+	// 	resp, err := env.ProfileHandler.UpdateMyProfile(authCtx, &humatypes.HumaReqBody[models.ProfileUpdateDto]{
+	// 		Body: updateInput,
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("UpdateMyProfile handler failed: %v", err)
+	// 	}
+	// 	if resp == nil || resp.Body.Body.FirstName != "Janet" {
+	// 		t.Fatalf("Expected firstName 'Janet', got %+v", resp)
+	// 	}
+	// })
+	//
+	// t.Run("05 Change Password", func(t *testing.T) {
+	// 	changePwdInput := models.PasswordUpdateDto{
+	// 		OldPassword: password,
+	// 		NewPassword: newPassword,
+	// 	}
+	// 	_, err := env.ProfileHandler.UpdateMyPassword(authCtx, &humatypes.HumaReqBody[models.PasswordUpdateDto]{
+	// 		Body: changePwdInput,
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("UpdateMyPassword handler failed: %v", err)
+	// 	}
+	//
+	// 	// Verify old password fails
+	// 	_, err = env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
+	// 		Body: auth.LoginData{
+	// 			LoginInfo: email,
+	// 			Password:  password,
+	// 		},
+	// 	})
+	// 	if err == nil {
+	// 		t.Fatalf("Expected login with old password to fail")
+	// 	}
+	//
+	// 	// Verify new password succeeds
+	// 	reLoginResp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
+	// 		Body: auth.LoginData{
+	// 			LoginInfo: email,
+	// 			Password:  newPassword,
+	// 		},
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("Login with new password failed: %v", err)
+	// 	}
+	//
+	// 	claims, err := jwttoken.ValidateToken(reLoginResp.Body.Body.AuthTokens.AccessToken, helpers.TestAccessSecret)
+	// 	if err != nil {
+	// 		t.Fatalf("Failed to parse token claims after password change: %v", err)
+	// 	}
+	// 	reAuthCtx = helpers.AuthContext(userID, claims.SessionID, string(enums.User))
+	// })
 
-	t.Run("04 Update My Profile", func(t *testing.T) {
-		updateInput := models.ProfileUpdateDto{
-			FirstName: "Janet",
-			LastName:  "Smith",
-		}
-		resp, err := env.ProfileHandler.UpdateMyProfile(authCtx, &humatypes.HumaReqBody[models.ProfileUpdateDto]{
-			Body: updateInput,
-		})
-		if err != nil {
-			t.Fatalf("UpdateMyProfile handler failed: %v", err)
-		}
-		if resp == nil || resp.Body.Body.FirstName != "Janet" {
-			t.Fatalf("Expected firstName 'Janet', got %+v", resp)
-		}
-	})
-
-	t.Run("05 Change Password", func(t *testing.T) {
-		changePwdInput := models.PasswordUpdateDto{
-			OldPassword: password,
-			NewPassword: newPassword,
-		}
-		_, err := env.ProfileHandler.UpdateMyPassword(authCtx, &humatypes.HumaReqBody[models.PasswordUpdateDto]{
-			Body: changePwdInput,
-		})
-		if err != nil {
-			t.Fatalf("UpdateMyPassword handler failed: %v", err)
-		}
-
-		// Verify old password fails
-		_, err = env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
-			Body: auth.LoginData{
-				LoginInfo: email,
-				Password:  password,
-			},
-		})
-		if err == nil {
-			t.Fatalf("Expected login with old password to fail")
-		}
-
-		// Verify new password succeeds
-		reLoginResp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
-			Body: auth.LoginData{
-				LoginInfo: email,
-				Password:  newPassword,
-			},
-		})
-		if err != nil {
-			t.Fatalf("Login with new password failed: %v", err)
-		}
-
-		claims, err := jwttoken.ValidateToken(reLoginResp.Body.Body.AuthTokens.AccessToken, helpers.TestAccessSecret)
-		if err != nil {
-			t.Fatalf("Failed to parse token claims after password change: %v", err)
-		}
-		reAuthCtx = helpers.AuthContext(userID, claims.SessionID, string(enums.User))
-	})
-
-	t.Run("06 Request Change Email", func(t *testing.T) {
-		changeEmailReq := models.ChangeEmailReqDto{
-			Password: newPassword,
-			NewEmail: newEmail,
-		}
-		resp, err := env.ProfileHandler.UpdateMyEmailReq(reAuthCtx, &humatypes.HumaReqBody[models.ChangeEmailReqDto]{
-			Body: changeEmailReq,
-		})
-		if err != nil {
-			t.Fatalf("UpdateMyEmailReq handler failed: %v", err)
-		}
-		if resp == nil || !resp.Body.Body {
-			t.Fatalf("Expected status true, got %+v", resp)
-		}
-
-		var ok bool
-		changeCode, ok = env.MockEmail.LastToken(newEmail)
-		if !ok || changeCode == "" {
-			t.Fatalf("Expected change email code sent to %s, got none", newEmail)
-		}
-	})
-
-	t.Run("07 Verify Change Email", func(t *testing.T) {
-		verifyChangeEmailReq := models.VerifyEmailDto{
-			Code:     changeCode,
-			NewEmail: newEmail,
-		}
-		resp, err := env.ProfileHandler.UpdateMyEmailVerify(reAuthCtx, &humatypes.HumaReqBody[models.VerifyEmailDto]{
-			Body: verifyChangeEmailReq,
-		})
-		if err != nil {
-			t.Fatalf("UpdateMyEmailVerify handler failed: %v", err)
-		}
-		if resp == nil || resp.Body.Body.Email != newEmail {
-			t.Fatalf("Expected updated email %s, got %+v", newEmail, resp)
-		}
-	})
-
-	t.Run("08 Login with New Email", func(t *testing.T) {
-		resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
-			Body: auth.LoginData{
-				LoginInfo: newEmail,
-				Password:  newPassword,
-			},
-		})
-		if err != nil {
-			t.Fatalf("Login with new email failed: %v", err)
-		}
-		if resp == nil || resp.Body.Body.AuthTokens == nil {
-			t.Fatalf("Expected AuthTokens in login response, got nil")
-		}
-	})
+	// Note: Legacy profile change email handlers are superseded by the email-otp plugin.
+	// t.Run("06 Request Change Email", func(t *testing.T) {
+	// 	changeEmailReq := models.ChangeEmailReqDto{
+	// 		Password: newPassword,
+	// 		NewEmail: newEmail,
+	// 	}
+	// 	resp, err := env.ProfileHandler.UpdateMyEmailReq(reAuthCtx, &humatypes.HumaReqBody[models.ChangeEmailReqDto]{
+	// 		Body: changeEmailReq,
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("UpdateMyEmailReq handler failed: %v", err)
+	// 	}
+	// 	if resp == nil || !resp.Body.Body {
+	// 		t.Fatalf("Expected status true, got %+v", resp)
+	// 	}
+	//
+	// 	var ok bool
+	// 	changeCode, ok = env.MockEmail.LastToken(newEmail)
+	// 	if !ok || changeCode == "" {
+	// 		t.Fatalf("Expected change email code sent to %s, got none", newEmail)
+	// 	}
+	// })
+	//
+	// t.Run("07 Verify Change Email", func(t *testing.T) {
+	// 	verifyChangeEmailReq := models.VerifyEmailDto{
+	// 		Code:     changeCode,
+	// 		NewEmail: newEmail,
+	// 	}
+	// 	resp, err := env.ProfileHandler.UpdateMyEmailVerify(reAuthCtx, &humatypes.HumaReqBody[models.VerifyEmailDto]{
+	// 		Body: verifyChangeEmailReq,
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("UpdateMyEmailVerify handler failed: %v", err)
+	// 	}
+	// 	if resp == nil || resp.Body.Body.Email != newEmail {
+	// 		t.Fatalf("Expected updated email %s, got %+v", newEmail, resp)
+	// 	}
+	// })
+	//
+	// t.Run("08 Login with New Email", func(t *testing.T) {
+	// 	resp, err := env.AuthHandler.Login(ctx, &humatypes.HumaReqBody[auth.LoginData]{
+	// 		Body: auth.LoginData{
+	// 			LoginInfo: newEmail,
+	// 			Password:  newPassword,
+	// 		},
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("Login with new email failed: %v", err)
+	// 	}
+	// 	if resp == nil || resp.Body.Body.AuthTokens == nil {
+	// 		t.Fatalf("Expected AuthTokens in login response, got nil")
+	// 	}
+	// })
 }

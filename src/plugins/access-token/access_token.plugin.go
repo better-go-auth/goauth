@@ -3,23 +3,31 @@ package accesstoken
 import (
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	leg_int"github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
+	leg_int "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 
+	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
+	constant "github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"gorm.io/gorm"
 )
 
@@ -31,15 +39,15 @@ type Plugin struct {
 	basePath    string
 	sessionConf config.SessionGoAuth
 	//
-	vConf       config.EmailVerification
-	passwords   *authcrypto.Passwords
+	vConf     config.EmailVerification
+	passwords *authcrypto.Passwords
 
 	authSvc    *services.AuthService
 	sessionSvc *services.SessionService
 	profileSvc *services.ProfileService
 	vSvc       *services.VerificationService
 	//
-	handler    *humaaccesstoken.AccessTokenHandler
+	handler *humaaccesstoken.AccessTokenHandler
 
 	repos      repo_interfaces.IAuthRepos
 	sessionMgr authint.ISessionManager
@@ -146,7 +154,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		}
 	}
 	p.txMgr = txMgr
-	
 
 	p.sessionMgr = ictx.SessionManager
 
@@ -158,7 +165,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		}
 	}
 	p.secStorage = secStorage
-
 
 	// Resolve configs
 	sConf := p.sessionConf
@@ -191,15 +197,15 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 			sessMgr = sm
 		}
 	}
-	coreAuthSvc:= ictx.IAuthSvc
+	coreAuthSvc := ictx.IAuthSvc
 	if coreAuthSvc == nil {
 		return fmt.Errorf("access-token plugin: IAuthSvc is required")
 	}
 	p.IAuthSvc = coreAuthSvc
-	//initialize the legacy services
+	// initialize the legacy services
 	p.vSvc = services.NewVerificationService(repos, vConf)
 	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
-	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc,p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
+	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
 	p.profileSvc = services.NewProfileService(p.vSvc, p.sessionSvc, repos, txMgr, p.passwords)
 
 	// TODO: is this how other plugins do it
@@ -231,10 +237,94 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	}
 
 	if ictx.Api != nil {
+		ictx.Api.UseMiddleware(p.Middleware(ictx.Config))
 		p.SetupHumaRoutes(ictx.Api, ictx.MiddleWare)
 	}
 
 	return nil
+}
+
+// Middleware creates Huma middleware that authenticates incoming Authorization: Bearer <access_token_jwt> headers.
+// It verifies the access token, resolves the user and session, populates them into the request context,
+// and injects the session cookie so that all standard Better Auth endpoints work seamlessly without custom profile endpoints.
+func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
+	cm := cookies.New(authCfg)
+	cookieName := cm.Name(cookies.CookieSessionToken)
+	accessSecret := p.sessionConf.JWT.AccessSecret
+	if accessSecret == "" {
+		accessSecret = authCfg.GoAuth.Session.JWT.AccessSecret
+	}
+	if accessSecret == "" {
+		accessSecret = authCfg.Secret
+	}
+
+	return func(ctx huma.Context, next func(huma.Context)) {
+		authHeader := ctx.Header("Authorization")
+		if authHeader == "" {
+			authHeader = ctx.Header("authorization")
+		}
+
+		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			raw := strings.TrimSpace(authHeader[7:])
+			if raw != "" && strings.Count(raw, ".") == 2 {
+				// 1. Verify access JWT
+				claims, err := jwttoken.ValidateAccessToken(raw, accessSecret)
+				if err == nil && claims != nil && claims.SessionID != "" {
+					// 2. Check revocation if secondary storage is configured
+					isRevoked := false
+					if p.secStorage != nil {
+						if _, exists, _ := p.secStorage.Get(ctx.Context(), "revoked:session:"+claims.SessionID); exists {
+							isRevoked = true
+						}
+					}
+					if !isRevoked && p.repos != nil {
+						// 3. Resolve session
+						sess, err := p.repos.FindSessionByID(ctx.Context(), claims.SessionID)
+						if err == nil && sess != nil && sess.ExpiresAt.After(time.Now()) {
+							var sw *dtos.SessionWithUser
+							if p.sessionMgr != nil {
+								// This is getting the session from the secondary storage
+								sw, _ = p.sessionMgr.Get(ctx.Context(), sess.Token)
+							}
+							if sw == nil {
+								u, err := p.repos.FindUserByID(ctx.Context(), sess.UserID)
+								if err == nil && u != nil {
+									sw = &dtos.SessionWithUser{
+										Session: dtos.SessionFromModel(sess),
+										User:    dtos.UserFromModel(u),
+									}
+								}
+							}
+
+							if sw != nil {
+								// Attach to context
+								ctx = huma.WithContext(ctx, humaadapter.WithSession(ctx.Context(), sw))
+								ctx = huma.WithContext(ctx, humaadapter.WithBearerToken(ctx.Context(), sess.Token))
+								ctx = huma.WithValue(ctx, constant.CtxClaims.Str(), *claims)
+								ctx = huma.WithValue(ctx, constant.CTXUser_ID.Str(), claims.UserID)
+								if claims.ActiveOrgId != "" {
+									ctx = huma.WithValue(ctx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
+								}
+
+								// Inject signed session cookie so standard handlers and humago find it
+								signedCookieVal := cm.Signed(sess.Token)
+								if r, _ := humago.Unwrap(ctx); r != nil {
+									existingCookie := r.Header.Get("Cookie")
+									if existingCookie == "" {
+										r.Header.Set("Cookie", cookieName+"="+signedCookieVal)
+									} else if !strings.Contains(existingCookie, cookieName+"=") {
+										r.Header.Set("Cookie", existingCookie+"; "+cookieName+"="+signedCookieVal)
+									}
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		next(ctx)
+	}
 }
 
 // Migrator returns nil because access-token plugin uses core tables.

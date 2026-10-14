@@ -53,6 +53,11 @@ func WithoutSecondaryStorage() Option {
 	return func(o *goauth.GoAuthOptions) { o.SecondaryStorage = nil }
 }
 
+// WithPlugin adds a plugin to the test server options.
+func WithPlugin(p plugin.Plugin) Option {
+	return func(o *goauth.GoAuthOptions) { o.Plugins = append(o.Plugins, p) }
+}
+
 // NewServer starts goauth on sqlite + in-memory secondary storage; it is closed on test cleanup.
 func NewServer(t testing.TB, opts ...Option) *Server {
 	t.Helper()

@@ -76,7 +76,8 @@ func (h *handler) SignInEmail(ctx context.Context, in *signInInput) (*signInOutp
 }
 
 type signOutInput struct {
-	Cookie string `header:"Cookie"`
+	Cookie        string `header:"Cookie"`
+	Authorization string `header:"Authorization"`
 }
 
 type signOutOutput struct {
@@ -87,7 +88,13 @@ type signOutOutput struct {
 }
 
 func (h *handler) SignOut(ctx context.Context, in *signOutInput) (*signOutOutput, error) {
-	if tok, ok := h.Cookies.SessionToken(in.Cookie); ok {
+	tok, ok := h.Cookies.SessionToken(in.Cookie)
+	if !ok {
+		if btok, bok := FromBearerContext(ctx); bok {
+			tok, ok = btok, true
+		}
+	}
+	if ok {
 		// like better-auth, a failed delete still clears the cookies
 		_ = h.Auth.SignOut(ctx, tok)
 	}
