@@ -1,0 +1,8 @@
+{
+  "name": "compat-client",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-auth": "latest"
+  }
+}

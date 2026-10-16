@@ -106,6 +106,43 @@ func (Invitation) TableName() string { return coremodels.TableName(coremodels.Mo
 
 // func (OrgPermission) TableName() string { return "org_permissions" }
 
+// Team is better-auth's `team` model (opt-in via OrgConfig.Teams.Enabled).
+type Team struct {
+	// ===== better-auth fields =====
+	coremodels.Base                                                    // id, createdAt, updatedAt
+	Name           string `json:"name" gorm:"not null" bun:"name,notnull"`
+	OrganizationID string `json:"organizationId" gorm:"not null;index" bun:"organization_id,notnull"`
+	Organization   *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
+}
+
+func (Team) TableName() string { return coremodels.TableName(coremodels.ModelTeam) }
+
+// TeamMember is better-auth's `teamMember` model (opt-in via OrgConfig.Teams.Enabled).
+type TeamMember struct {
+	// ===== better-auth fields =====
+	coremodels.Base               // id, createdAt
+	TeamID          string  `json:"teamId" gorm:"not null;index" bun:"team_id,notnull"`
+	UserID          string  `json:"userId" gorm:"not null;index" bun:"user_id,notnull"`
+	Team            *Team         `json:"team,omitempty" gorm:"foreignKey:TeamID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:team_id=id"`
+	User            *coremodels.User `json:"user,omitempty" gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
+}
+
+func (TeamMember) TableName() string { return coremodels.TableName(coremodels.ModelTeamMember) }
+
+// OrganizationRole is better-auth's `organizationRole` model for dynamic access control
+// (opt-in via OrgConfig.DynamicAccessControl.Enabled). It replaces goauth's legacy OrgPermission
+// (role/resource/action rows) with a single permission document per role.
+type OrganizationRole struct {
+	// ===== better-auth fields =====
+	coremodels.Base               // id, createdAt, updatedAt
+	OrganizationID  string `json:"organizationId" gorm:"not null;index" bun:"organization_id,notnull"`
+	Role            string `json:"role"           gorm:"not null;index:idx_org_role,unique" bun:"role,notnull"`
+	Permission      string `json:"permission"     gorm:"type:text;not null"                bun:"permission,notnull"` // JSON: e.g. {"+"\"+"project\": [\"+"\"+"create\",\"+"\"+"read\"]"+"\"+"}
+	Organization    *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
+}
+
+func (OrganizationRole) TableName() string { return coremodels.TableName(coremodels.ModelOrganizationRole) }
+
 // Pagination controls offset-based paginated queries.
 type Pagination struct {
 	Limit   int    `json:"limit"`

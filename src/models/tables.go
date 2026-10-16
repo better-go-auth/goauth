@@ -10,8 +10,11 @@ const (
 	ModelVerification = "verification"
 	ModelOrganization = "organization"
 	ModelMember       = "member"
-	ModelInvitation   = "invitation"
-	ModelJWKS         = "jwks"
+	ModelInvitation     = "invitation"
+	ModelTeam           = "team"
+	ModelTeamMember     = "teamMember"
+	ModelOrganizationRole = "organizationRole"
+	ModelJWKS           = "jwks"
 )
 
 var (

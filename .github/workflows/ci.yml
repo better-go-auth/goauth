@@ -1,0 +1,33 @@
+name: ci
+on:
+  push: { branches: ["**"] }
+  pull_request: {}
+jobs:
+  vet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: "goauth/go.mod" }
+      - name: go vet
+        working-directory: goauth
+        run: go vet ./...
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: goauth
+          version: v1.64
+  compat:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: "goauth/go.mod" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: install better-auth client
+        working-directory: goauth/src/tests/compat/client
+        run: npm install --no-audit --no-fund
+      - name: compat tests (sqlite + better-auth/client)
+        working-directory: goauth
+        run: go test ./... -count=1 -run 'TestStatus|TestOfficialBetterAuthClient' -timeout 120s

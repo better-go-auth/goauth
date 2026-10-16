@@ -43,6 +43,33 @@ type IInvitationRepo interface {
 	ListInvitationsByEmail(ctx context.Context, email string) ([]models.Invitation, error)
 }
 
+// ITeamRepo defines the repository interface for Team persistence (requires Teams.Enabled).
+type ITeamRepo interface {
+	CreateTeam(ctx context.Context, team *models.Team) (*models.Team, error)
+	GetTeamByID(ctx context.Context, id string) (*models.Team, error)
+	ListTeamsByOrgID(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Team, int64, error)
+	UpdateTeam(ctx context.Context, id string, data map[string]interface{}) (*models.Team, error)
+	DeleteTeam(ctx context.Context, id string) error
+}
+
+// ITeamMemberRepo defines the repository interface for TeamMember persistence.
+type ITeamMemberRepo interface {
+	CreateTeamMember(ctx context.Context, m *models.TeamMember) (*models.TeamMember, error)
+	GetTeamMember(ctx context.Context, teamID, userID string) (*models.TeamMember, error)
+	ListMembersByTeamID(ctx context.Context, teamID string, pagi models.Pagination) ([]models.TeamMember, int64, error)
+	DeleteTeamMember(ctx context.Context, teamID, userID string) error
+}
+
+// IOrganizationRoleRepo defines the repository interface for OrganizationRole persistence
+// (requires DynamicAccessControl.Enabled).
+type IOrganizationRoleRepo interface {
+	CreateRole(ctx context.Context, r *models.OrganizationRole) (*models.OrganizationRole, error)
+	GetRole(ctx context.Context, orgID, role string) (*models.OrganizationRole, error)
+	ListRolesByOrgID(ctx context.Context, orgID string) ([]models.OrganizationRole, error)
+	UpdateRole(ctx context.Context, orgID, role string, permission string) (*models.OrganizationRole, error)
+	DeleteRole(ctx context.Context, orgID, role string) error
+}
+
 // OrgRepositories configures the Org plugin.
 type OrgRepositories struct {
 	// OrgRepo overrides default org repository.
@@ -51,6 +78,10 @@ type OrgRepositories struct {
 	 IMemberRepo
 	// InviteRepo overrides default invitation repository.
 	 IInvitationRepo
+	 // TeamRepo / TeamMemberRepo / OrganizationRoleRepo are opt-in (see OrgConfig).
+	 ITeamRepo
+	 ITeamMemberRepo
+	 IOrganizationRoleRepo
 	// Migrator overrides default org migrator.
 	 migration.IMigrator
 }
@@ -58,5 +89,8 @@ type IOrgRepos interface {
 	IOrgRepo
 	IMemberRepo
 	IInvitationRepo
+	ITeamRepo
+	ITeamMemberRepo
+	IOrganizationRoleRepo
 	migration.IMigrator
 }

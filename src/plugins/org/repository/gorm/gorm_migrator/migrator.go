@@ -25,7 +25,10 @@ func (m *GORMOrgMigrator) Migrate(_ context.Context) error {
 		&models.Organization{},
 		&models.Member{},
 		&models.Invitation{},
-		// &models.OrgPermission{},
+		&models.Team{},
+		&models.TeamMember{},
+		&models.OrganizationRole{},
+		// &models.OrgPermission{}, // legacy - use organizationRole instead
 	)
 	if err != nil {
 		return fmt.Errorf("gorm/migrate-org: %w", err)

@@ -20,9 +20,12 @@ func getDB(ctx context.Context, fallback *gorm.DB) *gorm.DB {
 func NewOrgRepos(db *gorm.DB) orgrepo.OrgRepositories {
 
 	return orgrepo.OrgRepositories{
-		IInvitationRepo: NewInvitationRepo(db),
-		IMemberRepo:     NewMemberRepo(db),
-		IOrgRepo:        NewOrgRepo(db),
-		IMigrator:       gorm_migrator.NewGORMOrgMigrator(db),
+		IInvitationRepo:       NewInvitationRepo(db),
+		IMemberRepo:           NewMemberRepo(db),
+		IOrgRepo:              NewOrgRepo(db),
+		ITeamRepo:             NewTeamRepo(db),
+		ITeamMemberRepo:       NewTeamMemberRepo(db),
+		IOrganizationRoleRepo: NewOrganizationRoleRepo(db),
+		IMigrator:             gorm_migrator.NewGORMOrgMigrator(db),
 	}
 }
