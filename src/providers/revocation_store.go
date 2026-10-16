@@ -102,10 +102,6 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 		if exists, err := r.store.Exists(ctx, sec_storage.RevokedSessionPrefix+sessionID); err == nil && exists {
 			return true, nil
 		}
-		// Compat read for legacy prefix until entries expire.
-		if exists, err := r.store.Exists(ctx, sec_storage.LegacyBlacklistPrefix+sessionID); err == nil && exists {
-			return true, nil
-		}
 	}
 
 	if r.sConfig.CheckRevocation {

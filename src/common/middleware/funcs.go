@@ -22,13 +22,7 @@ func (r *KeyValRevocationStore) IsRevoked(ctx context.Context, sessionID string)
 	if err != nil {
 		return false, err
 	}
-	if exists {
-		return true, nil
-	}
-	_, exists, err = r.storage.Get(ctx, sec_storage.LegacyBlacklistPrefix+sessionID)
-	if err != nil {
-		return false, err
-	}
+
 	return exists, nil
 }
 
