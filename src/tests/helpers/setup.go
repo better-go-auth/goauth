@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -101,18 +100,18 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			),
 		)
 		if err != nil {
-			log.Fatalf("failed to start postgres container: %v", err)
+			t.Fatalf("failed to start postgres container: %v", err)
 		}
 
 		connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 		if err != nil {
-			log.Fatalf("failed to get connection string: %v", err)
+			t.Fatalf("failed to get connection string: %v", err)
 		}
 		gormDB, err = gorm.Open(gormpostgres.Open(connStr), &gorm.Config{
 			Logger: logger.Discard,
 		})
 		if err != nil {
-			log.Fatalf("failed to connect to postgres db: %v", err)
+			t.Fatalf("failed to connect to postgres db: %v", err)
 		}
 		containersToCleanup = append(containersToCleanup, pgContainer)
 
@@ -128,17 +127,17 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			),
 		)
 		if err != nil {
-			log.Fatalf("failed to start redis container: %v", err)
+			t.Fatalf("failed to start redis container: %v", err)
 		}
 		containersToCleanup = append(containersToCleanup, redisContainer)
 
 		redisHost, err := redisContainer.Host(ctx)
 		if err != nil {
-			log.Fatalf("failed to get redis host: %v", err)
+			t.Fatalf("failed to get redis host: %v", err)
 		}
 		redisPort, err := redisContainer.MappedPort(ctx, "6379")
 		if err != nil {
-			log.Fatalf("failed to get redis mapped port: %v", err)
+			t.Fatalf("failed to get redis mapped port: %v", err)
 		}
 
 		// Establish Redis Connection to Redis Container
@@ -147,7 +146,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			Port: redisPort.Port(),
 		})
 		if err != nil {
-			panic("testcommon.Setup: failed to connect to redis test container: " + err.Error())
+			t.Fatalf("failed to connect to redis test container: %v", err)
 		}
 		secStorage = redisClient
 
@@ -163,12 +162,12 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			Logger: logger.Discard,
 		})
 		if err != nil {
-			log.Fatalf("failed to connect to sqlite db: %v", err)
+			t.Fatalf("failed to connect to sqlite db: %v", err)
 		}
 		//===========   Setup secondary Storage =========================
 		secStorage, err = memory.NewSecondaryStorage()
 		if err != nil {
-			log.Fatalf("failed to create in-memory secondary storage: %v", err)
+			t.Fatalf("failed to create in-memory secondary storage: %v", err)
 		}
 	}
 	rot := true
@@ -187,12 +186,12 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 
 	adminPlugin, err := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}))
 	if err != nil {
-		log.Fatalf("failed to initialize admin plugin: %v", err)
+		t.Fatalf("failed to initialize admin plugin: %v", err)
 	}
 
 	orgPlugin, err := org.NewWithGorm(gormDB, orgconfig.OrgConfig{})
 	if err != nil {
-		log.Fatalf("failed to initialize org plugin: %v", err)
+		t.Fatalf("failed to initialize org plugin: %v", err)
 	}
 
 	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
@@ -227,7 +226,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		},
 	})
 	if err != nil {
-		log.Fatalf("failed to initialize auth: %v", err)
+		t.Fatalf("failed to initialize auth: %v", err)
 	}
 
 	// Test helper endpoint to inspect tokens
@@ -318,6 +317,41 @@ func (e *TestEnv) PatchJSON(path string, body any, headers ...map[string]string)
 
 func (e *TestEnv) DeleteJSON(path string, body any, headers ...map[string]string) (*http.Response, string) {
 	return e.doJSON(http.MethodDelete, path, body, headers...)
+}
+
+// doJSONWithT is the test-aware variant that uses t.Helper and t.Fatalf instead of panicking.
+func (e *TestEnv) doJSONWithT(t interface{ Helper(); Fatalf(string, ...any) }, method, path string, body any, headers ...map[string]string) (*http.Response, string) {
+	t.Helper()
+	var bodyReader io.Reader
+	if body != nil {
+		bodyBytes, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("doJSON: marshal error: %v", err)
+		}
+		bodyReader = bytes.NewReader(bodyBytes)
+	}
+	req, err := http.NewRequest(method, e.BaseURL+path, bodyReader)
+	if err != nil {
+		t.Fatalf("doJSON: request creation error: %v", err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	for _, h := range headers {
+		for k, v := range h {
+			req.Header.Set(k, v)
+		}
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("doJSON: client execution error: %v", err)
+	}
+	defer resp.Body.Close()
+	respBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("doJSON: read body error: %v", err)
+	}
+	return resp, string(respBytes)
 }
 
 func (e *TestEnv) doJSON(method, path string, body any, headers ...map[string]string) (*http.Response, string) {

@@ -125,15 +125,7 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 	return false, nil
 }
 
-// IsTokenBlacklisted checks whether a token has been explicitly blacklisted.
+// IsTokenBlacklisted is kept for interface compat; token blacklist is not used.
 func (r *RevocationStore) IsTokenBlacklisted(ctx context.Context, tokenID string) (bool, error) {
-	if tokenID == "" {
-		return false, nil
-	}
-	if r.store != nil {
-		if exists, err := r.store.Exists(ctx, sec_storage.RevokedTokenPrefix+tokenID); err == nil && exists {
-			return true, nil
-		}
-	}
 	return false, nil
 }

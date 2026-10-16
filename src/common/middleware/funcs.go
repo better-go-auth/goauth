@@ -27,12 +27,6 @@ func (r *KeyValRevocationStore) IsRevoked(ctx context.Context, sessionID string)
 }
 
 func (r *KeyValRevocationStore) IsTokenBlacklisted(ctx context.Context, tokenID string) (bool, error) {
-	if tokenID == "" || r.storage == nil {
-		return false, nil
-	}
-	_, exists, err := r.storage.Get(ctx, sec_storage.RevokedTokenPrefix+tokenID)
-	if err != nil {
-		return false, err
-	}
-	return exists, nil
+	// Deprecated: token blacklist is not used; kept for interface compat.
+	return false, nil
 }

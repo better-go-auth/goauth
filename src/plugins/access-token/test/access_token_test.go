@@ -99,19 +99,16 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	})
 
 	initCtx := &plugins.InitContext{
-		Ctx:            context.Background(),
-		Api:            api,
-		IAuthRepos:     repos,
-		TxManager:      txMgr,
-		SessionManager: sessionMgr,
-		Hooks:          hooks,
-		IAuthSvc:       authService,
-		Config:         authCfg,
-		Extras: map[string]any{
-			"db":               db,
-			"sessionManager":   sessionMgr,
-			"secondaryStorage": store,
-		},
+		Ctx:              context.Background(),
+		Api:              api,
+		IAuthRepos:       repos,
+		TxManager:        txMgr,
+		SessionManager:   sessionMgr,
+		Hooks:            hooks,
+		IAuthSvc:         authService,
+		Config:           authCfg,
+		DB:               db,
+		SecondaryStorage: store,
 	}
 
 	if err := plugin.Init(initCtx); err != nil {

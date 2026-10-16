@@ -5,6 +5,8 @@ package session
 import (
 	"context"
 	"log/slog"
+
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"errors"
 	"fmt"
 	"maps"
@@ -44,9 +46,21 @@ type Manager struct {
 
 var _ interfaces.ISessionManager = (*Manager)(nil)
 
+// ManagerOption configures a Manager.
+type ManagerOption func(*Manager)
+
+// WithClock overrides the clock used for expiry/refresh checks (for tests).
+func WithClock(fn func() time.Time) ManagerOption { return func(m *Manager) { m.now = fn } }
+
+// WithManagerOptions applies options to an existing Manager (for tests wiring after NewManager).
+func (mgr *Manager) WithOptions(opts ...ManagerOption) { for _, o := range opts { o(mgr) } }
+
+
+
 // NewManager builds a Manager; store and hooks may be nil.
-func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions repo_interfaces.ISessionRepo, store sec_storage.SecondaryStorage, hooks plugins.HookRegistry) *Manager {
+func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions repo_interfaces.ISessionRepo, store sec_storage.SecondaryStorage, hooks plugins.HookRegistry, opts ...ManagerOption) *Manager {
 	mgr := &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now}
+	for _, o := range opts { o(mgr) }
 	if hooks != nil {
 		hooks.OnUserBanned(func(ctx context.Context, userID string, reason *string) error {
 			return mgr.DeleteUserSessions(ctx, userID)
@@ -181,7 +195,9 @@ func (mgr *Manager) Get(ctx context.Context, tok string) (*dtos.SessionWithUser,
 	// 8. backfill secondary storage cache with the loaded session
 	if mgr.secStore != nil {
 		if err := mgr.cache(ctx, sw); err != nil {
+			logger.ErrorCtx(ctx, "sessions: cache backfill failed", err, nil)
 			slog.Warn("sessions: cache backfill failed", "err", err)
+			incCacheError(ctx)
 		}
 	}
 
@@ -335,7 +351,9 @@ func (mgr *Manager) DeleteUserSessions(ctx context.Context, userID string) error
 	if mgr.secStore != nil {
 		for _, e := range mgr.activeList(ctx, userID) {
 			if err := mgr.secStore.Delete(ctx, e.Token); err != nil {
+				logger.ErrorCtx(ctx, "sessions: delete cached token failed", err, nil)
 				slog.Warn("sessions: delete cached token failed", "err", err)
+				incCacheError(ctx)
 			}
 		}
 		if err := mgr.secStore.Delete(ctx, activeKey(userID)); err != nil {

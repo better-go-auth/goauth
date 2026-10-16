@@ -42,10 +42,12 @@ type InitContext struct {
 	DB               *gorm.DB
 	CookieManager    *cookies.Manager
 
-	// Extras allows plugins that need ORM-specific objects (e.g. *gorm.DB) to
-	// receive them without coupling the interface to any particular ORM.
-	// The host application populates this map before calling plugin.Init.
-	Extras map[string]any
+	// Extras is intentionally disabled. We do not use this field; all
+	// dependencies are provided via the typed fields above (DB,
+	// CookieManager, SecondaryStorage, SessionManager, etc.).
+	// Only re-enable with explicit justification and a typed alternative
+	// if a genuine need arises that cannot be modelled otherwise.
+	// Extras map[string]any
 }
 
 // Plugin defines the interface that all better-go-auth plugins (e.g. Org, 2FA, Passkeys) must implement.

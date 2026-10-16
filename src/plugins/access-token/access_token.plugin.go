@@ -29,7 +29,6 @@ import (
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
-	"gorm.io/gorm"
 )
 
 const PluginID = "access-token"
@@ -149,12 +148,8 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	// Resolve transaction manager
 	txMgr := ictx.TxManager
-	if txMgr == nil {
-		if dbVal := ictx.DB; dbVal != nil {
-			txMgr = gormutil.NewGormTxManager(dbVal)
-		} else if dbVal, ok := ictx.Extras["db"].(*gorm.DB); ok && dbVal != nil {
-			txMgr = gormutil.NewGormTxManager(dbVal)
-		}
+	if txMgr == nil && ictx.DB != nil {
+		txMgr = gormutil.NewGormTxManager(ictx.DB)
 	}
 	p.txMgr = txMgr
 
@@ -162,15 +157,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	// Resolve secondary storage
 	secStorage := ictx.SecondaryStorage
-	if secStorage == nil && ictx.DB != nil {
-		// already handled via typed field below if needed
-		_ = secStorage
-	}
-	if secStorage == nil && ictx.Extras != nil {
-		if ssVal, ok := ictx.Extras["secondaryStorage"].(sec_storage.SecondaryStorage); ok {
-			secStorage = ssVal
-		}
-	}
 	p.secStorage = secStorage
 
 	// Resolve configs
@@ -199,11 +185,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	// 1. Initialize services
 	sessMgr := ictx.SessionManager
-	if sessMgr == nil && ictx.Extras != nil {
-		if sm, ok := ictx.Extras["sessionManager"].(authint.ISessionManager); ok {
-			sessMgr = sm
-		}
-	}
 	coreAuthSvc := ictx.IAuthSvc
 	if coreAuthSvc == nil {
 		return fmt.Errorf("access-token plugin: IAuthSvc is required")
@@ -238,7 +219,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 				if ttl <= 0 {
 					ttl = time.Hour
 				}
-				_ = p.secStorage.Delete(ctx, "sid:"+sessionID)
+				_ = p.secStorage.Delete(ctx, SidPrefix+sessionID)
 				return p.secStorage.Set(ctx, sec_storage.RevokedSessionPrefix+sessionID, "blacklisted", ttl)
 			}
 			return nil
@@ -304,9 +285,7 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 					if p.secStorage != nil {
 						if _, exists, _ := p.secStorage.Get(ctx.Context(), sec_storage.RevokedSessionPrefix+claims.SessionID); exists {
 					isRevoked = true
-				} else if _, exists, _ := p.secStorage.Get(ctx.Context(), sec_storage.LegacyBlacklistPrefix+claims.SessionID); exists {
-							isRevoked = true
-						}
+				}
 					}
 					// 3. Fast-path: plugin-owned sid: -> token index (zero DB hit when cache warm)
 					var sw *dtos.SessionWithUser
@@ -340,7 +319,7 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 									if p.sessionSvc != nil {
 										p.sessionSvc.BackfillSidIndex(ctx.Context(), sess.ID, sess.Token, ttl)
 									} else if p.secStorage != nil {
-										_ = p.secStorage.Set(ctx.Context(), "sid:"+sess.ID, sess.Token, ttl)
+										_ = p.secStorage.Set(ctx.Context(), SidPrefix+sess.ID, sess.Token, ttl)
 									}
 								}
 							}

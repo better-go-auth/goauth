@@ -78,7 +78,7 @@ func (vSvc *VerificationService) SendVerification(ctx context.Context, identifie
 		UserID:     userID,
 	})
 	if err != nil {
-		logger.LogTrace("error creating verification", err)
+		logger.ErrorCtx(ctx, "error creating verification", err,nil)
 		return dtos.InternalErrMS[bool]("creating Error"), err
 	}
 	return dtos.SuccessCreated(true, 1), nil

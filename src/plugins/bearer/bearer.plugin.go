@@ -2,6 +2,7 @@ package bearer
 
 import (
 	"context"
+	"log/slog"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -92,6 +93,10 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	}
 	if ictx.Api == nil {
 		return fmt.Errorf("bearer plugin: Huma API is required")
+	}
+
+	if !p.config.RequireSignature {
+		slog.Warn("bearer: RequireSignature is disabled — unsigned bearer tokens will be accepted; enable it to require HMAC-signed tokens")
 	}
 
 	// Register global Huma middleware for request & response interception

@@ -61,6 +61,7 @@ type IPAddress struct {
 }
 
 // SecureCookies reports whether auth cookies must carry the Secure flag.
+// Prefer SecureCookiesCached after SetDefaults has been called.
 func (opts *AuthConfig) SecureCookies() bool {
 	if opts.Advanced.UseSecureCookies != nil {
 		return *opts.Advanced.UseSecureCookies
@@ -69,6 +70,13 @@ func (opts *AuthConfig) SecureCookies() bool {
 }
 
 // CookieDomain returns the Domain attribute for auth cookies ("" = host-only).
+func (opts *AuthConfig) SecureCookiesCached() bool {
+	if opts.cachedSecure != nil {
+		return *opts.cachedSecure
+	}
+	return opts.SecureCookies()
+}
+
 func (opts *AuthConfig) CookieDomain() string {
 	if !opts.Advanced.CrossSubDomainCookies.Enabled {
 		return ""
@@ -81,4 +89,11 @@ func (opts *AuthConfig) CookieDomain() string {
 		return ""
 	}
 	return u.Hostname()
+}
+
+func (opts *AuthConfig) CookieDomainCached() string {
+	if opts.cachedDomainOnce {
+		return opts.cachedCookieDomain
+	}
+	return opts.CookieDomain()
 }

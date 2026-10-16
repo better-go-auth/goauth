@@ -27,6 +27,10 @@ type AuthConfig struct {
 	DisabledPaths []string
 	Advanced      Advanced
 
+	cachedSecure       *bool
+	cachedCookieDomain string
+	cachedDomainOnce   bool
+
 	EmailAndPassword  EmailAndPassword
 	EmailVerification EmailVerification
 	Session           Session
@@ -96,6 +100,14 @@ func (opts *AuthConfig) SetDefaults() {
 	if opts.EmailAndPassword.ResetPasswordTokenExpiresIn <= 0 {
 		opts.EmailAndPassword.ResetPasswordTokenExpiresIn = time.Hour
 	}
+	// cache SecureCookies/CookieDomain to avoid url.Parse per request
+	{
+		sc := opts.SecureCookiesCached()
+		opts.cachedSecure = &sc
+		opts.cachedCookieDomain = opts.CookieDomainCached()
+		opts.cachedDomainOnce = true
+	}
+
 	if opts.Session.ExpiresIn <= 0 {
 		opts.Session.ExpiresIn = 7 * 24 * time.Hour
 	}

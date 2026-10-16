@@ -180,10 +180,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	if p.db == nil && ictx.DB != nil {
 		p.db = ictx.DB
-	} else if p.db == nil && ictx.Extras != nil {
-		if dbVal, ok := ictx.Extras["db"].(*gorm.DB); ok && dbVal != nil {
-			p.db = dbVal
-		}
 	}
 
 	if p.repo == nil {
@@ -207,10 +203,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	var sessMgr *sessionsvc.Manager
 	if sm, ok := ictx.SessionManager.(*sessionsvc.Manager); ok {
 		sessMgr = sm
-	} else if ictx.Extras != nil {
-		if smVal, ok := ictx.Extras["sessionManager"].(*sessionsvc.Manager); ok {
-			sessMgr = smVal
-		}
 	}
 	p.resolver = humaadapter.NewResolver(sessMgr, cm)
 

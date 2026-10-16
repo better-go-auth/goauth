@@ -32,11 +32,14 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-type GoAuth struct { // Read-only after SetupGoAuth; do not mutate fields.
+// GoAuth is the fully-initialized auth runtime returned by SetupGoAuth.
+// Fields are read-only after SetupGoAuth returns; mutating them is not
+// supported and may break middleware, hooks, and session handling.
+type GoAuth struct {
 	Options GoAuthOptions
 	Plugins map[string]plugin.Plugin
 	Hooks   plugin.HookRegistry
-	// todo: legacy service will be removed fromt he default goAuth
+	// todo: legacy service will be removed from the default goAuth
 	ILegacyAuthServices interfaces1.ILegacyAuthServices
 	MiddleWare          middleware.AuthMiddleware
 	MiddlewareInt       middleware.IAuthMiddleware
@@ -200,12 +203,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		SecondaryStorage: opts.SecondaryStorage,
 		DB:               opts.Conn,
 		CookieManager:    cookieMgr,
-		Extras: map[string]any{
-			"db":               opts.Conn,
-			"sessionManager":   sessionMgr,
-			"secondaryStorage": opts.SecondaryStorage,
-			"cookieManager":    cookieMgr,
-		},
+		// Extras is disabled; typed fields above cover all plugin needs.
+		// See plugins.InitContext.Extras comment.
 	}
 
 	// Phase 1: Initialize plugins (repos, services, and migrators configured via initCtx)
@@ -267,6 +266,9 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		Cookies:            cookieMgr,
 	}, nil
 }
+
+
+
 
 // StartSessionCleanup deletes expired sessions every interval until ctx is cancelled.
 func (g *GoAuth) StartSessionCleanup(ctx context.Context, interval time.Duration) {
