@@ -45,8 +45,8 @@ type UserDto struct {
 	Gender        *string             `json:"gender,omitempty"       bun:"gender"`
 	Locale        string              `json:"locale,omitempty"       gorm:"default:en" bun:"locale,default:en"`
 	Timezone      *string             `json:"timezone,omitempty"     bun:"timezone"`
-	Active        *bool               `json:"active,omitempty"       gorm:"index:idx_users_lookup,priority:4"` // can the user login
-	// AccountStatus enums.AccountStatus `json:"-"`
+	Active        *bool               `json:"active,omitempty"       gorm:"index:idx_users_lookup,priority:4"` // Deprecated: use Banned/BanReason/BanExpires. Kept for migration compat.
+	// AccountStatus enums.AccountStatus `json:"-"` // Deprecated: folded into Banned.
 	LastLoginIP   *string             `json:"lastLoginIP,omitempty"  bun:"last_login_ip"`
 	LastLoginAt   *time.Time          `json:"lastLoginAt,omitempty"`
 }

@@ -4,9 +4,9 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"github.com/oklog/ulid/v2"
 	"gorm.io/gorm"
 )
 
@@ -58,14 +58,14 @@ type OperationAccessDto struct {
 	// CompanyID    *string // Deprecated: use OrgID instead
 }
 
-// NewID generates a new ULID string.
-var idGenerator = func() string { return ulid.Make().String() }
+// NewID generates a 32-char alphanumeric ID (better-auth default).
+// Override via SetIDGenerator or Advanced.GenerateID; use idgen.ULID for legacy 26-char ULIDs.
+var idGenerator = func() string { return idgen.GenerateID() }
 
-// SetIDGenerator replaces the generator used for new record IDs (nil restores ULID).
-// Many legacy columns are sized for 26-char ULIDs.
+// SetIDGenerator replaces the generator used for new record IDs (nil restores 32-char default).
 func SetIDGenerator(fn func() string) {
 	if fn == nil {
-		fn = func() string { return ulid.Make().String() }
+		fn = func() string { return idgen.GenerateID() }
 	}
 	idGenerator = fn
 }

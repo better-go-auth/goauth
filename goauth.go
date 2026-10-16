@@ -36,27 +36,37 @@ import (
 // Fields are read-only after SetupGoAuth returns; mutating them is not
 // supported and may break middleware, hooks, and session handling.
 type GoAuth struct {
-	Options GoAuthOptions
-	Plugins map[string]plugin.Plugin
-	Hooks   plugin.HookRegistry
-	// todo: legacy service will be removed from the default goAuth
-	ILegacyAuthServices interfaces1.ILegacyAuthServices
-	MiddleWare          middleware.AuthMiddleware
-	MiddlewareInt       middleware.IAuthMiddleware
-	RevocationStore     middleware.RevocationStore
-	TransactionManager  interfaces.ITransactionManager
-
-	Provider     *providers.IProviderS
-	Repositories repo_interfaces.IAuthRepos
-
-	// Sessions manages better-auth style cookie sessions.
-	Sessions *sessionsvc.Manager
-	// Auth is the framework-agnostic better-auth service behind the compat endpoints.
-	Auth *authsvc.Service
-	// SessionResolver provides Huma middlewares that load the cookie session.
-	SessionResolver *humaadapter.Resolver
-	Cookies         *cookies.Manager
+	options             GoAuthOptions
+	plugins             map[string]plugin.Plugin
+	hooks               plugin.HookRegistry
+	iLegacyAuthServices interfaces1.ILegacyAuthServices
+	middleWare          middleware.AuthMiddleware
+	middlewareInt       middleware.IAuthMiddleware
+	revocationStore     middleware.RevocationStore
+	transactionManager  interfaces.ITransactionManager
+	provider            *providers.IProviderS
+	repositories        repo_interfaces.IAuthRepos
+	sessions            *sessionsvc.Manager
+	auth                *authsvc.Service
+	sessionResolver     *humaadapter.Resolver
+	cookies             *cookies.Manager
 }
+
+func (g *GoAuth) Options() GoAuthOptions                            { return g.options }
+func (g *GoAuth) Plugins() map[string]plugin.Plugin                 { return g.plugins }
+func (g *GoAuth) Hooks() plugin.HookRegistry                        { return g.hooks }
+func (g *GoAuth) ILegacyAuthServices() interfaces1.ILegacyAuthServices { return g.iLegacyAuthServices }
+func (g *GoAuth) MiddleWare() middleware.AuthMiddleware              { return g.middleWare }
+func (g *GoAuth) MiddlewareInt() middleware.IAuthMiddleware          { return g.middlewareInt }
+func (g *GoAuth) RevocationStore() middleware.RevocationStore        { return g.revocationStore }
+func (g *GoAuth) TransactionManager() interfaces.ITransactionManager { return g.transactionManager }
+func (g *GoAuth) Provider() *providers.IProviderS                   { return g.provider }
+func (g *GoAuth) Repositories() repo_interfaces.IAuthRepos           { return g.repositories }
+func (g *GoAuth) Sessions() *sessionsvc.Manager                      { return g.sessions }
+func (g *GoAuth) Auth() *authsvc.Service                             { return g.auth }
+func (g *GoAuth) SessionResolver() *humaadapter.Resolver             { return g.sessionResolver }
+func (g *GoAuth) Cookies() *cookies.Manager                          { return g.cookies }
+
 type GoAuthOptions struct {
 	config.AuthConfig
 	Conn             *gorm.DB
@@ -69,19 +79,19 @@ type GoAuthOptions struct {
 
 // Plugin returns the registered plugin by ID, or nil if not found.
 func (g *GoAuth) Plugin(id string) plugin.Plugin {
-	if g.Plugins == nil {
+	if g.plugins == nil {
 		return nil
 	}
-	return g.Plugins[id]
+	return g.plugins[id]
 }
 
 // GetPlugin retrieves a plugin by ID with compile-time type assertion.
 func GetPlugin[T any](g *GoAuth, id string) (T, bool) {
-	if g.Plugins == nil {
+	if g.plugins == nil {
 		var zero T
 		return zero, false
 	}
-	p, ok := g.Plugins[id]
+	p, ok := g.plugins[id]
 	if !ok {
 		var zero T
 		return zero, false
@@ -169,23 +179,11 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	sessionMgr := sessionsvc.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks)
 	mdlWare.WithSessions(humaadapter.NewSessionClaims(sessionMgr, cookieMgr, repos))
 
-	// setup the auth routes (skip mounting legacy routes on api if access-token plugin is present)
-	// var legacyAPI huma.API = api
-	// for _, p := range opts.Plugins {
-	// 	if p != nil && p.ID() == "access-token" {
-	// 		legacyAPI = nil
-	// 		break
-	// 	}
-	// }
-	// TODO: remove this
-	// authSvc := core.SetupAllAuthRoutesWithRepos(api, opts.AuthConfig, opts.EmailVerification, providerService, repos, sessionMgr, hooks)
-
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
 	//=============   Register the better-auth compatable routes
 	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager, Hooks: hooks})
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
-	// TODO: use the session function here
 	authenticate := authenticator.NewDefaultAuthenticator(opts.GoAuth.Session.JWT.AccessSecret, repos)
 	initCtx := &plugin.InitContext{
 		Ctx:            ctx,
@@ -194,7 +192,6 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		TxManager:      txManager,
 		SessionManager: sessionMgr,
 		IAuthSvc:       authService,
-		// INormalAuthServices: sessionMgr,
 
 		IAuthRepos:       repos,
 		MiddleWare:       mdlWare,
@@ -203,8 +200,6 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		SecondaryStorage: opts.SecondaryStorage,
 		DB:               opts.Conn,
 		CookieManager:    cookieMgr,
-		// Extras is disabled; typed fields above cover all plugin needs.
-		// See plugins.InitContext.Extras comment.
 	}
 
 	// Phase 1: Initialize plugins (repos, services, and migrators configured via initCtx)
@@ -241,34 +236,22 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		Origins: origin.New(opts.AuthConfig),
 	})
 
-	// var legacyAuthSvc interfaces1.ILegacyAuthServices
-	// for _, p := range opts.Plugins {
-	// 	if lap, ok := p.(interface{ LegacyAuthServices() interfaces1.ILegacyAuthServices }); ok {
-	// 		legacyAuthSvc = lap.LegacyAuthServices()
-	// 		break
-	// 	}
-	// }
-
 	return &GoAuth{
-		Options: opts,
-		Plugins: pluginMap,
-		Hooks:   hooks,
-		// ILegacyAuthServices: authSvc,
-		MiddleWare:         *mdlWare,
-		RevocationStore:    revocationStore,
-		TransactionManager: txManager,
-		Provider:           providerService,
-		Repositories:       repos,
-		MiddlewareInt:      mdlWare,
-		Sessions:           sessionMgr,
-		Auth:               authService,
-		SessionResolver:    resolver,
-		Cookies:            cookieMgr,
+		options:            opts,
+		plugins:            pluginMap,
+		hooks:              hooks,
+		middleWare:         *mdlWare,
+		revocationStore:    revocationStore,
+		transactionManager: txManager,
+		provider:           providerService,
+		repositories:       repos,
+		middlewareInt:      mdlWare,
+		sessions:           sessionMgr,
+		auth:               authService,
+		sessionResolver:    resolver,
+		cookies:            cookieMgr,
 	}, nil
 }
-
-
-
 
 // StartSessionCleanup deletes expired sessions every interval until ctx is cancelled.
 func (g *GoAuth) StartSessionCleanup(ctx context.Context, interval time.Duration) {
@@ -280,7 +263,7 @@ func (g *GoAuth) StartSessionCleanup(ctx context.Context, interval time.Duration
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if err := g.Sessions.CleanupExpired(ctx); err != nil {
+				if err := g.sessions.CleanupExpired(ctx); err != nil {
 					slog.Error("goauth: session cleanup failed", "err", err)
 				}
 			}

@@ -173,7 +173,7 @@ func main() {
 		Path:        "/api/example/protected",
 		Summary:     "Protected Example Endpoint",
 		Tags:        []string{"Example"},
-		Middlewares: huma.Middlewares{auth.MiddleWare.Authenticate()},
+		Middlewares: huma.Middlewares{auth.MiddlewareInt().Authenticate()},
 	}, func(ctx context.Context, input *ProtectedInput) (*ProtectedOutput, error) {
 		out := &ProtectedOutput{}
 		out.Body.Message = "Access granted to protected endpoint"

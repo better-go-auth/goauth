@@ -131,7 +131,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("07 List User Sessions", func(t *testing.T) {
-		userSession, err := env.Auth.Sessions.Create(ctx, &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
+		userSession, err := env.Auth.Sessions().Create(ctx, &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 		if err != nil {
 			t.Fatalf("Failed to create session for managed user: %v", err)
 		}
@@ -169,7 +169,7 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 	})
 
 	t.Run("09 Revoke All User Sessions", func(t *testing.T) {
-		_, err := env.Auth.Sessions.Create(ctx, &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
+		_, err := env.Auth.Sessions().Create(ctx, &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 		if err != nil {
 			t.Fatalf("Failed to create bulk session: %v", err)
 		}

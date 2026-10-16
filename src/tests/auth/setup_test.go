@@ -102,7 +102,7 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 	})
 
 	t.Run("Active session is not revoked", func(t *testing.T) {
-		swu, err := env.Auth.Sessions.Create(ctx, &testUser, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
+		swu, err := env.Auth.Sessions().Create(ctx, &testUser, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 		if err != nil {
 			t.Fatalf("Create session failed: %v", err)
 		}

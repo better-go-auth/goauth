@@ -270,7 +270,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	orgService := orgPlugin.Service()
 
 	env := &TestEnv{
-		Options:          auth.Options,
+		Options:          auth.Options(),
 		DB:               gormDB,
 		SecondaryStorage: secStorage,
 		Auth:             auth,

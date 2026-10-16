@@ -106,8 +106,8 @@ func TestServerRoundTripsCookies(t *testing.T) {
 	if echo.Cookie != "better-auth.session_token=tok" {
 		t.Fatalf("cookie jar did not resend cookie: %q", echo.Cookie)
 	}
-	if s.Auth.Options.AppName != "compat-harness" {
-		t.Fatalf("options not applied: %q", s.Auth.Options.AppName)
+	if s.Auth.Options().AppName != "compat-harness" {
+		t.Fatalf("options not applied: %q", s.Auth.Options().AppName)
 	}
 	if r := s.Get(t, "/api/auth/does-not-exist"); r.Status != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d", r.Status)

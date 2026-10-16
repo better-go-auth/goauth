@@ -38,11 +38,11 @@ func createUser(t *testing.T, s *Server, email, passwordHash string) *models.Use
 // signIn mints a cookie session directly (no sign-in endpoint yet) and stores its cookies in the client jar.
 func signIn(t *testing.T, s *Server, u *models.User, opt sessionsvc.CreateOptions) string {
 	t.Helper()
-	sw, err := s.Auth.Sessions.Create(context.Background(), u, sessionsvc.Meta{IPAddress: "127.0.0.1", UserAgent: "compattest"}, opt)
+	sw, err := s.Auth.Sessions().Create(context.Background(), u, sessionsvc.Meta{IPAddress: "127.0.0.1", UserAgent: "compattest"}, opt)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cookies := s.Auth.Cookies.SessionCookies(sw.Session.Token, opt.DontRemember)
+	cookies := s.Auth.Cookies().SessionCookies(sw.Session.Token, opt.DontRemember)
 	ptrs := make([]*http.Cookie, len(cookies))
 	for i := range cookies {
 		ptrs[i] = &cookies[i]
@@ -133,7 +133,7 @@ func TestGetSession(t *testing.T) {
 	})
 
 	t.Run("revoked session clears cookies", func(t *testing.T) {
-		if err := s.Auth.Sessions.Delete(context.Background(), tok); err != nil {
+		if err := s.Auth.Sessions().Delete(context.Background(), tok); err != nil {
 			t.Fatal(err)
 		}
 		r := s.Get(t, "/api/auth/get-session")

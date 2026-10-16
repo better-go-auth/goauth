@@ -45,7 +45,7 @@ func setupOrgUser(t *testing.T, env *helpers.TestEnv, email string, orgID, orgRo
 		opt.ActiveOrganizationRole = ptr(orgRole)
 	}
 
-	swu, err := env.Auth.Sessions.Create(context.Background(), user, serv_interfaces.SessionMeta{}, opt)
+	swu, err := env.Auth.Sessions().Create(context.Background(), user, serv_interfaces.SessionMeta{}, opt)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}

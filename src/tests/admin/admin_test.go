@@ -36,7 +36,7 @@ func setupAdminUser(t *testing.T, env *helpers.TestEnv) (string, map[string]stri
 		t.Fatalf("Failed to create admin user: %v", err)
 	}
 
-	swu, err := env.Auth.Sessions.Create(context.Background(), adminUser, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
+	swu, err := env.Auth.Sessions().Create(context.Background(), adminUser, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 	if err != nil {
 		t.Fatalf("Failed to create admin session: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("List User Sessions", func(t *testing.T) {
-		userSession, err := env.Auth.Sessions.Create(context.Background(), &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
+		userSession, err := env.Auth.Sessions().Create(context.Background(), &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 		if err != nil {
 			t.Fatalf("Failed to create session for managed user: %v", err)
 		}
@@ -234,7 +234,7 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("Revoke All User Sessions", func(t *testing.T) {
-		_, err := env.Auth.Sessions.Create(context.Background(), &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
+		_, err := env.Auth.Sessions().Create(context.Background(), &models.User{Base: models.Base{ID: managedUserID}}, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 		if err != nil {
 			t.Fatalf("Failed to create bulk session: %v", err)
 		}

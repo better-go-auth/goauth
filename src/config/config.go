@@ -36,8 +36,23 @@ type AuthConfig struct {
 	Session           Session
 	User              UserOptions
 	Account           AccountOptions
+	Verification      VerificationOptions
+	RateLimit         RateLimitOptions
 
 	GoAuth GoAuthConfig
+}
+
+// VerificationOptions mirrors better-auth's `verification` options.
+type VerificationOptions struct {
+	DisableCleanup bool
+}
+
+// RateLimitOptions mirrors better-auth's `rateLimit` options.
+type RateLimitOptions struct {
+	Enabled bool
+	Window  time.Duration
+	Max     int
+	Storage string
 }
 
 // GoAuthConfig holds top-level options better-auth doesn't have.
@@ -90,6 +105,13 @@ func (opts *AuthConfig) SetDefaults() {
 	}
 	if opts.Advanced.IPAddress.IPv6Subnet <= 0 {
 		opts.Advanced.IPAddress.IPv6Subnet = DefaultIPv6Subnet
+	}
+	// prefer advanced.database.generateId (better-auth path); fall back to Advanced.GenerateID
+	if opts.Advanced.Database.GenerateID != nil && opts.Advanced.GenerateID == nil {
+		opts.Advanced.GenerateID = opts.Advanced.Database.GenerateID
+	}
+	if opts.Advanced.GenerateID != nil && opts.Advanced.Database.GenerateID == nil {
+		opts.Advanced.Database.GenerateID = opts.Advanced.GenerateID
 	}
 	if opts.EmailAndPassword.MinPasswordLength <= 0 {
 		opts.EmailAndPassword.MinPasswordLength = 8

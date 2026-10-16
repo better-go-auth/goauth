@@ -55,9 +55,9 @@ func TestSetupGoAuth_CustomRepositoriesWithoutGorm(t *testing.T) {
 	app, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
 	require.NoError(t, err)
 	assert.NotNil(t, app)
-	assert.NotNil(t, app.Auth)
-	assert.NotNil(t, app.Sessions)
-	assert.NotNil(t, app.Plugins[accesstoken.PluginID])
+	assert.NotNil(t, app.Auth())
+	assert.NotNil(t, app.Sessions())
+	assert.NotNil(t, app.Plugins()[accesstoken.PluginID])
 }
 
 func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
@@ -88,8 +88,8 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 	passwords := authcrypto.NewPasswords(opts.AuthConfig)
 	// access token services
 	aTVfcSvc := services.NewVerificationService(mockRepos, opts.EmailVerification)
-	aTsSvc := services.NewSessionService(opts.GoAuth.Session, mockRepos, app.Sessions, nil, app.Hooks)
-	aTauthSvc := services.NewAuthService(&opts.GoAuth.Session, app.Auth, aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords, app.Hooks)
+	aTsSvc := services.NewSessionService(opts.GoAuth.Session, mockRepos, app.Sessions(), nil, app.Hooks())
+	aTauthSvc := services.NewAuthService(&opts.GoAuth.Session, app.Auth(), aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords, app.Hooks())
 	// aTprofileSvc := services.NewProfileService(aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords)
 
 	// 1. Register with email
