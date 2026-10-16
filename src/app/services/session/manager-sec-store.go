@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"log/slog"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -76,7 +77,9 @@ func (mgr *Manager) untrackActive(ctx context.Context, userID, tok string) {
 	}
 	// 2. if no active sessions remain, delete the active index key entirely
 	if len(list) == 0 {
-		_ = mgr.secStore.Delete(ctx, activeKey(userID))
+		if err := mgr.secStore.Delete(ctx, activeKey(userID)); err != nil {
+			slog.Warn("sessions: untrack active-sessions delete failed", "userID", userID, "err", err)
+		}
 		return
 	}
 	// 3. otherwise sort and save the remaining list
@@ -86,6 +89,7 @@ func (mgr *Manager) untrackActive(ctx context.Context, userID, tok string) {
 func (mgr *Manager) saveActive(ctx context.Context, userID string, list []activeEntry) {
 	// 1. sort active session entries ascending by ExpiresAt
 	sort.Slice(list, func(i, j int) bool { return list[i].ExpiresAt < list[j].ExpiresAt })
+	// NOTE: read-modify-write without WATCH/Lua can lose entries under concurrent logins; last-write-wins is acceptable for non-Redis stores.
 	// 2. compute TTL based on the furthest expiration time in the list
 	ttl := time.Until(time.UnixMilli(list[len(list)-1].ExpiresAt))
 	if ttl <= 0 {
@@ -93,7 +97,9 @@ func (mgr *Manager) saveActive(ctx context.Context, userID string, list []active
 	}
 	// 3. marshal to JSON and save to secondary storage
 	b, _ := json.Marshal(list)
-	_ = mgr.secStore.Set(ctx, activeKey(userID), string(b), ttl)
+	if err := mgr.secStore.Set(ctx, activeKey(userID), string(b), ttl); err != nil {
+		slog.Warn("sessions: save active-sessions failed", "userID", userID, "err", err)
+	}
 }
 
 // cache stores the session under its token with ttl of Session.ExpiresAt, as better-auth does:
@@ -127,7 +133,9 @@ func (mgr *Manager) RefreshUser(ctx context.Context, user *models.User) {
 	for _, e := range mgr.activeList(ctx, user.ID) {
 		if swu, _ := mgr.fromStore(ctx, e.Token); swu != nil {
 			swu.User = dtos.UserFromModel(user)
-			_ = mgr.cache(ctx, swu)
+			if err := mgr.cache(ctx, swu); err != nil {
+				slog.Warn("sessions: RefreshUser cache failed", "userID", user.ID, "err", err)
+			}
 		}
 	}
 }

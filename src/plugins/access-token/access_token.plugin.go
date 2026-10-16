@@ -150,7 +150,9 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	// Resolve transaction manager
 	txMgr := ictx.TxManager
 	if txMgr == nil {
-		if dbVal, ok := ictx.Extras["db"].(*gorm.DB); ok && dbVal != nil {
+		if dbVal := ictx.DB; dbVal != nil {
+			txMgr = gormutil.NewGormTxManager(dbVal)
+		} else if dbVal, ok := ictx.Extras["db"].(*gorm.DB); ok && dbVal != nil {
 			txMgr = gormutil.NewGormTxManager(dbVal)
 		}
 	}
@@ -160,6 +162,10 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	// Resolve secondary storage
 	secStorage := ictx.SecondaryStorage
+	if secStorage == nil && ictx.DB != nil {
+		// already handled via typed field below if needed
+		_ = secStorage
+	}
 	if secStorage == nil && ictx.Extras != nil {
 		if ssVal, ok := ictx.Extras["secondaryStorage"].(sec_storage.SecondaryStorage); ok {
 			secStorage = ssVal
@@ -233,7 +239,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 					ttl = time.Hour
 				}
 				_ = p.secStorage.Delete(ctx, "sid:"+sessionID)
-				return p.secStorage.Set(ctx, "blacklist:"+sessionID, "blacklisted", ttl)
+				return p.secStorage.Set(ctx, sec_storage.RevokedSessionPrefix+sessionID, "blacklisted", ttl)
 			}
 			return nil
 		})
@@ -296,7 +302,9 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 					// 2. Revocation check — check if session is blacklisted in secondary storage.
 					isRevoked := false
 					if p.secStorage != nil {
-						if _, exists, _ := p.secStorage.Get(ctx.Context(), "blacklist:"+claims.SessionID); exists {
+						if _, exists, _ := p.secStorage.Get(ctx.Context(), sec_storage.RevokedSessionPrefix+claims.SessionID); exists {
+					isRevoked = true
+				} else if _, exists, _ := p.secStorage.Get(ctx.Context(), sec_storage.LegacyBlacklistPrefix+claims.SessionID); exists {
 							isRevoked = true
 						}
 					}

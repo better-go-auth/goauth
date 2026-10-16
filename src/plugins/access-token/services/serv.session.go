@@ -303,7 +303,7 @@ func (aus *SessionService) BlacklistSession(ctx context.Context, sessionId strin
 		ttl = time.Hour
 	}
 	aus.deleteSidIndex(ctx, sessionId)
-	return aus.SStore.Set(ctx, "blacklist:"+sessionId, "blacklisted", ttl)
+	return aus.SStore.Set(ctx, sec_storage.RevokedSessionPrefix+sessionId, "blacklisted", ttl)
 }
 
 // DeleteSession revokes one session by id (DB row, cached copy and its access tokens).

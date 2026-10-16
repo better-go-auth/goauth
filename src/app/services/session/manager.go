@@ -4,6 +4,7 @@ package session
 
 import (
 	"context"
+	"log/slog"
 	"errors"
 	"fmt"
 	"maps"
@@ -179,7 +180,9 @@ func (mgr *Manager) Get(ctx context.Context, tok string) (*dtos.SessionWithUser,
 
 	// 8. backfill secondary storage cache with the loaded session
 	if mgr.secStore != nil {
-		_ = mgr.cache(ctx, sw)
+		if err := mgr.cache(ctx, sw); err != nil {
+			slog.Warn("sessions: cache backfill failed", "err", err)
+		}
 	}
 
 	// 9. return the active session
@@ -331,9 +334,13 @@ func (mgr *Manager) DeleteUserSessions(ctx context.Context, userID string) error
 	// 1. delete all cached sessions in secondary storage and delete user active index
 	if mgr.secStore != nil {
 		for _, e := range mgr.activeList(ctx, userID) {
-			_ = mgr.secStore.Delete(ctx, e.Token)
+			if err := mgr.secStore.Delete(ctx, e.Token); err != nil {
+				slog.Warn("sessions: delete cached token failed", "err", err)
+			}
 		}
-		_ = mgr.secStore.Delete(ctx, activeKey(userID))
+		if err := mgr.secStore.Delete(ctx, activeKey(userID)); err != nil {
+			slog.Warn("sessions: delete active-sessions index failed", "userID", userID, "err", err)
+		}
 	}
 
 	// 2. delete all session rows for user from database (unless preserve is configured)

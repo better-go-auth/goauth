@@ -16,6 +16,7 @@ const TrustedOriginsEnvVar = "BETTER_AUTH_TRUSTED_ORIGINS"
 // Checker holds the trusted origin patterns: the BaseURL origin, config.TrustedOrigins and the env var.
 type Checker struct {
 	patterns []string
+	compiled map[string]*regexp.Regexp
 }
 
 // New builds the trusted origin list from conf.
@@ -30,18 +31,46 @@ func New(conf config.AuthConfig) *Checker {
 			patterns = append(patterns, p)
 		}
 	}
-	return &Checker{patterns: patterns}
+	compiled := make(map[string]*regexp.Regexp, len(patterns))
+	for _, pat := range patterns {
+		if strings.ContainsAny(pat, "*?") {
+			compiled[pat] = wildcard(pat)
+		}
+	}
+	return &Checker{patterns: patterns, compiled: compiled}
 }
 
 // IsTrusted reports whether raw matches a trusted pattern. Relative paths ("/dashboard") are
 // accepted only with allowRelative, and never protocol-relative or encoded-slash paths.
 func (c *Checker) IsTrusted(raw string, allowRelative bool) bool {
 	for _, p := range c.patterns {
-		if Matches(raw, p, allowRelative) {
+		if c.matchesCached(raw, p, allowRelative) {
 			return true
 		}
 	}
 	return false
+}
+
+func (c *Checker) matchesCached(raw, pattern string, allowRelative bool) bool {
+	if strings.HasPrefix(raw, "/") {
+		return Matches(raw, pattern, allowRelative)
+	}
+	if strings.ContainsAny(pattern, "*?") {
+		re, ok := c.compiled[pattern]
+		if !ok {
+			re = wildcard(pattern)
+		}
+		if strings.Contains(pattern, "://") {
+			target := originOf(raw)
+			if target == "" {
+				target = raw
+			}
+			return re.MatchString(target)
+		}
+		host := hostOf(raw)
+		return host != "" && re.MatchString(host)
+	}
+	return Matches(raw, pattern, allowRelative)
 }
 
 var relativePath = regexp.MustCompile(`^/[\w\-.+/@]*(?:\?[\w\-.+/=&%@]*)?$`)

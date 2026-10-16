@@ -178,7 +178,9 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		return fmt.Errorf("jwt plugin: init context is required")
 	}
 
-	if p.db == nil && ictx.Extras != nil {
+	if p.db == nil && ictx.DB != nil {
+		p.db = ictx.DB
+	} else if p.db == nil && ictx.Extras != nil {
 		if dbVal, ok := ictx.Extras["db"].(*gorm.DB); ok && dbVal != nil {
 			p.db = dbVal
 		}
@@ -196,7 +198,12 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	p.service = services.NewJWTService(p.config, secret, baseURL, p.repo)
 
-	cm := cookies.New(ictx.Config)
+	var cm *cookies.Manager
+	if ictx.CookieManager != nil {
+		cm = ictx.CookieManager
+	} else {
+		cm = cookies.New(ictx.Config)
+	}
 	var sessMgr *sessionsvc.Manager
 	if sm, ok := ictx.SessionManager.(*sessionsvc.Manager); ok {
 		sessMgr = sm

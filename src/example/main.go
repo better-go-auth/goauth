@@ -134,7 +134,7 @@ func main() {
 		OverrideDefaultEmailVerification: true,
 	})
 
-	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
+	auth, err := bettergoauth.SetupGoAuth(context.Background(), api, bettergoauth.GoAuthOptions{
 		Conn: db,
 		AuthConfig: loc_conf.AuthConfig{
 			EmailVerification: loc_conf.EmailVerification{

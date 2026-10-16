@@ -204,7 +204,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		},
 	})
 
-	auth, err := bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
+	auth, err := bettergoauth.SetupGoAuth(context.Background(), api, bettergoauth.GoAuthOptions{
 		Conn:             gormDB,
 		SecondaryStorage: secStorage,
 		AuthConfig: loc_conf.AuthConfig{

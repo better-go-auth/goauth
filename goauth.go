@@ -32,7 +32,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-type GoAuth struct {
+type GoAuth struct { // Read-only after SetupGoAuth; do not mutate fields.
 	Options GoAuthOptions
 	Plugins map[string]plugin.Plugin
 	Hooks   plugin.HookRegistry
@@ -87,7 +87,10 @@ func GetPlugin[T any](g *GoAuth, id string) (T, bool) {
 	return typed, ok
 }
 
-func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
+func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if api == nil {
 		return nil, errors.New("goauth: huma API instance is required")
 	}
@@ -128,7 +131,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		migrator = core_migration.NewGORMAdminMigrator(opts.Conn)
 	}
 	if migrator != nil {
-		if err := migrator.Migrate(context.Background()); err != nil {
+		if err := migrator.Migrate(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -182,7 +185,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 	// TODO: use the session function here
 	authenticate := authenticator.NewDefaultAuthenticator(opts.GoAuth.Session.JWT.AccessSecret, repos)
 	initCtx := &plugin.InitContext{
-		Ctx:            context.Background(),
+		Ctx:            ctx,
 		Api:            api,
 		Config:         opts.AuthConfig,
 		TxManager:      txManager,
@@ -195,6 +198,8 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 		Authenticator:    authenticate,
 		Hooks:            hooks,
 		SecondaryStorage: opts.SecondaryStorage,
+		DB:               opts.Conn,
+		CookieManager:    cookieMgr,
 		Extras: map[string]any{
 			"db":               opts.Conn,
 			"sessionManager":   sessionMgr,
@@ -223,7 +228,7 @@ func SetupGoAuth(api huma.API, opts GoAuthOptions) (*GoAuth, error) {
 			continue
 		}
 		if mig := p.Migrator(); mig != nil {
-			if err := mig.Migrate(context.Background()); err != nil {
+			if err := mig.Migrate(ctx); err != nil {
 				return nil, fmt.Errorf("goauth: plugin migration failed for %s: %w", p.ID(), err)
 			}
 			slog.Info("migrated plugin", "plugin", p.ID())

@@ -24,7 +24,7 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 	api := humago.New(mux, huma.DefaultConfig("Test API", "1.0.0"))
 
 	t.Run("Fails when API is nil", func(t *testing.T) {
-		_, err := bettergoauth.SetupGoAuth(nil, bettergoauth.GoAuthOptions{})
+		_, err := bettergoauth.SetupGoAuth(context.Background(), nil, bettergoauth.GoAuthOptions{})
 		if err == nil {
 			t.Fatalf("Expected error when API is nil, got nil")
 		}
@@ -33,7 +33,7 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 	t.Run("Fails when Conn is nil", func(t *testing.T) {
 		opts := bettergoauth.GoAuthOptions{}
 		opts.Secret = "secret"
-		_, err := bettergoauth.SetupGoAuth(api, opts)
+		_, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
 		if err == nil {
 			t.Fatalf("Expected error when Conn is nil, got nil")
 		}
@@ -45,7 +45,7 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 		opts := bettergoauth.GoAuthOptions{
 			Conn: env.DB,
 		}
-		_, err := bettergoauth.SetupGoAuth(api, opts)
+		_, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
 		if err == nil {
 			t.Fatalf("Expected error when no secret is configured, got nil")
 		}

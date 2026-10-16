@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -62,7 +63,29 @@ func NewAuthMiddleware(verifier TokenVerifier, revocation RevocationStore, roles
 // WithSessions enables session-token authentication next to access JWTs.
 func (m *AuthMiddleware) WithSessions(r SessionClaimsResolver) { m.sessions = r }
 
-func isJWT(tok string) bool { return strings.Count(tok, ".") == 2 }
+func looksLikeJWT(tok string) bool { return strings.Count(tok, ".") == 2 }
+
+// isJWT is deprecated: use looksLikeJWT.
+func isJWT(tok string) bool { return looksLikeJWT(tok) }
+
+func writeAuthError(ctx huma.Context, status int, msg string) {
+	ctx.SetStatus(status)
+	ctx.SetHeader("Content-Type", "application/json")
+	_ = json.NewEncoder(ctx.BodyWriter()).Encode(map[string]any{"message": msg, "code": status})
+}
+
+func claimsFromCtx(ctx huma.Context) (token.CustomClaims, bool) {
+	v := ctx.Context().Value(consts.CtxClaims.Str())
+	switch c := v.(type) {
+	case token.CustomClaims:
+		return c, true
+	case *token.CustomClaims:
+		if c != nil {
+			return *c, true
+		}
+	}
+	return token.CustomClaims{}, false
+}
 
 type ICoreMiddleWareFunc interface {
 	TokenVerifier
@@ -120,19 +143,17 @@ func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 		}
 		var claims token.CustomClaims
 		switch {
-		case bearer != "" && isJWT(bearer):
+		case bearer != "" && looksLikeJWT(bearer):
 			c, err := m.verifier.VerifyToken(bearer)
 			if err != nil {
-				ctx.SetStatus(http.StatusForbidden)
-				_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
+				writeAuthError(ctx, http.StatusUnauthorized, "Token Not Valid")
 				return
 			}
 			// Revocation Check
 			if m.revocation != nil && c.SessionID != "" {
 				revoked, _ := m.revocation.IsRevoked(ctx.Context(), c.SessionID)
 				if revoked {
-					ctx.SetStatus(http.StatusUnauthorized)
-					_, _ = ctx.BodyWriter().Write([]byte("Session Revoked"))
+					writeAuthError(ctx, http.StatusUnauthorized, "Session Revoked")
 					return
 				}
 			}
@@ -141,14 +162,12 @@ func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 			// the session lookup itself is the revocation check
 			c, err := m.sessions.ClaimsFromSession(ctx.Context(), bearer, ctx.Header("Cookie"))
 			if err != nil || c == nil {
-				ctx.SetStatus(http.StatusForbidden)
-				_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
+				writeAuthError(ctx, http.StatusUnauthorized, "Token Not Valid")
 				return
 			}
 			claims = *c
 		default:
-			ctx.SetStatus(http.StatusForbidden)
-			_, _ = ctx.BodyWriter().Write([]byte("Token Not Valid"))
+			writeAuthError(ctx, http.StatusUnauthorized, "Token Not Valid")
 			return
 		}
 		ctx = huma.WithValue(ctx, consts.CtxClaims.Str(), claims)
@@ -165,18 +184,9 @@ func (m *AuthMiddleware) Authorize(operationID consts.OperationId, allowedRoles 
 			next(ctx)
 			return
 		}
-		claimsVal := ctx.Context().Value(consts.CtxClaims.Str())
-		var claims token.CustomClaims
-		switch c := claimsVal.(type) {
-		case token.CustomClaims:
-			claims = c
-		case *token.CustomClaims:
-			if c != nil {
-				claims = *c
-			}
-		default:
-			ctx.SetStatus(http.StatusUnauthorized)
-			_, _ = ctx.BodyWriter().Write([]byte("Not Authorized"))
+		claims, ok := claimsFromCtx(ctx)
+		if !ok {
+			writeAuthError(ctx, http.StatusUnauthorized, "Not Authorized")
 			return
 		}
 
@@ -184,8 +194,7 @@ func (m *AuthMiddleware) Authorize(operationID consts.OperationId, allowedRoles 
 		if m.roles != nil {
 			allowed, err := m.roles.HasPermission(ctx.Context(), claims.ActiveOrgId, claims.UserID, operationID.Str())
 			if err != nil || !allowed {
-				ctx.SetStatus(http.StatusUnauthorized)
-				_, _ = ctx.BodyWriter().Write([]byte("Not Authorized"))
+				writeAuthError(ctx, http.StatusUnauthorized, "Not Authorized")
 				return
 			}
 			next(ctx)
@@ -193,8 +202,7 @@ func (m *AuthMiddleware) Authorize(operationID consts.OperationId, allowedRoles 
 		}
 		// Fallback to static JWT Claims Role check:
 		if !enums.HasRole(claims.Role, allowedRoles...) {
-			ctx.SetStatus(http.StatusUnauthorized)
-			_, _ = ctx.BodyWriter().Write([]byte("Not Authorized"))
+			writeAuthError(ctx, http.StatusUnauthorized, "Not Authorized")
 			return
 		}
 		next(ctx)
@@ -204,24 +212,14 @@ func (m *AuthMiddleware) Authorize(operationID consts.OperationId, allowedRoles 
 // AuthorizeOrg Middleware
 func (m *AuthMiddleware) AuthorizeOrg(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		claimsVal := ctx.Context().Value(consts.CtxClaims.Str())
-		var claims token.CustomClaims
-		switch c := claimsVal.(type) {
-		case token.CustomClaims:
-			claims = c
-		case *token.CustomClaims:
-			if c != nil {
-				claims = *c
-			}
-		default:
-			ctx.SetStatus(http.StatusUnauthorized)
-			_, _ = ctx.BodyWriter().Write([]byte("Not Authorized"))
+		claims, ok := claimsFromCtx(ctx)
+		if !ok {
+			writeAuthError(ctx, http.StatusUnauthorized, "Not Authorized")
 			return
 		}
 
 		if claims.ActiveOrgId == "" || claims.ActiveOrgRole == "" || claims.UserID == "" {
-			ctx.SetStatus(http.StatusUnauthorized)
-			_, _ = ctx.BodyWriter().Write([]byte("Not Authorized"))
+			writeAuthError(ctx, http.StatusUnauthorized, "Not Authorized")
 			return
 		}
 		if len(allowedRoles) == 0 {
@@ -229,8 +227,7 @@ func (m *AuthMiddleware) AuthorizeOrg(operationID consts.OperationId, allowedRol
 			return
 		}
 		if !util.ElementExists(claims.ActiveOrgRole, allowedRoles...) {
-			ctx.SetStatus(http.StatusUnauthorized)
-			_, _ = ctx.BodyWriter().Write([]byte("Not Authorized"))
+			writeAuthError(ctx, http.StatusUnauthorized, "Not Authorized")
 			return
 		}
 		next(ctx)

@@ -18,7 +18,14 @@ func (r *KeyValRevocationStore) IsRevoked(ctx context.Context, sessionID string)
 	if sessionID == "" || r.storage == nil {
 		return false, nil
 	}
-	_, exists, err := r.storage.Get(ctx, "blacklist:"+sessionID)
+	_, exists, err := r.storage.Get(ctx, sec_storage.RevokedSessionPrefix+sessionID)
+	if err != nil {
+		return false, err
+	}
+	if exists {
+		return true, nil
+	}
+	_, exists, err = r.storage.Get(ctx, sec_storage.LegacyBlacklistPrefix+sessionID)
 	if err != nil {
 		return false, err
 	}
@@ -29,7 +36,7 @@ func (r *KeyValRevocationStore) IsTokenBlacklisted(ctx context.Context, tokenID 
 	if tokenID == "" || r.storage == nil {
 		return false, nil
 	}
-	_, exists, err := r.storage.Get(ctx, "blacklisted:token:"+tokenID)
+	_, exists, err := r.storage.Get(ctx, sec_storage.RevokedTokenPrefix+tokenID)
 	if err != nil {
 		return false, err
 	}

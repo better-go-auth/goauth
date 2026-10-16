@@ -99,7 +99,11 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 
 	// 1. Check secondary storage (e.g. Redis) if available
 	if r.store != nil {
-		if exists, err := r.store.Exists(ctx, "blacklist:"+sessionID); err == nil && exists {
+		if exists, err := r.store.Exists(ctx, sec_storage.RevokedSessionPrefix+sessionID); err == nil && exists {
+			return true, nil
+		}
+		// Compat read for legacy prefix until entries expire.
+		if exists, err := r.store.Exists(ctx, sec_storage.LegacyBlacklistPrefix+sessionID); err == nil && exists {
 			return true, nil
 		}
 	}
@@ -131,7 +135,7 @@ func (r *RevocationStore) IsTokenBlacklisted(ctx context.Context, tokenID string
 		return false, nil
 	}
 	if r.store != nil {
-		if exists, err := r.store.Exists(ctx, "blacklist:token:"+tokenID); err == nil && exists {
+		if exists, err := r.store.Exists(ctx, sec_storage.RevokedTokenPrefix+tokenID); err == nil && exists {
 			return true, nil
 		}
 	}

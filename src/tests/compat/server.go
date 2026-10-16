@@ -2,6 +2,7 @@
 package compattest
 
 import (
+	"context"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -85,7 +86,7 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("goauth compat", "test"))
-	a, err := goauth.SetupGoAuth(api, o)
+	a, err := goauth.SetupGoAuth(context.Background(), api, o)
 	if err != nil {
 		t.Fatalf("compattest: setup goauth: %v", err)
 	}

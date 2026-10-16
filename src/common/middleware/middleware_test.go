@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/common/middleware"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
@@ -51,7 +52,7 @@ func TestMiddleware_KeyValRevocationStore(t *testing.T) {
 	assert.False(t, revoked)
 
 	// Blacklist session
-	err = memStore.Set(ctx, "blacklist:session_123", true, 10*time.Minute)
+	err = memStore.Set(ctx, sec_storage.RevokedSessionPrefix+"session_123", true, 10*time.Minute)
 	require.NoError(t, err)
 
 	revoked, err = revStore.IsRevoked(ctx, "session_123")

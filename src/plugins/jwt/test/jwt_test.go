@@ -146,7 +146,7 @@ func setupFullServer(t *testing.T, jwtCfg jwtconfig.JWTConfig) (*httptest.Server
 	jwtPlug := jwtplugin.New(jwtCfg, jwtplugin.WithDB(db))
 	bearerPlug := bearer.New(bearerconfig.DefaultConfig())
 
-	auth, err := goauth.SetupGoAuth(api, goauth.GoAuthOptions{
+	auth, err := goauth.SetupGoAuth(context.Background(), api, goauth.GoAuthOptions{
 		Conn:             db,
 		SecondaryStorage: secStore,
 		Plugins:          []plugins.Plugin{bearerPlug, jwtPlug},

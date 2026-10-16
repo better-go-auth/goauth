@@ -1,9 +1,10 @@
 package plugins
 
 import (
-	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"context"
 	"net/http"
+
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
@@ -12,8 +13,10 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/danielgtaylor/huma/v2"
+	"gorm.io/gorm"
 )
 
 // InitContext carries runtime dependencies and configuration passed to plugins during initialization.
@@ -36,6 +39,8 @@ type InitContext struct {
 	Authenticator    authenticator.AuthenticateFunc
 	Hooks            HookRegistry
 	SecondaryStorage sec_storage.SecondaryStorage
+	DB               *gorm.DB
+	CookieManager    *cookies.Manager
 
 	// Extras allows plugins that need ORM-specific objects (e.g. *gorm.DB) to
 	// receive them without coupling the interface to any particular ORM.

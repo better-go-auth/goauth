@@ -1,6 +1,7 @@
 package bearertest
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
@@ -99,7 +100,7 @@ func setupTestServer(t *testing.T, bearerCfg bearerconfig.BearerConfig) (*httpte
 
 	bPlugin := bearer.New(bearerCfg)
 
-	auth, err := goauth.SetupGoAuth(api, goauth.GoAuthOptions{
+	auth, err := goauth.SetupGoAuth(context.Background(), api, goauth.GoAuthOptions{
 		Conn:             db,
 		SecondaryStorage: secStore,
 		Plugins:          []plugins.Plugin{bPlugin},

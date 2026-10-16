@@ -2,6 +2,7 @@ package humaadapter
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
@@ -38,12 +39,16 @@ func (r *SessionClaims) ClaimsFromSession(ctx context.Context, bearer, cookieHea
 	if sw.Session.ActiveOrganizationID != nil {
 		claims.ActiveOrgId = *sw.Session.ActiveOrganizationID
 	}
-	// role and org role are not part of the better-auth session snapshot
+	// role and org role are not part of the better-auth session snapshot (DB lookups may be stale)
 	if u, err := r.repos.FindUserByID(ctx, sw.User.ID); err == nil && u != nil {
 		claims.Role = string(u.Role)
+	} else if err != nil {
+		slog.Debug("session_claims: FindUserByID failed, using cached role", "err", err)
 	}
 	if s, err := r.repos.FindSessionByID(ctx, sw.Session.ID); err == nil && s != nil && s.ActiveOrganizationRole != nil {
 		claims.ActiveOrgRole = *s.ActiveOrganizationRole
+	} else if err != nil {
+		slog.Debug("session_claims: FindSessionByID failed, org role may be stale", "err", err)
 	}
 	return claims, nil
 }

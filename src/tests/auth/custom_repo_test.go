@@ -52,7 +52,7 @@ func TestSetupGoAuth_CustomRepositoriesWithoutGorm(t *testing.T) {
 	}
 	opts.Secret = "super-secret-access-key-32-chars-long"
 
-	app, err := bettergoauth.SetupGoAuth(api, opts)
+	app, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
 	require.NoError(t, err)
 	assert.NotNil(t, app)
 	assert.NotNil(t, app.Auth)
@@ -80,7 +80,7 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 	opts.EmailVerification.GoAuth.CodeSender = mockEmail
 	opts.SetDefaults()
 
-	app, err := bettergoauth.SetupGoAuth(api, opts)
+	app, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
 	require.NoError(t, err)
 
 	ctx := context.Background()

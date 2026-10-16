@@ -81,7 +81,7 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 		OverrideDefaultEmailVerification: true,
 	})
 
-	_, err = bettergoauth.SetupGoAuth(api, bettergoauth.GoAuthOptions{
+	_, err = bettergoauth.SetupGoAuth(context.Background(), api, bettergoauth.GoAuthOptions{
 		Conn: db,
 		AuthConfig: loc_conf.AuthConfig{
 			EmailVerification: loc_conf.EmailVerification{
