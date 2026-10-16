@@ -82,8 +82,18 @@ func TestLegacyJWTOnSharedSessions(t *testing.T) {
 		t.Fatal("rotated-out refresh token must be rejected")
 	}
 
-	// logout revokes the shared session: its access token stops working and it leaves list-sessions
-	expectStatus(t, s.Post(t, "/api/auth/logout", map[string]any{"token": newRefresh}), http.StatusCreated)
+	// sign-out revokes the shared session: its access token stops working and it leaves list-sessions
+	req, _ := http.NewRequest(http.MethodPost, s.URL+"/api/auth/sign-out", nil)
+	req.Header.Set("Authorization", "Bearer "+next.Body.AuthTokens.AccessToken)
+	req.Header.Set("Origin", s.Origin)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
 	if code := s.bare(t, http.MethodGet, "/api/auth/session", next.Body.AuthTokens.AccessToken); code == http.StatusOK {
 		t.Fatal("access token of a revoked session must be rejected")
 	}

@@ -45,8 +45,10 @@ func TestHookRegistry_TriggersAndSubscriptions(t *testing.T) {
 		return nil
 	})
 
-	registry.OnSessionRevoked(func(ctx context.Context, sessionID string) error {
-		sessionRevokedID = sessionID
+	registry.OnSessionRevoked(func(ctx context.Context, session *models.Session) error {
+		if session != nil {
+			sessionRevokedID = session.ID
+		}
 		return nil
 	})
 
@@ -78,7 +80,7 @@ func TestHookRegistry_TriggersAndSubscriptions(t *testing.T) {
 	assert.Equal(t, "sess_abc", sessionCreatedID)
 
 	// 5. Trigger SessionRevoked
-	err = registry.TriggerSessionRevoked(ctx, "sess_abc")
+	err = registry.TriggerSessionRevoked(ctx, &models.Session{Base: models.Base{ID: "sess_abc"}})
 	require.NoError(t, err)
 	assert.Equal(t, "sess_abc", sessionRevokedID)
 

@@ -113,20 +113,21 @@ func (h *AccessTokenHandler) RefreshToken(ctx context.Context, inputs *humatypes
 }
 
 // Logout handles POST /logout.
-func (h *AccessTokenHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SuccessResponse]], error) {
-	tkn, err := h.AuthServ.Logout(ctx, inputs.Body.Token)
-	if err != nil {
-		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
-	}
-	resp := authDtos.SuccessResponse{
-		Success: tkn.Body,
-	}
-	cookies := []http.Cookie{
-		ExpireCookie(Icnst.AccessToken, h.Cookies),
-		ExpireCookie(Icnst.RefreshToken, h.Cookies),
-	}
-	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201, cookies...), nil
-}
+// Deprecated: Use core's POST /api/auth/sign-out with Authorization: Bearer <access_token>.
+// func (h *AccessTokenHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SuccessResponse]], error) {
+// 	tkn, err := h.AuthServ.Logout(ctx, inputs.Body.Token)
+// 	if err != nil {
+// 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
+// 	}
+// 	resp := authDtos.SuccessResponse{
+// 		Success: tkn.Body,
+// 	}
+// 	cookies := []http.Cookie{
+// 		ExpireCookie(Icnst.AccessToken, h.Cookies),
+// 		ExpireCookie(Icnst.RefreshToken, h.Cookies),
+// 	}
+// 	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201, cookies...), nil
+// }
 
 // ForgotPwd handles POST /forgot_password.
 // func (h *AccessTokenHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerifyReqInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {

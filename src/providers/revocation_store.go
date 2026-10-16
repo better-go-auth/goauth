@@ -102,9 +102,6 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 		if exists, err := r.store.Exists(ctx, "blacklist:"+sessionID); err == nil && exists {
 			return true, nil
 		}
-		if exists, err := r.store.Exists(ctx, "revoked:session:"+sessionID); err == nil && exists {
-			return true, nil
-		}
 	}
 
 	if r.sConfig.CheckRevocation {
@@ -123,31 +120,6 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 			}
 			return false, nil
 		}
-
-		// 3. Fallback to direct GORM DB if configured
-		// if r.db != nil {
-		// 	var sess models.Session
-		// 	err := gormutil.GetDB(ctx, r.db).
-		// 		Select("id", "session_id", "blacklisted", "revoked_at", "expires_at").
-		// 		Where("session_id = ?", sessionID).
-		// 		Take(&sess).Error
-		// 	if err != nil {
-		// 		if errors.Is(err, gorm.ErrRecordNotFound) {
-		// 			// Session not found in DB => revoked/deleted
-		// 			return true, nil
-		// 		}
-		// 		return false, err
-		// 	}
-		// 	if sess.Blacklisted != nil && *sess.Blacklisted {
-		// 		return true, nil
-		// 	}
-		// 	if sess.RevokedAt != nil {
-		// 		return true, nil
-		// 	}
-		// 	if !sess.ExpiresAt.IsZero() && time.Now().After(sess.ExpiresAt) {
-		// 		return true, nil
-		// 	}
-		// }
 	}
 
 	return false, nil

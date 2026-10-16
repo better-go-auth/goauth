@@ -3,6 +3,7 @@ package auth_test
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
@@ -20,7 +21,6 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 	var token string
 	var accessToken string
 	var refreshToken string
-	var activeRefreshToken string
 
 	t.Run("Sign Up", func(t *testing.T) {
 		signUpInput := models.RegisterClientInput{
@@ -72,7 +72,6 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 
 		accessToken = loginResp.Body.AuthTokens.AccessToken
 		refreshToken = loginResp.Body.AuthTokens.RefreshToken
-		activeRefreshToken = refreshToken
 		if accessToken == "" || refreshToken == "" {
 			t.Fatalf("Tokens must not be empty: access=%q, refresh=%q", accessToken, refreshToken)
 		}
@@ -95,16 +94,24 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 		if refreshResp.Body.AuthTokens == nil {
 			t.Fatalf("Expected new AuthTokens in refresh response, got nil")
 		}
-		activeRefreshToken = refreshResp.Body.AuthTokens.RefreshToken
+		accessToken = refreshResp.Body.AuthTokens.AccessToken
 	})
 
 	t.Run("Logout", func(t *testing.T) {
-		logoutInput := auth.RefreshTokenInput{
-			Token: activeRefreshToken,
-		}
-		resp, body := env.PostJSON("/api/auth/logout", logoutInput)
+		resp, body := env.PostJSON("/api/auth/sign-out", nil, map[string]string{
+			"Authorization": "Bearer " + accessToken,
+			"Origin":        env.BaseURL,
+		})
 		if !isSuccess(resp.StatusCode) {
-			t.Fatalf("Logout failed: status %d, body: %s", resp.StatusCode, body)
+			t.Fatalf("SignOut failed: status %d, body: %s", resp.StatusCode, body)
+		}
+
+		// Verify access token is blacklisted and rejected on subsequent requests
+		getSessResp, sessBody := env.GetJSON("/api/auth/get-session", map[string]string{
+			"Authorization": "Bearer " + accessToken,
+		})
+		if getSessResp.StatusCode == http.StatusOK && strings.Contains(sessBody, "userId") {
+			t.Fatalf("expected get-session to not return session data after sign-out, got: %s", sessBody)
 		}
 	})
 }

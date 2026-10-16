@@ -18,7 +18,7 @@ func (r *KeyValRevocationStore) IsRevoked(ctx context.Context, sessionID string)
 	if sessionID == "" || r.storage == nil {
 		return false, nil
 	}
-	_, exists, err := r.storage.Get(ctx, "revoked:session:"+sessionID)
+	_, exists, err := r.storage.Get(ctx, "blacklist:"+sessionID)
 	if err != nil {
 		return false, err
 	}

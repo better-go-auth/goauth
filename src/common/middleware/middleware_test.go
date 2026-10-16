@@ -50,8 +50,8 @@ func TestMiddleware_KeyValRevocationStore(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, revoked)
 
-	// Revoke session
-	err = memStore.Set(ctx, "revoked:session:session_123", true, 10*time.Minute)
+	// Blacklist session
+	err = memStore.Set(ctx, "blacklist:session_123", true, 10*time.Minute)
 	require.NoError(t, err)
 
 	revoked, err = revStore.IsRevoked(ctx, "session_123")

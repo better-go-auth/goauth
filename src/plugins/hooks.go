@@ -17,7 +17,7 @@ type HookService interface {
 	UserDeleted(ctx context.Context, userID string) error
 	UserBanned(ctx context.Context, userID string, reason *string) error
 	BeforeSessionCreate(ctx context.Context, session *models.Session, claims *token.CustomClaims) error
-	SessionRevoked(ctx context.Context, sessionID string) error
+	SessionRevoked(ctx context.Context, session *models.Session) error
 	ActiveOrgChanged(ctx context.Context, userID, newOrgID string) error
 }
 
@@ -46,7 +46,7 @@ func (DefaultHookService) BeforeSessionCreate(ctx context.Context, session *mode
 	return nil
 }
 
-func (DefaultHookService) SessionRevoked(ctx context.Context, sessionID string) error {
+func (DefaultHookService) SessionRevoked(ctx context.Context, session *models.Session) error {
 	return nil
 }
 
@@ -69,7 +69,7 @@ type HookRegistry interface {
 	OnUserDeleted(fn func(ctx context.Context, userID string) error)
 	OnUserBanned(fn func(ctx context.Context, userID string, reason *string) error)
 	OnBeforeSessionCreate(fn func(ctx context.Context, session *models.Session, claims *token.CustomClaims) error)
-	OnSessionRevoked(fn func(ctx context.Context, sessionID string) error)
+	OnSessionRevoked(fn func(ctx context.Context, session *models.Session) error)
 	OnActiveOrgChanged(fn func(ctx context.Context, userID, newOrgID string) error)
 
 	// Triggers
@@ -78,7 +78,7 @@ type HookRegistry interface {
 	TriggerUserDeleted(ctx context.Context, userID string) error
 	TriggerUserBanned(ctx context.Context, userID string, reason *string) error
 	TriggerBeforeSessionCreate(ctx context.Context, session *models.Session, claims *token.CustomClaims) error
-	TriggerSessionRevoked(ctx context.Context, sessionID string) error
+	TriggerSessionRevoked(ctx context.Context, session *models.Session) error
 	TriggerActiveOrgChanged(ctx context.Context, userID, newOrgID string) error
 
 	// Verification Override allows plugins (e.g. email-otp) to suppress the core default verification email.
@@ -98,7 +98,7 @@ type DefaultHookRegistry struct {
 	userDeleted         []func(ctx context.Context, userID string) error
 	userBanned          []func(ctx context.Context, userID string, reason *string) error
 	beforeSessionCreate []func(ctx context.Context, session *models.Session, claims *token.CustomClaims) error
-	sessionRevoked      []func(ctx context.Context, sessionID string) error
+	sessionRevoked      []func(ctx context.Context, session *models.Session) error
 	activeOrgChanged    []func(ctx context.Context, userID, newOrgID string) error
 }
 
@@ -170,7 +170,7 @@ func (h *DefaultHookRegistry) OnBeforeSessionCreate(fn func(ctx context.Context,
 	h.beforeSessionCreate = append(h.beforeSessionCreate, fn)
 }
 
-func (h *DefaultHookRegistry) OnSessionRevoked(fn func(ctx context.Context, sessionID string) error) {
+func (h *DefaultHookRegistry) OnSessionRevoked(fn func(ctx context.Context, session *models.Session) error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.sessionRevoked = append(h.sessionRevoked, fn)
@@ -262,16 +262,16 @@ func (h *DefaultHookRegistry) TriggerBeforeSessionCreate(ctx context.Context, se
 	return nil
 }
 
-func (h *DefaultHookRegistry) TriggerSessionRevoked(ctx context.Context, sessionID string) error {
+func (h *DefaultHookRegistry) TriggerSessionRevoked(ctx context.Context, session *models.Session) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	for _, s := range h.services {
-		if err := s.SessionRevoked(ctx, sessionID); err != nil {
+		if err := s.SessionRevoked(ctx, session); err != nil {
 			return err
 		}
 	}
 	for _, fn := range h.sessionRevoked {
-		if err := fn(ctx, sessionID); err != nil {
+		if err := fn(ctx, session); err != nil {
 			return err
 		}
 	}

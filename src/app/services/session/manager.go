@@ -281,11 +281,18 @@ func (mgr *Manager) RotateToken(ctx context.Context, swu *dtos.SessionWithUser) 
 // Delete revokes a single session.
 func (mgr *Manager) Delete(ctx context.Context, tok string) error {
 	var userID string
+	var revokedSession *models.Session
 
 	// 1. delete from secondary storage cache and untrack from user's active list
 	if mgr.secStore != nil {
 		if sw, _ := mgr.fromStore(ctx, tok); sw != nil {
 			userID = sw.Session.UserID
+			revokedSession = &models.Session{
+				Base:      models.Base{ID: sw.Session.ID, CreatedAt: time.Time(sw.Session.CreatedAt), UpdatedAt: time.Time(sw.Session.UpdatedAt)},
+				Token:     tok,
+				UserID:    sw.Session.UserID,
+				ExpiresAt: time.Time(sw.Session.ExpiresAt),
+			}
 		}
 		if err := mgr.secStore.Delete(ctx, tok); err != nil {
 			return fmt.Errorf("sessions: delete cached: %w", err)
@@ -296,15 +303,25 @@ func (mgr *Manager) Delete(ctx context.Context, tok string) error {
 	}
 
 	// 2. delete session row from database (unless PreserveSessionInDatabase is enabled)
-	if mgr.storeInDB() && !(mgr.secStore != nil && mgr.conf.PreserveSessionInDatabase) {
-		if err := mgr.sessionsRepo.DeleteSession(ctx, tok); err != nil {
-			return fmt.Errorf("sessions: delete: %w", err)
+	if mgr.storeInDB() {
+		if revokedSession == nil && mgr.sessionsRepo != nil {
+			if s, _ := mgr.sessionsRepo.FindSession(ctx, tok); s != nil {
+				revokedSession = s
+			}
+		}
+		if !(mgr.secStore != nil && mgr.conf.PreserveSessionInDatabase) {
+			if err := mgr.sessionsRepo.DeleteSession(ctx, tok); err != nil {
+				return fmt.Errorf("sessions: delete: %w", err)
+			}
 		}
 	}
 
 	// 3. trigger SessionRevoked lifecycle hook
 	if mgr.hooks != nil {
-		_ = mgr.hooks.TriggerSessionRevoked(ctx, tok)
+		if revokedSession == nil {
+			revokedSession = &models.Session{Token: tok}
+		}
+		_ = mgr.hooks.TriggerSessionRevoked(ctx, revokedSession)
 	}
 	return nil
 }

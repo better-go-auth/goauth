@@ -1,6 +1,7 @@
 package accesstoken
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
@@ -207,13 +209,35 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
 	// p.profileSvc = services.NewProfileService(p.vSvc, p.sessionSvc, repos, txMgr, p.passwords)
 
-	// TODO: is this how other plugins do it
-	// Register lifecycle hook to terminate legacy sessions when a user is banned
-	// if ictx.Hooks != nil {
-	// 	ictx.Hooks.OnUserBanned(func(ctx context.Context, userID string, reason *string) error {
-	// 		return p.sessionSvc.DeleteAllUserSessions(ctx, userID)
-	// 	})
-	// }
+	// Register lifecycle hook to blacklist session and clean up sid index upon revocation
+	if ictx.Hooks != nil {
+		ictx.Hooks.OnSessionRevoked(func(ctx context.Context, session *models.Session) error {
+			if session == nil {
+				return nil
+			}
+			sessionID := session.ID
+			if sessionID == "" && session.Token != "" && p.repos != nil {
+				if s, _ := p.repos.FindSession(ctx, session.Token); s != nil {
+					sessionID = s.ID
+				}
+			}
+			if sessionID == "" {
+				return nil
+			}
+			if p.sessionSvc != nil {
+				return p.sessionSvc.BlacklistSession(ctx, sessionID)
+			}
+			if p.secStorage != nil {
+				ttl := p.sessionConf.JWT.AccessExpiresIn
+				if ttl <= 0 {
+					ttl = time.Hour
+				}
+				_ = p.secStorage.Delete(ctx, "sid:"+sessionID)
+				return p.secStorage.Set(ctx, "blacklist:"+sessionID, "blacklisted", ttl)
+			}
+			return nil
+		})
+	}
 
 	// 2. Initialize handlers and mount routes if huma API is present
 	refreshMaxAge := ictx.Config.Session.ExpiresIn
@@ -269,16 +293,10 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 				// 1. Verify access JWT
 				claims, err := jwttoken.ValidateAccessToken(raw, accessSecret)
 				if err == nil && claims != nil && claims.SessionID != "" {
-					// 2. Revocation check first — revoked sessions are removed from cache but
-					//    we still gate on explicit keys for the window between Blacklist and eviction,
-					//    and for PreserveSessionInDatabase where the row still exists.
-					//    Two prefixes are legacy; either means "denied". Canonical is revoked:session:; blacklist:
-					//    is kept for compat with BlacklistSession until that is unified.
+					// 2. Revocation check — check if session is blacklisted in secondary storage.
 					isRevoked := false
 					if p.secStorage != nil {
-						if _, exists, _ := p.secStorage.Get(ctx.Context(), "revoked:session:"+claims.SessionID); exists {
-							isRevoked = true
-						} else if _, exists, _ := p.secStorage.Get(ctx.Context(), "blacklist:"+claims.SessionID); exists {
+						if _, exists, _ := p.secStorage.Get(ctx.Context(), "blacklist:"+claims.SessionID); exists {
 							isRevoked = true
 						}
 					}

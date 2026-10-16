@@ -5,7 +5,6 @@ import (
 
 	constant "github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/middleware"
-	"github.com/better-go-auth/goauth/src/models"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -48,13 +47,6 @@ func SetupAccessTokenRoutes(api huma.API, handler *AccessTokenHandler, mdlware *
 		Tags:        authTags,
 	}, handler.Register)
 
-	// huma.Register(api, huma.Operation{
-	// 	OperationID: VerifyUser.Str(),
-	// 	Method:      http.MethodPost,
-	// 	Path:        basePath + "/verify",
-	// 	Summary:     "Verify Email (Access Token)",
-	// 	Tags:        authTags,
-	// }, handler.VerifyRegisteredAccount)
 
 	huma.Register(api, huma.Operation{
 		OperationID: LoginUser.Str(),
@@ -72,29 +64,7 @@ func SetupAccessTokenRoutes(api huma.API, handler *AccessTokenHandler, mdlware *
 		Tags:        authTags,
 	}, handler.RefreshToken)
 
-	huma.Register(api, huma.Operation{
-		OperationID: LogoutUser.Str(),
-		Method:      http.MethodPost,
-		Path:        basePath + "/logout",
-		Summary:     "Logout (Access Token)",
-		Tags:        authTags,
-	}, handler.Logout)
-
-	// huma.Register(api, huma.Operation{
-	// 	OperationID: ForgotPwdUser.Str(),
-	// 	Method:      http.MethodPost,
-	// 	Path:        basePath + "/forgot_password",
-	// 	Summary:     "Forgot Password (Access Token)",
-	// 	Tags:        authTags,
-	// }, handler.ForgotPwd)
-
-	// huma.Register(api, huma.Operation{
-	// 	OperationID: ResetPwdUser.Str(),
-	// 	Method:      http.MethodPost,
-	// 	Path:        basePath + "/reset_password",
-	// 	Summary:     "Reset Password (Access Token)",
-	// 	Tags:        authTags,
-	// }, handler.ResetPwd)
+	
 
 	// Middlewares for protected routes
 	var authMiddlewares huma.Middlewares
@@ -124,57 +94,6 @@ func SetupAccessTokenRoutes(api huma.API, handler *AccessTokenHandler, mdlware *
 		Middlewares: authMiddlewares,
 	}, handler.DeleteMySession)
 
-	// ─── Profile Endpoints ───────────────────────────────────────────────────────
-	// Note: Profile endpoints (/profile, /profile/change_pwd) are commented out as they
-	// are superseded by standard Better Auth endpoints (/get-session, /update-user, /change-password)
-	// which authenticate access-token JWTs via header verification middleware.
-	// profPath := basePath + "/profile"
-	// huma.Register(api, huma.Operation{
-	// 	OperationID: GetMyProfile.Str(),
-	// 	Method:      http.MethodGet,
-	// 	Path:        profPath,
-	// 	Summary:     "Get My Profile (Access Token)",
-	// 	Tags:        profileTags,
-	// 	Middlewares: authMiddlewares,
-	// }, handler.GetMyProfile)
-
-	// huma.Register(api, huma.Operation{
-	// 	OperationID: UpdateMyProfile.Str(),
-	// 	Method:      http.MethodPatch,
-	// 	Path:        profPath,
-	// 	Summary:     "Update Profile (Access Token)",
-	// 	Tags:        profileTags,
-	// 	Middlewares: authMiddlewares,
-	// }, handler.UpdateMyProfile)
-
-	// huma.Register(api, huma.Operation{
-	// 	OperationID: ChangeMyPwd.Str(),
-	// 	Method:      http.MethodPost,
-	// 	Path:        profPath + "/change_pwd",
-	// 	Summary:     "Change Password (Access Token)",
-	// 	Tags:        profileTags,
-	// 	Middlewares: authMiddlewares,
-	// }, handler.UpdateMyPassword)
-
-	// Note: ChangeEmailReq and ChangeEmailVerify are superseded by the email-otp plugin.
-	// huma.Register(api, huma.Operation{
-	// 	OperationID: ChangeEmailReq.Str(),
-	// 	Method:      http.MethodPost,
-	// 	Path:        profPath + "/change_email",
-	// 	Summary:     "Change Email Request (Access Token)",
-	// 	Tags:        profileTags,
-	// 	Middlewares: authMiddlewares,
-	// }, handler.UpdateMyEmailReq)
-
-	// huma.Register(api, huma.Operation{
-	// 	OperationID: ChangeEmailVerify.Str(),
-	// 	Method:      http.MethodPost,
-	// 	Path:        profPath + "/verify_change_email",
-	// 	Summary:     "Verify Change Email (Access Token)",
-	// 	Tags:        profileTags,
-	// 	Middlewares: authMiddlewares,
-	// }, handler.UpdateMyEmailVerify)
+	
 }
 
-// Unused dummy to satisfy import if needed
-var _ = models.OperationAccessDto{}

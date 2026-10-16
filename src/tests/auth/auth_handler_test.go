@@ -93,20 +93,21 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 		if resp == nil || resp.Body.Body.AuthTokens == nil {
 			t.Fatalf("Expected new AuthTokens in refresh response, got nil")
 		}
-		activeRefreshToken = resp.Body.Body.AuthTokens.RefreshToken
+		_ = activeRefreshToken
 	})
 
-	t.Run("05 Logout", func(t *testing.T) {
-		resp, err := env.AuthHandler.Logout(ctx, &humatypes.HumaReqBody[access_dto.RefreshTokenInput]{
-			Body: access_dto.RefreshTokenInput{
-				Token: activeRefreshToken,
-			},
-		})
-		if err != nil {
-			t.Fatalf("Logout handler failed: %v", err)
-		}
-		if resp == nil || !resp.Body.Body.Success {
-			t.Fatalf("Expected success true on logout, got %+v", resp)
-		}
-	})
+	// t.Run("05 Logout", func(t *testing.T) {
+	// 	// Deprecated: Use core's POST /api/auth/sign-out with Bearer token
+	// 	resp, err := env.AuthHandler.Logout(ctx, &humatypes.HumaReqBody[access_dto.RefreshTokenInput]{
+	// 		Body: access_dto.RefreshTokenInput{
+	// 			Token: activeRefreshToken,
+	// 		},
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("Logout handler failed: %v", err)
+	// 	}
+	// 	if resp == nil || !resp.Body.Body.Success {
+	// 		t.Fatalf("Expected success true on logout, got %+v", resp)
+	// 	}
+	// })
 }

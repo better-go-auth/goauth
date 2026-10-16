@@ -302,6 +302,7 @@ func (aus *SessionService) BlacklistSession(ctx context.Context, sessionId strin
 	if ttl <= 0 {
 		ttl = time.Hour
 	}
+	aus.deleteSidIndex(ctx, sessionId)
 	return aus.SStore.Set(ctx, "blacklist:"+sessionId, "blacklisted", ttl)
 }
 
@@ -317,7 +318,11 @@ func (aus *SessionService) DeleteSession(ctx context.Context, sessionId string) 
 		}
 	}
 	if aus.Hooks != nil {
-		_ = aus.Hooks.TriggerSessionRevoked(ctx, sessionId)
+		sess := s
+		if sess == nil {
+			sess = &models.Session{Base: models.Base{ID: sessionId} }
+		}
+		_ = aus.Hooks.TriggerSessionRevoked(ctx, sess)
 	}
 	return aus.BlacklistSession(ctx, sessionId)
 }
