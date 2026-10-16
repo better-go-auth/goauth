@@ -5,7 +5,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/common/logger"
@@ -26,19 +25,7 @@ type VerificationService struct {
 
 var _ interfaces.IVerificationService = (*VerificationService)(nil)
 
-// NewVerificationService creates a VerificationService backed by a *gorm.DB (backward compatibility).
-func NewVerificationServiceFromDB(dg *gorm.DB, config config.EmailVerification) interfaces.IVerificationService {
-	var repo repo_interfaces.IVerificationRepo
-	if dg != nil {
-		repo = gormauth.NewVerificationRepo(dg)
-	}
-	return &VerificationService{
-		GormDB: dg,
-		Repo:   repo,
-		// VerificationCodeSender: config.VerificationCodeSender,
-		Config: config,
-	}
-}
+
 
 // NewVerificationService creates a VerificationService backed by any IVerificationRepo implementation.
 func NewVerificationService(repo repo_interfaces.IVerificationRepo, config config.EmailVerification) *VerificationService {
@@ -49,14 +36,7 @@ func NewVerificationService(repo repo_interfaces.IVerificationRepo, config confi
 	}
 }
 
-// NewVerificationServiceWithRepo creates a VerificationService backed by any IVerificationRepo implementation.
-func NewVerificationServiceWithRepo(repo repo_interfaces.IVerificationRepo, config config.EmailVerification) interfaces.IVerificationService {
-	return &VerificationService{
-		Repo: repo,
-		// VerificationCodeSender: config.VerificationCodeSender,
-		Config: config,
-	}
-}
+
 
 func (vSvc *VerificationService) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *interfaces.VerOpt) (dtos.GResp[bool], error) {
 	if vSvc.Config.GoAuth.CodeSender == nil {
@@ -119,49 +99,30 @@ func (vSvc *VerificationService) SendVerification(ctx context.Context, identifie
 	// }
 }
 
-func (vSvc *VerificationService) VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, code string) (dtos.GResp[models.Verification], error) {
-	if vSvc.Repo == nil {
-		return dtos.InternalErrMS[models.Verification]("no storage"), errors.New("no storage configured")
-	}
-	fullIdentifier := purpose.Make(identifier)
-	v, err := vSvc.Repo.FindVerificationValue(ctx, fullIdentifier)
-	if err != nil {
-		return dtos.InternalErrMS[models.Verification]("Hashing Error"), err
-	}
-	if v.ExpiresAt.Before(time.Now()) {
-		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("code expired")
-	}
-	valid, _ := authcrypto.VerifyPassword(v.Value, code)
-	if !valid {
-		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("invalid verification code")
-	}
-	return dtos.SuccessCreated(*v, 1), nil
-}
+// func (vSvc *VerificationService) VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, code string) (dtos.GResp[models.Verification], error) {
+// 	if vSvc.Repo == nil {
+// 		return dtos.InternalErrMS[models.Verification]("no storage"), errors.New("no storage configured")
+// 	}
+// 	fullIdentifier := purpose.Make(identifier)
+// 	v, err := vSvc.Repo.FindVerificationValue(ctx, fullIdentifier)
+// 	if err != nil {
+// 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), err
+// 	}
+// 	if v.ExpiresAt.Before(time.Now()) {
+// 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("code expired")
+// 	}
+// 	valid, _ := authcrypto.VerifyPassword(v.Value, code)
+// 	if !valid {
+// 		return dtos.InternalErrMS[models.Verification]("Hashing Error"), errors.New("invalid verification code")
+// 	}
+// 	return dtos.SuccessCreated(*v, 1), nil
+// }
 
-func (vSvc *VerificationService) DeleteExpired(ctx context.Context) error {
-	// if vSvc.Repo != nil {
-	return vSvc.Repo.DeleteExpiredVerifications(ctx)
+// func (vSvc *VerificationService) DeleteExpired(ctx context.Context) error {
+// 	return vSvc.Repo.DeleteExpiredVerifications(ctx)
+// }
 
-	// if vSvc.GormDB != nil {
-	// 	if err := gormutil.GetDB(ctx, vSvc.GormDB).Where("expires_at < NOW()").Delete(&models.Verification{}).Error; err != nil {
-	// 		return fmt.Errorf("gorm/verification: delete expired: %w", err)
-	// 	}
-	// }
-	// return nil
-}
-
-func (vSvc *VerificationService) DeleteByIdentifier(ctx context.Context, identifier string, purpose models.VerificationPurpose) error {
-	fullIdentifier := purpose.Make(identifier)
-
-	return vSvc.Repo.DeleteVerificationByIdentifier(ctx, fullIdentifier)
-
-	// if vSvc.GormDB != nil {
-	// 	filter := models.Verification{Identifier: purpose.Make(identifier)}
-	// 	_, err := generic.DbDeleteByFilter[models.Verification](gormutil.GetDB(ctx, vSvc.GormDB), ctx, filter, nil)
-	// 	if err != nil {
-	// 		logger.LogError("Deleting user sessions errors", err.Error())
-	// 		return fmt.Errorf("gorm/verification: delete: %w", err)
-	// 	}
-	// }
-	// return nil
-}
+// func (vSvc *VerificationService) DeleteByIdentifier(ctx context.Context, identifier string, purpose models.VerificationPurpose) error {
+// 	fullIdentifier := purpose.Make(identifier)
+// 	return vSvc.Repo.DeleteVerificationByIdentifier(ctx, fullIdentifier)
+// }

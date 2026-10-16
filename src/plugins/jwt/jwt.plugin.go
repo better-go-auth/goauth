@@ -149,7 +149,11 @@ func (p *Plugin) ID() string {
 // }
 
 // Migrator returns the database migrator for creating the jwks table.
+// The migrator lives on the repo itself, so no *gorm.DB handle is required.
 func (p *Plugin) Migrator() migration.IMigrator {
+	if p.repo != nil {
+		return p.repo.Migrator()
+	}
 	if p.db != nil {
 		return jwtmodels.NewMigrator(p.db)
 	}
@@ -217,11 +221,12 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 func (p *Plugin) afterGetSessionMiddleware(authCfg config.AuthConfig) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		path := ctx.URL().Path
-		isSessionRoute := strings.EqualFold(path, "/get-session") ||
-			strings.HasSuffix(strings.ToLower(path), "/get-session") ||
-			strings.EqualFold(path, "/session") ||
-			strings.HasSuffix(strings.ToLower(path), "/session")
+		path := strings.ToLower(ctx.URL().Path)
+		base := strings.ToLower(strings.TrimSuffix(p.basePath, "/"))
+		if base == "" {
+			base = "/api/auth"
+		}
+		isSessionRoute := path == base+"/get-session" || path == base+"/session"
 
 		if !isSessionRoute {
 			next(ctx)

@@ -7,6 +7,7 @@ import (
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
+	mdtos "github.com/better-go-auth/goauth/src/models/dtos"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 )
 
@@ -15,15 +16,17 @@ type VerOpt struct {
 }
 type IVerificationService interface {
 	SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *VerOpt) (dtos.GResp[bool], error)
-	VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, value string) (dtos.GResp[models.Verification], error)
-	DeleteByIdentifier(ctx context.Context, identifier string, purpose models.VerificationPurpose) error
+	// VerifyCode(ctx context.Context, identifier string, purpose models.VerificationPurpose, value string) (dtos.GResp[models.Verification], error)
+	// DeleteByIdentifier(ctx context.Context, identifier string, purpose models.VerificationPurpose) error
 }
 
 type LegacySessionService interface {
-	CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error)
+	// CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (tkn *models.AuthTokens, eror error)
 	DeleteSession(ctx context.Context, sessionId string) error
-	DeleteAllUserSessions(ctx context.Context, userId string) error
+	// DeleteAllUserSessions(ctx context.Context, userId string) error
 	BlacklistSession(ctx context.Context, sessionId string) error
+	// GetBySID resolves a session by its id via the plugin-owned sid: -> token index.
+	GetBySID(ctx context.Context, sid string) (*mdtos.SessionWithUser, error)
 	// FindByRefreshToken returns the live session behind a refresh (session) token, or nil.
 	FindByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error)
 	// RefreshTokens slides the session, optionally rotates its token and signs a new access token.
@@ -59,9 +62,9 @@ type IAccessTokenSessionService interface {
 
 // IAccessTokenProfileService handles user profile operations.
 type IAccessTokenProfileService interface {
-	GetProfile(ctx context.Context, userID string) (*models.User, error)
-	UpdateProfile(ctx context.Context, userID string, update models.ProfileUpdateDto) (*models.User, error)
-	ChangePassword(ctx context.Context, userID, sessionID string, update models.PasswordUpdateDto) (dtos.GResp[models.User], error)
+	// GetProfile(ctx context.Context, userID string) (*models.User, error)
+	// UpdateProfile(ctx context.Context, userID string, update models.ProfileUpdateDto) (*models.User, error)
+	// ChangePassword(ctx context.Context, userID, sessionID string, update models.PasswordUpdateDto) (dtos.GResp[models.User], error)
 	// SendChangeEmail(ctx context.Context, userID string, update models.ChangeEmailReqDto) (dtos.GResp[bool], error)
 	// VerifyChangeEmail(ctx context.Context, userID, sessionID string, update models.VerifyEmailDto) (dtos.GResp[models.User], error)
 }

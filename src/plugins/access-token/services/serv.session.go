@@ -2,22 +2,104 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
+	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
+
+// sid: -> token index is owned by the access-token plugin (not the core session.Manager).
+// Core only knows token -> SessionWithUser; sid lives in the JWT claim.
+
+func sidKey(sid string) string { return "sid:" + sid }
+
+func isTokenLike(s string) bool {
+	if len(s) < 20 || len(s) > 128 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if c <= 32 || c == 127 {
+			return false
+		}
+	}
+	return true
+}
+
+func asBytes(v any) ([]byte, bool) {
+	switch x := v.(type) {
+	case string:
+		return []byte(x), true
+	case []byte:
+		return x, true
+	}
+	return nil, false
+}
+
+func (aus *SessionService) getTokenBySID(ctx context.Context, sid string) (string, bool) {
+	if aus.SStore == nil || sid == "" {
+		return "", false
+	}
+	v, ok, err := aus.SStore.Get(ctx, sidKey(sid))
+	if err != nil || !ok {
+		return "", false
+	}
+	raw, isText := asBytes(v)
+	if !isText || len(raw) == 0 {
+		return "", false
+	}
+	tok := string(raw)
+	if !isTokenLike(tok) {
+		return "", false
+	}
+	return tok, true
+}
+
+// GetBySID resolves a session by its id via the sid: -> token secondary-storage index.
+// Returns (nil, nil) on miss; falls back to Mgr.Get(token) so expiry/revocation is still enforced.
+func (aus *SessionService) GetBySID(ctx context.Context, sid string) (*dtos.SessionWithUser, error) {
+	tok, ok := aus.getTokenBySID(ctx, sid)
+	if !ok {
+		return nil, nil
+	}
+	return aus.Mgr.Get(ctx, tok)
+}
+
+func (aus *SessionService) setSidIndex(ctx context.Context, sid, token string, expiresAt time.Time) {
+	if aus.SStore == nil || sid == "" || token == "" {
+		return
+	}
+	ttl := time.Until(expiresAt)
+	if ttl <= 0 {
+		return
+	}
+	_ = aus.SStore.Set(ctx, sidKey(sid), token, ttl)
+}
+
+func (aus *SessionService) deleteSidIndex(ctx context.Context, sid string) {
+	if aus.SStore == nil || sid == "" {
+		return
+	}
+	_ = aus.SStore.Delete(ctx, sidKey(sid))
+}
+
+// BackfillSidIndex restores sid: -> token after a DB fallback so the next request hits the cache.
+// Exported for the plugin Middleware; ttl is the session's remaining lifetime.
+func (aus *SessionService) BackfillSidIndex(ctx context.Context, sid, token string, ttl time.Duration) {
+	if aus.SStore == nil || sid == "" || token == "" || ttl <= 0 {
+		return
+	}
+	_ = aus.SStore.Set(ctx, sidKey(sid), token, ttl)
+}
 
 // SessionService is the legacy JWT transport on top of the shared better-auth sessions: every login is a normal
 // session row, the refresh token is that session's token, and the access token is a short JWT with sid = session id.
@@ -78,74 +160,88 @@ func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*models.Aut
 	return &models.AuthTokens{AccessToken: access, RefreshToken: s.Token}, nil
 }
 
-// CreateSession starts a session and returns its tokens. If sessionId already names one of the user's sessions
-// (e.g. the org plugin switching the active organization), that session is updated and re-issued instead.
-func (aus *SessionService) CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (*models.AuthTokens, error) {
-	if opt == nil {
-		opt = &models.SessionOpt{}
-	}
-	orgRole := opt.OrgRole
-	if orgRole == nil {
-		orgRole = opt.OrgRoleID
-	}
-	if sessionId != "" {
-		if existing, err := aus.SessionRepo.FindSessionByID(ctx, sessionId); err == nil && existing != nil {
-			if existing.UserID != userId {
-				return nil, autherr.ErrUnauthorized
-			}
-			return aus.reissue(ctx, existing, role, opt.ActiveOrgID, orgRole, opt.DeviceToken)
-		}
-	}
-
-	user, err := aus.Users.FindUserByID(ctx, userId)
-	if err != nil {
-		return nil, fmt.Errorf("session: load user: %w", err)
-	}
-	if opt.ClearSession {
-		_ = aus.DeleteAllUserSessions(ctx, userId)
-	}
-	sw, err := aus.Mgr.Create(ctx, user, sessionsvc.Meta{}, sessionsvc.CreateOptions{
-		ID:                     sessionId,
-		ExpiresIn:              opt.ExpiresIn,
-		ImpersonatedBy:         opt.ImpersonatedBy,
-		ActiveOrganizationID:   opt.ActiveOrgID,
-		ActiveOrganizationRole: orgRole,
-		DeviceToken:            opt.DeviceToken,
-	})
-	if err != nil {
-		return nil, err
-	}
-	s, err := aus.SessionRepo.FindSessionByID(ctx, sw.Session.ID)
-	if err != nil {
-		return nil, fmt.Errorf("session: load created session: %w", err)
-	}
-	sessionData := dtos.SessionFromModel(s)
-	return aus.Tokens(&sessionData, role)
-}
-
-// reissue writes the org context (nil clears it) and device token onto an existing session and signs new tokens.
-func (aus *SessionService) reissue(ctx context.Context, s *models.Session, role string, orgID, orgRole *string, deviceToken string) (*models.AuthTokens, error) {
-	sw, err := aus.Mgr.Get(ctx, s.Token)
-	if err != nil {
-		return nil, err
-	}
-	if sw == nil {
-		return nil, autherr.ErrSessionNotFound
-	}
-	data := map[string]any{"ActiveOrganizationID": orgID, "ActiveOrganizationRole": orgRole}
-	if deviceToken != "" {
-		data["DeviceToken"] = deviceToken
-	}
-	if _, err := aus.Mgr.Update(ctx, sw, data); err != nil {
-		return nil, err
-	}
-	updated, err := aus.SessionRepo.FindSessionByID(ctx, s.ID)
-	if err != nil {
-		return nil, err
-	}
-	sessionData := dtos.SessionFromModel(updated)
-	return aus.Tokens(&sessionData, role)
-}
+// Note: CreateSession and reissue are commented out as session creation is handled
+// by core Better Auth via SignInEmail/CreateSession.
+// func (aus *SessionService) CreateSession(ctx context.Context, sessionId, role, userId string, opt *models.SessionOpt) (*models.AuthTokens, error) {
+// 	if opt == nil {
+// 		opt = &models.SessionOpt{}
+// 	}
+// 	orgRole := opt.OrgRole
+// 	if orgRole == nil {
+// 		orgRole = opt.OrgRoleID
+// 	}
+// 	if sessionId != "" {
+// 		if existing, err := aus.SessionRepo.FindSessionByID(ctx, sessionId); err == nil && existing != nil {
+// 			if existing.UserID != userId {
+// 				return nil, autherr.ErrUnauthorized
+// 			}
+// 			return aus.reissue(ctx, existing, role, opt.ActiveOrgID, orgRole, opt.DeviceToken)
+// 		}
+// 	}
+//
+// 	user, err := aus.Users.FindUserByID(ctx, userId)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("session: load user: %w", err)
+// 	}
+// 	if opt.ClearSession {
+// 		_ = aus.DeleteAllUserSessions(ctx, userId)
+// 	}
+// 	sw, err := aus.Mgr.Create(ctx, user, sessionsvc.Meta{}, sessionsvc.CreateOptions{
+// 		ID:                     sessionId,
+// 		ExpiresIn:              opt.ExpiresIn,
+// 		ImpersonatedBy:         opt.ImpersonatedBy,
+// 		ActiveOrganizationID:   opt.ActiveOrgID,
+// 		ActiveOrganizationRole: orgRole,
+// 		DeviceToken:            opt.DeviceToken,
+// 	})
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	// maintain access-token's sid: -> token index
+// 	if aus.SStore != nil {
+// 		if sw != nil {
+// 			aus.setSidIndex(ctx, sw.Session.ID, sw.Session.Token, time.Time(sw.Session.ExpiresAt))
+// 		} else {
+// 			// Mgr.Create didn't cache (secStore nil in core) — fall back to DB row
+// 			if dbSess, err := aus.SessionRepo.FindSessionByID(ctx, sessionId); err == nil && dbSess != nil {
+// 				aus.setSidIndex(ctx, dbSess.ID, dbSess.Token, dbSess.ExpiresAt)
+// 			}
+// 		}
+// 	}
+// 	s, err := aus.SessionRepo.FindSessionByID(ctx, sw.Session.ID)
+// 	if err != nil {
+// 		return nil, fmt.Errorf("session: load created session: %w", err)
+// 	}
+// 	sessionData := dtos.SessionFromModel(s)
+// 	return aus.Tokens(&sessionData, role)
+// }
+//
+// func (aus *SessionService) reissue(ctx context.Context, s *models.Session, role string, orgID, orgRole *string, deviceToken string) (*models.AuthTokens, error) {
+// 	sw, err := aus.Mgr.Get(ctx, s.Token)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	if sw == nil {
+// 		return nil, autherr.ErrSessionNotFound
+// 	}
+// 	data := map[string]any{"ActiveOrganizationID": orgID, "ActiveOrganizationRole": orgRole}
+// 	if deviceToken != "" {
+// 		data["DeviceToken"] = deviceToken
+// 	}
+// 	updatedSw, err := aus.Mgr.Update(ctx, sw, data)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	if updatedSw != nil && aus.SStore != nil {
+// 		aus.setSidIndex(ctx, s.ID, updatedSw.Session.Token, time.Time(updatedSw.Session.ExpiresAt))
+// 	}
+// 	updated, err := aus.SessionRepo.FindSessionByID(ctx, s.ID)
+// 	if err != nil {
+// 		return nil, err
+// 	}
+// 	sessionData := dtos.SessionFromModel(updated)
+// 	return aus.Tokens(&sessionData, role)
+// }
 
 // FindByRefreshToken returns the live session behind a refresh token, or nil (unknown, expired or revoked).
 func (aus *SessionService) FindByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error) {
@@ -159,6 +255,7 @@ func (aus *SessionService) FindByRefreshToken(ctx context.Context, refreshToken 
 // RefreshTokens slides the session's expiry like better-auth (once UpdateAge has passed), rotates the refresh
 // token when GoAuth.Session.JWT.RotateRefreshToken is on (default) and signs a new access token.
 func (aus *SessionService) RefreshTokens(ctx context.Context, s *models.Session, role string) (*models.AuthTokens, error) {
+	prevToken := s.Token
 	swu, err := aus.Mgr.Get(ctx, s.Token)
 	if err != nil {
 		return nil, err
@@ -168,11 +265,20 @@ func (aus *SessionService) RefreshTokens(ctx context.Context, s *models.Session,
 		if err != nil {
 			return nil, err
 		}
+		if swu != nil && aus.SStore != nil {
+			aus.setSidIndex(ctx, s.ID, swu.Session.Token, time.Time(swu.Session.ExpiresAt))
+		}
 	}
 	if swu != nil && aus.SConf.JWT.RotatesRefreshToken() {
 		swu, err = aus.Mgr.RotateToken(ctx, swu)
 		if err != nil {
 			return nil, err
+		}
+		if swu != nil && aus.SStore != nil {
+			if prevToken != "" && prevToken != swu.Session.Token {
+				aus.deleteSidIndex(ctx, s.ID)
+			}
+			aus.setSidIndex(ctx, s.ID, swu.Session.Token, time.Time(swu.Session.ExpiresAt))
 		}
 	}
 	if swu == nil {
@@ -206,6 +312,9 @@ func (aus *SessionService) DeleteSession(ctx context.Context, sessionId string) 
 		if err := aus.Mgr.Delete(ctx, s.Token); err != nil {
 			return err
 		}
+		if aus.SStore != nil {
+			aus.deleteSidIndex(ctx, sessionId)
+		}
 	}
 	if aus.Hooks != nil {
 		_ = aus.Hooks.TriggerSessionRevoked(ctx, sessionId)
@@ -213,15 +322,3 @@ func (aus *SessionService) DeleteSession(ctx context.Context, sessionId string) 
 	return aus.BlacklistSession(ctx, sessionId)
 }
 
-// DeleteAllUserSessions revokes every session of userId.
-func (aus *SessionService) DeleteAllUserSessions(ctx context.Context, userId string) error {
-	if sessions, err := aus.SessionRepo.ListSessions(ctx, userId); err == nil {
-		for _, s := range sessions {
-			_ = aus.BlacklistSession(ctx, s.ID)
-			if aus.Hooks != nil {
-				_ = aus.Hooks.TriggerSessionRevoked(ctx, s.ID)
-			}
-		}
-	}
-	return aus.Mgr.DeleteUserSessions(ctx, userId)
-}

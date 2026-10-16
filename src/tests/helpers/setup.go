@@ -71,7 +71,7 @@ type TestEnv struct {
 
 	// Direct services for testing/debugging
 	AuthService    *accesstokensvc.AuthService
-	ProfileService *accesstokensvc.ProfileService
+	// ProfileService *accesstokensvc.ProfileService
 	SessionService *accesstokensvc.SessionService
 	AdminService   adminsvc.IAdminService
 	OrgService     orgsvc.IOrgService
@@ -262,7 +262,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 
 	authHandler := accessTokenPlugin.Handler()
 	authSvc := accessTokenPlugin.AuthService()
-	profileServ := accessTokenPlugin.ProfileService()
+	// profileServ := accessTokenPlugin.ProfileService()
 	sSvc := accessTokenPlugin.SessionService()
 	adminHandler := adminPlugin.Handler()
 	adminService := adminPlugin.Service()
@@ -288,7 +288,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		OrgHandler:     orgHandler,
 		// services
 		AuthService:    authSvc,
-		ProfileService: profileServ,
+		// ProfileService: profileServ,
 		SessionService: sSvc,
 		AdminService:   adminService,
 		OrgService:     orgService,

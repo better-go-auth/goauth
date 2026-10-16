@@ -166,14 +166,14 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 		t.Fatalf("expected non-empty refresh token")
 	}
 
-	// 4. Get Profile
-	profile, err := plugin.ProfileService().GetProfile(ctx, loginResp.Body.UserData.ID)
-	if err != nil || profile == nil {
-		t.Fatalf("GetProfile failed: %v", err)
-	}
-	if profile.Email != "john.doe@example.com" {
-		t.Fatalf("unexpected profile email: %s", profile.Email)
-	}
+	// 4. Get Profile (commented out as legacy profile service is deprecated)
+	// profile, err := plugin.ProfileService().GetProfile(ctx, loginResp.Body.UserData.ID)
+	// if err != nil || profile == nil {
+	// 	t.Fatalf("GetProfile failed: %v", err)
+	// }
+	// if profile.Email != "john.doe@example.com" {
+	// 	t.Fatalf("unexpected profile email: %s", profile.Email)
+	// }
 
 	// 5. Refresh token
 	refreshResp, err := plugin.AuthService().ResetToken(ctx, refreshToken)

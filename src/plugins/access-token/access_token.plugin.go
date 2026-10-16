@@ -1,7 +1,6 @@
 package accesstoken
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -44,8 +43,8 @@ type Plugin struct {
 
 	authSvc    *services.AuthService
 	sessionSvc *services.SessionService
-	profileSvc *services.ProfileService
-	vSvc       *services.VerificationService
+	// profileSvc *services.ProfileService
+	vSvc *services.VerificationService
 	//
 	handler *humaaccesstoken.AccessTokenHandler
 
@@ -206,15 +205,15 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.vSvc = services.NewVerificationService(repos, vConf)
 	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
 	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
-	p.profileSvc = services.NewProfileService(p.vSvc, p.sessionSvc, repos, txMgr, p.passwords)
+	// p.profileSvc = services.NewProfileService(p.vSvc, p.sessionSvc, repos, txMgr, p.passwords)
 
 	// TODO: is this how other plugins do it
 	// Register lifecycle hook to terminate legacy sessions when a user is banned
-	if ictx.Hooks != nil {
-		ictx.Hooks.OnUserBanned(func(ctx context.Context, userID string, reason *string) error {
-			return p.sessionSvc.DeleteAllUserSessions(ctx, userID)
-		})
-	}
+	// if ictx.Hooks != nil {
+	// 	ictx.Hooks.OnUserBanned(func(ctx context.Context, userID string, reason *string) error {
+	// 		return p.sessionSvc.DeleteAllUserSessions(ctx, userID)
+	// 	})
+	// }
 
 	// 2. Initialize handlers and mount routes if huma API is present
 	refreshMaxAge := ictx.Config.Session.ExpiresIn
@@ -230,7 +229,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.handler = &humaaccesstoken.AccessTokenHandler{
 		AuthServ:    p.authSvc,
 		SessionServ: p.sessionSvc,
-		ProfileServ: p.profileSvc,
+		// ProfileServ: p.profileSvc,
 		SessionRepo: repos,
 		Config:      &sConf,
 		Cookies:     cookieAttrs,
@@ -270,20 +269,33 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 				// 1. Verify access JWT
 				claims, err := jwttoken.ValidateAccessToken(raw, accessSecret)
 				if err == nil && claims != nil && claims.SessionID != "" {
-					// 2. Check revocation if secondary storage is configured
+					// 2. Revocation check first — revoked sessions are removed from cache but
+					//    we still gate on explicit keys for the window between Blacklist and eviction,
+					//    and for PreserveSessionInDatabase where the row still exists.
+					//    Two prefixes are legacy; either means "denied". Canonical is revoked:session:; blacklist:
+					//    is kept for compat with BlacklistSession until that is unified.
 					isRevoked := false
 					if p.secStorage != nil {
 						if _, exists, _ := p.secStorage.Get(ctx.Context(), "revoked:session:"+claims.SessionID); exists {
 							isRevoked = true
+						} else if _, exists, _ := p.secStorage.Get(ctx.Context(), "blacklist:"+claims.SessionID); exists {
+							isRevoked = true
 						}
 					}
-					if !isRevoked && p.repos != nil {
-						// 3. Resolve session
+					// 3. Fast-path: plugin-owned sid: -> token index (zero DB hit when cache warm)
+					var sw *dtos.SessionWithUser
+					var sessToken string
+					if !isRevoked && p.sessionSvc != nil {
+						if cached, _ := p.sessionSvc.GetBySID(ctx.Context(), claims.SessionID); cached != nil {
+							sw = cached
+							sessToken = cached.Session.Token
+						}
+					}
+					// 4. DB fallback on index miss + backfill
+					if sw == nil && !isRevoked && p.repos != nil {
 						sess, err := p.repos.FindSessionByID(ctx.Context(), claims.SessionID)
 						if err == nil && sess != nil && sess.ExpiresAt.After(time.Now()) {
-							var sw *dtos.SessionWithUser
 							if p.sessionMgr != nil {
-								// This is getting the session from the secondary storage
 								sw, _ = p.sessionMgr.Get(ctx.Context(), sess.Token)
 							}
 							if sw == nil {
@@ -295,27 +307,42 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 									}
 								}
 							}
-
 							if sw != nil {
-								// Attach to context
-								ctx = huma.WithContext(ctx, humaadapter.WithSession(ctx.Context(), sw))
-								ctx = huma.WithContext(ctx, humaadapter.WithBearerToken(ctx.Context(), sess.Token))
-								ctx = huma.WithValue(ctx, constant.CtxClaims.Str(), *claims)
-								ctx = huma.WithValue(ctx, constant.CTXUser_ID.Str(), claims.UserID)
-								if claims.ActiveOrgId != "" {
-									ctx = huma.WithValue(ctx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
-								}
-
-								// Inject signed session cookie so standard handlers and humago find it
-								signedCookieVal := cm.Signed(sess.Token)
-								if r, _ := humago.Unwrap(ctx); r != nil {
-									existingCookie := r.Header.Get("Cookie")
-									if existingCookie == "" {
-										r.Header.Set("Cookie", cookieName+"="+signedCookieVal)
-									} else if !strings.Contains(existingCookie, cookieName+"=") {
-										r.Header.Set("Cookie", existingCookie+"; "+cookieName+"="+signedCookieVal)
+								sessToken = sess.Token
+								ttl := time.Until(sess.ExpiresAt)
+								if ttl > 0 {
+									if p.sessionSvc != nil {
+										p.sessionSvc.BackfillSidIndex(ctx.Context(), sess.ID, sess.Token, ttl)
+									} else if p.secStorage != nil {
+										_ = p.secStorage.Set(ctx.Context(), "sid:"+sess.ID, sess.Token, ttl)
 									}
 								}
+							}
+						}
+					}
+
+					if sw != nil {
+						tok := sessToken
+						if tok == "" {
+							tok = sw.Session.Token
+						}
+						// Attach to context
+						ctx = huma.WithContext(ctx, humaadapter.WithSession(ctx.Context(), sw))
+						ctx = huma.WithContext(ctx, humaadapter.WithBearerToken(ctx.Context(), tok))
+						ctx = huma.WithValue(ctx, constant.CtxClaims.Str(), *claims)
+						ctx = huma.WithValue(ctx, constant.CTXUser_ID.Str(), claims.UserID)
+						if claims.ActiveOrgId != "" {
+							ctx = huma.WithValue(ctx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
+						}
+
+						// Inject signed session cookie so standard handlers and humago find it
+						signedCookieVal := cm.Signed(tok)
+						if r, _ := humago.Unwrap(ctx); r != nil {
+							existingCookie := r.Header.Get("Cookie")
+							if existingCookie == "" {
+								r.Header.Set("Cookie", cookieName+"="+signedCookieVal)
+							} else if !strings.Contains(existingCookie, cookieName+"=") {
+								r.Header.Set("Cookie", existingCookie+"; "+cookieName+"="+signedCookieVal)
 							}
 						}
 					}
@@ -335,9 +362,9 @@ func (p *Plugin) Migrator() migration.IMigrator {
 // Services returns services exposed by this plugin.
 func (p *Plugin) Services() map[string]any {
 	return map[string]any{
-		"access_token_auth":         p.authSvc,
-		"access_token_session":      p.sessionSvc,
-		"access_token_profile":      p.profileSvc,
+		"access_token_auth":    p.authSvc,
+		"access_token_session": p.sessionSvc,
+		// "access_token_profile":      p.profileSvc,
 		"access_token_verification": p.vSvc,
 	}
 }
@@ -371,9 +398,9 @@ func (p *Plugin) SessionService() *services.SessionService {
 }
 
 // ProfileService returns the initialized ProfileService.
-func (p *Plugin) ProfileService() *services.ProfileService {
-	return p.profileSvc
-}
+// func (p *Plugin) ProfileService() *services.ProfileService {
+// 	return p.profileSvc
+// }
 
 // VerificationService returns the initialized VerificationService.
 func (p *Plugin) VerificationService() *services.VerificationService {

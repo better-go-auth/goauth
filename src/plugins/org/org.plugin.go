@@ -1,7 +1,6 @@
 package org
 
 import (
-	"context"
 	"fmt"
 
 	"gorm.io/gorm"
@@ -12,7 +11,6 @@ import (
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	humaorg "github.com/better-go-auth/goauth/src/plugins/org/adapters/huma"
 	"github.com/better-go-auth/goauth/src/plugins/org/config"
-	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
 	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
@@ -33,6 +31,7 @@ type OrgPlugin struct {
 	handler       *humaorg.OrgHandler
 	authenticator authenticator.AuthenticateFunc
 }
+
 type Option func(*OrgPlugin)
 
 // NewWithGorm creates a new Org plugin directly backed by GORM.
@@ -143,30 +142,4 @@ func (p *OrgPlugin) Service() orgsvc.IOrgService {
 // Handler returns the initialized OrgHandler.
 func (p *OrgPlugin) Handler() *humaorg.OrgHandler {
 	return p.handler
-}
-
-// ─── Org Migrator ─────────────────────────────────────────────────────────────
-
-// GORMOrgMigrator implements IMigrator for Org module models.
-type GORMOrgMigrator struct {
-	db *gorm.DB
-}
-
-// NewGORMOrgMigrator creates a new GORM migrator for Org module models.
-func NewGORMOrgMigrator(db *gorm.DB) migration.IMigrator {
-	return &GORMOrgMigrator{db: db}
-}
-
-// Migrate runs GORM AutoMigrate on Org models (Organization, Member, Invitation, OrgPermission).
-func (m *GORMOrgMigrator) Migrate(_ context.Context) error {
-	err := m.db.AutoMigrate(
-		&models.Organization{},
-		&models.Member{},
-		&models.Invitation{},
-		// &models.OrgPermission{},
-	)
-	if err != nil {
-		return fmt.Errorf("gorm/migrate-org: %w", err)
-	}
-	return nil
 }

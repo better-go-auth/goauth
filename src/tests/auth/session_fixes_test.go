@@ -8,6 +8,7 @@ import (
 	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
@@ -86,9 +87,21 @@ func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
 	if err := env.DB.Create(&orgmodels.Organization{Base: models.Base{ID: orgID}, Name: "Org", Slug: "org-123"}).Error; err != nil {
 		t.Fatal(err)
 	}
-	tokens, err := env.AuthService.SesSvc.CreateSession(ctx, sessionID, usr.Role.S(), usr.ID, &models.SessionOpt{
-		ActiveOrgID: &orgID, OrgRole: &orgRole, DeviceToken: "device-1",
-	})
+	tok := idgen.GenerateToken()
+	sess := &models.Session{
+		Base:                   models.Base{ID: sessionID},
+		Token:                  tok,
+		UserID:                 usr.ID,
+		ActiveOrganizationID:   &orgID,
+		ActiveOrganizationRole: &orgRole,
+		DeviceToken:            "device-1",
+		ExpiresAt:              time.Now().Add(time.Hour),
+	}
+	if err := env.DB.Create(sess).Error; err != nil {
+		t.Fatal(err)
+	}
+	sData := dtos.SessionFromModel(sess)
+	tokens, err := env.AuthService.SesSvc.Tokens(&sData, usr.Role.S())
 	if err != nil {
 		t.Fatal(err)
 	}
