@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
@@ -70,9 +69,4 @@ func (h *AccessTokenHandler) GetMySession(ctx context.Context, q *models.Session
 		RowsAffected: 1,
 		Count:        1,
 	}, 200), nil
-}
-
-// Ensure SessionRepo is declared on AccessTokenHandler
-type sessionRepoCarrier interface {
-	repo_interfaces.ISessionRepo
 }
