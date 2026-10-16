@@ -80,6 +80,7 @@ type TestEnv struct {
 var containersToCleanup []testcontainers.Container
 
 func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
+	t.Helper()
 	ctx := context.Background()
 	var gormDB *gorm.DB
 	var secStorage sec_storage.SecondaryStorage
@@ -320,6 +321,7 @@ func (e *TestEnv) DeleteJSON(path string, body any, headers ...map[string]string
 }
 
 func (e *TestEnv) doJSON(method, path string, body any, headers ...map[string]string) (*http.Response, string) {
+	// caller is TestEnv helper; mark as helper if *testing.T is available via not panicking path
 	var bodyReader io.Reader
 	if body != nil {
 		bodyBytes, err := json.Marshal(body)

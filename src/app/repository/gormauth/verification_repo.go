@@ -32,7 +32,9 @@ func (r *VerificationRepo) UpsertVerificationValue(ctx context.Context, verifica
 		verification.ID = models.NewID()
 	}
 	// identifier is not unique in better-auth's schema, so replace instead of ON CONFLICT
-	err := gormutil.GetDB(ctx, r.db).Transaction(func(tx *gorm.DB) error {
+	db := gormutil.GetDB(ctx, r.db)
+	err := db.Transaction(func(tx *gorm.DB) error {
+		tx = tx.WithContext(ctx)
 		if err := tx.Where(byIdentifier(verification.Identifier), "Identifier").Delete(&models.Verification{}).Error; err != nil {
 			return err
 		}

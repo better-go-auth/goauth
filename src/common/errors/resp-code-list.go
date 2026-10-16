@@ -131,7 +131,7 @@ var errorText = map[RespCode]string{
 
 	// Auth Messages
 
-	InvalidEmailOrPhone: " please enter a valid email address or phone number",
+	InvalidEmailOrPhone: "Please enter a valid email address or phone number",
 	InfoOrCode:          "please enter valid code or info",
 	InvalidData:         "This Data Is Invalid",
 	PhoneExists:         "Phone Already Exists",
@@ -167,7 +167,7 @@ var errorText = map[RespCode]string{
 	SessionNotFresh:                      "Session is not fresh",
 
 	//------------------------------ Entities -----------------
-	UserCreated:    " User Created",
+	UserCreated:    "User Created",
 	UserNotCreated: "User Not Created",
 	UserExists:     "This user already Exists",
 	JsonUnmarshal:  "Json Unmarshal Response",

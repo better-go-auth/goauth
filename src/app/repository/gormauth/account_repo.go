@@ -3,6 +3,7 @@ package gormauth
 
 import (
 	"context"
+	loc_errors "github.com/better-go-auth/goauth/src/common/errors"
 	"errors"
 	"fmt"
 
@@ -40,7 +41,7 @@ func (r *AccountRepo) FindAccountByProviderID(ctx context.Context, providerID mo
 		Take(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("gorm/account: not found")
+			return nil, loc_errors.NotFoundErr("gorm/account: not found")
 		}
 		return nil, fmt.Errorf("gorm/account: get by provider: %w", err)
 	}
@@ -54,7 +55,7 @@ func (r *AccountRepo) FindAccountByUserAndProvider(ctx context.Context, userID s
 		Take(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fmt.Errorf("gorm/account: not found")
+			return nil, loc_errors.NotFoundErr("gorm/account: not found")
 		}
 		return nil, fmt.Errorf("gorm/account: get by user and provider: %w", err)
 	}
