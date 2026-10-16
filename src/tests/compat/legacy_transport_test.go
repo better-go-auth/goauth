@@ -57,15 +57,15 @@ func TestLegacyJWTOnSharedSessions(t *testing.T) {
 		t.Fatalf("cookie and JWT sessions must both be listed, got %d", len(sessions))
 	}
 
-	// one middleware for every client kind (using access-token's /session endpoint)
-	if code := s.bare(t, http.MethodGet, "/api/auth/session", access); code != http.StatusOK {
+	// one middleware for every client kind (using /list-sessions endpoint)
+	if code := s.bare(t, http.MethodGet, "/api/auth/list-sessions", access); code != http.StatusOK {
 		t.Fatalf("access JWT: %d", code)
 	}
-	if code := s.bare(t, http.MethodGet, "/api/auth/session", refresh); code != http.StatusOK {
+	if code := s.bare(t, http.MethodGet, "/api/auth/list-sessions", refresh); code != http.StatusOK {
 		t.Fatalf("session token as bearer: %d", code)
 	}
-	expectStatus(t, s.Get(t, "/api/auth/session"), http.StatusOK) // session cookie
-	if code := s.bare(t, http.MethodGet, "/api/auth/session", "garbage-token"); code == http.StatusOK {
+	expectStatus(t, s.Get(t, "/api/auth/list-sessions"), http.StatusOK) // session cookie
+	if code := s.bare(t, http.MethodGet, "/api/auth/list-sessions", "garbage-token"); code == http.StatusOK {
 		t.Fatal("unknown token must be rejected")
 	}
 
@@ -94,7 +94,7 @@ func TestLegacyJWTOnSharedSessions(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
-	if code := s.bare(t, http.MethodGet, "/api/auth/session", next.Body.AuthTokens.AccessToken); code == http.StatusOK {
+	if code := s.bare(t, http.MethodGet, "/api/auth/list-sessions", next.Body.AuthTokens.AccessToken); code == http.StatusOK {
 		t.Fatal("access token of a revoked session must be rejected")
 	}
 	s.Get(t, "/api/auth/list-sessions").JSON(t, &sessions)

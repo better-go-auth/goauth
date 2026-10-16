@@ -365,6 +365,27 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 						}
 					}
 				}
+			} else if raw != "" && p.sessionMgr != nil {
+				if sw, _ := p.sessionMgr.Get(ctx.Context(), raw); sw != nil {
+					// Attach to context
+					ctx = huma.WithContext(ctx, humaadapter.WithSession(ctx.Context(), sw))
+					ctx = huma.WithContext(ctx, humaadapter.WithBearerToken(ctx.Context(), raw))
+					ctx = huma.WithValue(ctx, constant.CTXUser_ID.Str(), sw.User.ID)
+					if sw.Session.ActiveOrganizationID != nil {
+						ctx = huma.WithValue(ctx, constant.CTXCompany_ID.Str(), *sw.Session.ActiveOrganizationID)
+					}
+
+					// Inject signed session cookie so standard handlers and humago find it
+					signedCookieVal := cm.Signed(raw)
+					if r, _ := humago.Unwrap(ctx); r != nil {
+						existingCookie := r.Header.Get("Cookie")
+						if existingCookie == "" {
+							r.Header.Set("Cookie", cookieName+"="+signedCookieVal)
+						} else if !strings.Contains(existingCookie, cookieName+"=") {
+							r.Header.Set("Cookie", existingCookie+"; "+cookieName+"="+signedCookieVal)
+						}
+					}
+				}
 			}
 		}
 

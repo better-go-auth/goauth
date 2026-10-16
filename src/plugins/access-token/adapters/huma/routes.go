@@ -12,8 +12,8 @@ const (
 	RegisterUser        = constant.OperationId("Au-1-Register")
 	LoginUser           = constant.OperationId("Au-3-Login")
 	RefreshTokenUser    = constant.OperationId("Au-4-RefreshToken")
-	GetMySessions       = constant.OperationId("Se-1-GetMySessions")
-	DeleteMySessionById = constant.OperationId("Ad-2-DeleteMySessionById")
+	// GetMySessions       = constant.OperationId("Se-1-GetMySessions")
+	// DeleteMySessionById = constant.OperationId("Ad-2-DeleteMySessionById")
 )
 
 // SetupAccessTokenRoutes registers all legacy access-token / JWT endpoints on huma.API.
@@ -23,7 +23,7 @@ func SetupAccessTokenRoutes(api huma.API, handler *AccessTokenHandler, mdlware *
 	}
 
 	authTags := []string{"01-auth"}
-	sessionTags := []string{"session"}
+	// sessionTags := []string{"session"}
 
 
 	// ─── Auth Endpoints ──────────────────────────────────────────────────────────
@@ -52,30 +52,38 @@ func SetupAccessTokenRoutes(api huma.API, handler *AccessTokenHandler, mdlware *
 	}, handler.RefreshToken)
 
 	// Middlewares for protected routes
-	var authMiddlewares huma.Middlewares
-	if mdlware != nil {
-		authMiddlewares = huma.Middlewares{
-			mdlware.Authenticate(),
-		}
-	}
+	// var authMiddlewares huma.Middlewares
+	// if mdlware != nil {
+	// 	authMiddlewares = huma.Middlewares{
+	// 		mdlware.Authenticate(),
+	// 	}
+	// }
+	_ = mdlware
 
 	// ─── Session Endpoints ───────────────────────────────────────────────────────
-	sessPath := basePath + "/session"
-	huma.Register(api, huma.Operation{
-		OperationID: GetMySessions.Str(),
-		Method:      http.MethodGet,
-		Path:        sessPath,
-		Summary:     "Get My Sessions (Access Token)",
-		Tags:        sessionTags,
-		Middlewares: authMiddlewares,
-	}, handler.GetMySession)
-
-	huma.Register(api, huma.Operation{
-		OperationID: DeleteMySessionById.Str(),
-		Method:      http.MethodPost,
-		Path:        sessPath + "/{id}",
-		Summary:     "Delete Session (Access Token)",
-		Tags:        sessionTags,
-		Middlewares: authMiddlewares,
-	}, handler.DeleteMySession)
+	// Note: Session endpoints (/session, /session/{id}) are commented out as they
+	// are superseded by standard Better Auth core endpoints:
+	// - GET /api/auth/list-sessions
+	// - GET /api/auth/get-session
+	// - POST /api/auth/revoke-session
+	// - POST /api/auth/sign-out
+	//
+	// sessPath := basePath + "/session"
+	// huma.Register(api, huma.Operation{
+	// 	OperationID: GetMySessions.Str(),
+	// 	Method:      http.MethodGet,
+	// 	Path:        sessPath,
+	// 	Summary:     "Get My Sessions (Access Token)",
+	// 	Tags:        sessionTags,
+	// 	Middlewares: authMiddlewares,
+	// }, handler.GetMySession)
+	//
+	// huma.Register(api, huma.Operation{
+	// 	OperationID: DeleteMySessionById.Str(),
+	// 	Method:      http.MethodPost,
+	// 	Path:        sessPath + "/{id}",
+	// 	Summary:     "Delete Session (Access Token)",
+	// 	Tags:        sessionTags,
+	// 	Middlewares: authMiddlewares,
+	// }, handler.DeleteMySession)
 }

@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
-	"github.com/better-go-auth/goauth/src/common/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
@@ -69,45 +68,49 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 		}
 		sessionID = claims.SessionID
 		authCtx = helpers.AuthContext(userID, sessionID, string(enums.User))
+		_ = authCtx
+		_ = targetSessionID
 	})
 
-	t.Run("03 Get Active Sessions", func(t *testing.T) {
-		resp, err := env.SessionHandler.GetMySession(authCtx, &models.SessionQuery{
-			PaginationInput: dtos.PaginationInput{Page: 1, Limit: 10},
-		})
-		if err != nil {
-			t.Fatalf("GetMySession handler failed: %v", err)
-		}
-		if resp == nil || len(resp.Body.Body) == 0 {
-			t.Fatalf("Expected at least 1 active session, got %v", resp)
-		}
-		targetSessionID = resp.Body.Body[0].ID
-		if targetSessionID == "" {
-			t.Fatalf("Expected non-empty session ID")
-		}
-	})
+	// Note: SessionHandler.GetMySession and DelteMySession are commented out
+	// as they are superseded by core Better Auth endpoints (/list-sessions, /revoke-session).
+	// t.Run("03 Get Active Sessions", func(t *testing.T) {
+	// 	resp, err := env.SessionHandler.GetMySession(authCtx, &models.SessionQuery{
+	// 		PaginationInput: dtos.PaginationInput{Page: 1, Limit: 10},
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("GetMySession handler failed: %v", err)
+	// 	}
+	// 	if resp == nil || len(resp.Body.Body) == 0 {
+	// 		t.Fatalf("Expected at least 1 active session, got %v", resp)
+	// 	}
+	// 	targetSessionID = resp.Body.Body[0].ID
+	// 	if targetSessionID == "" {
+	// 		t.Fatalf("Expected non-empty session ID")
+	// 	}
+	// })
 
-	t.Run("04 Delete Session by ID", func(t *testing.T) {
-		delResp, err := env.SessionHandler.DelteMySession(authCtx, &humatypes.HumaReqId{
-			ID: targetSessionID,
-		})
-		if err != nil {
-			t.Fatalf("DelteMySession handler failed: %v", err)
-		}
-		if delResp == nil || !delResp.Body.Body.Status {
-			t.Fatalf("Expected successful session deletion, got %+v", delResp)
-		}
-	})
+	// t.Run("04 Delete Session by ID", func(t *testing.T) {
+	// 	delResp, err := env.SessionHandler.DelteMySession(authCtx, &humatypes.HumaReqId{
+	// 		ID: targetSessionID,
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("DelteMySession handler failed: %v", err)
+	// 	}
+	// 	if delResp == nil || !delResp.Body.Body.Status {
+	// 		t.Fatalf("Expected successful session deletion, got %+v", delResp)
+	// 	}
+	// })
 
-	t.Run("05 Verify Sessions Empty", func(t *testing.T) {
-		resp, err := env.SessionHandler.GetMySession(authCtx, &models.SessionQuery{
-			PaginationInput: dtos.PaginationInput{Page: 1, Limit: 10},
-		})
-		if err != nil {
-			t.Fatalf("GetMySession handler failed: %v", err)
-		}
-		if resp != nil && len(resp.Body.Body) != 0 {
-			t.Fatalf("Expected 0 sessions after deletion, got %d", len(resp.Body.Body))
-		}
-	})
+	// t.Run("05 Verify Sessions Empty", func(t *testing.T) {
+	// 	resp, err := env.SessionHandler.GetMySession(authCtx, &models.SessionQuery{
+	// 		PaginationInput: dtos.PaginationInput{Page: 1, Limit: 10},
+	// 	})
+	// 	if err != nil {
+	// 		t.Fatalf("GetMySession handler failed: %v", err)
+	// 	}
+	// 	if resp != nil && len(resp.Body.Body) != 0 {
+	// 		t.Fatalf("Expected 0 sessions after deletion, got %d", len(resp.Body.Body))
+	// 	}
+	// })
 }

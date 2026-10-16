@@ -2,7 +2,6 @@ package session_test
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -61,39 +60,42 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 	})
 
 	t.Run("Get Active Sessions", func(t *testing.T) {
-		resp, body := env.GetJSON("/api/auth/session?page=1&limit=10", authHeader)
+		resp, body := env.GetJSON("/api/auth/list-sessions", authHeader)
 		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("GetMySession failed: status %d, body: %s", resp.StatusCode, body)
+			t.Fatalf("list-sessions failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var sessionResp dtos.PResp[[]authDtos.SessionData]
-		if err := json.Unmarshal([]byte(body), &sessionResp); err != nil {
+		var sessions []authDtos.SessionData
+		if err := json.Unmarshal([]byte(body), &sessions); err != nil {
 			t.Fatalf("Failed to decode sessions response: %v, raw: %s", err, body)
 		}
 
-		if len(sessionResp.Body) == 0 {
-			t.Fatalf("Expected at least 1 active session, got %d", len(sessionResp.Body))
+		if len(sessions) == 0 {
+			t.Fatalf("Expected at least 1 active session, got %d", len(sessions))
 		}
-		sessionId = sessionResp.Body[0].ID
+		sessionId = sessions[0].ID
 		if sessionId == "" {
 			t.Fatalf("Expected non-empty session ID")
 		}
 	})
 
-	t.Run("Delete Session by ID", func(t *testing.T) {
-		resp, body := env.PostJSON(fmt.Sprintf("/api/auth/session/%s", sessionId), nil, authHeader)
+	t.Run("Sign Out Session", func(t *testing.T) {
+		resp, body := env.PostJSON("/api/auth/sign-out", nil, map[string]string{
+			"Authorization": authHeader["Authorization"],
+			"Origin":        env.BaseURL,
+		})
 		if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-			t.Fatalf("DeleteSession failed: status %d, body: %s", resp.StatusCode, body)
+			t.Fatalf("SignOut failed: status %d, body: %s", resp.StatusCode, body)
 		}
 	})
 
 	t.Run("Verify Sessions Empty", func(t *testing.T) {
-		resp, body := env.GetJSON("/api/auth/session?page=1&limit=10", authHeader)
+		resp, body := env.GetJSON("/api/auth/list-sessions", authHeader)
 		if resp.StatusCode == http.StatusOK {
-			var afterDeleteResp dtos.PResp[[]authDtos.SessionData]
+			var afterDeleteResp []authDtos.SessionData
 			if err := json.Unmarshal([]byte(body), &afterDeleteResp); err == nil {
-				if len(afterDeleteResp.Body) != 0 {
-					t.Fatalf("Expected 0 sessions after deletion, got %d", len(afterDeleteResp.Body))
+				if len(afterDeleteResp) != 0 {
+					t.Fatalf("Expected 0 sessions after deletion, got %d", len(afterDeleteResp))
 				}
 			}
 		}
