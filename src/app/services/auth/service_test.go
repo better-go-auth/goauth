@@ -548,7 +548,7 @@ func TestUpdateSessionDeviceFields(t *testing.T) {
 	ctx := context.Background()
 	for name, mutate := range map[string]func(*config.AuthConfig){
 		"database + cache": nil,
-		"cache only":       func(c *config.AuthConfig) { c.Session.StoreSessionInDatabase = ptr(false) },
+		"cache only":       func(c *config.AuthConfig) { c.Session.StoreSessionInDatabase = false },
 	} {
 		t.Run(name, func(t *testing.T) {
 			e := newEnv(t, mutate, memstore.New())

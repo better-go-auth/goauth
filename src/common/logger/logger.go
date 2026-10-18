@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"runtime"
+	"strings"
 )
 
 type Opt struct {
@@ -22,8 +24,21 @@ type Opt struct {
 // 	slog.Info(coloredMsg, slog.String("file", fmt.Sprintf("%s:%d", frame.File, frame.Line)))
 // }
 
+func useColor() bool {
+	if v := os.Getenv("NO_COLOR"); v != "" {
+		return false
+	}
+	if v := os.Getenv("TERM"); strings.EqualFold(v, "dumb") {
+		return false
+	}
+	return true
+}
+
 func ErrorCtx(ctx context.Context, name string, output any, opt *Opt) {
-	coloredMsg := string(ColorMagenta) + name + string(ColorReset) + " " + string(ColorYellow) + fmt.Sprintf("=| %v", output) + string(ColorReset)
+	coloredMsg := name + fmt.Sprintf("=| %v", output)
+	if useColor() {
+		coloredMsg = string(ColorMagenta) + name + string(ColorReset) + " " + string(ColorYellow) + fmt.Sprintf("=| %v", output) + string(ColorReset)
+	}
 	pc := make([]uintptr, 15)
 	n := runtime.Callers(2, pc)
 	frames := runtime.CallersFrames(pc[:n])

@@ -123,9 +123,6 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// every route goauth and its plugins register is marked so its errors use the goauth format
 	api = types.WrapAPI(api)
 
-	if opts.Advanced.GenerateID != nil {
-		models.SetIDGenerator(opts.Advanced.GenerateID)
-	}
 	models.SetTableNames(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
 
 	if opts.Conn == nil && opts.Repositories == nil {

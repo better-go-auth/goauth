@@ -32,11 +32,8 @@ type Advanced struct {
 	CrossSubDomainCookies CrossSubDomainCookies
 	DisableCSRFCheck      bool
 	DisableOriginCheck    bool
-	// GenerateID overrides the default ID generator for new records.
-	// Default is a 32-char alphanumeric string (better-auth compat); set to idgen.ULID for 26-char ULIDs.
-	// Also exposed as Advanced.Database.GenerateID for better-auth compat (kept in sync).
-	GenerateID func() string
-	// Database mirrors better-auth's `advanced.database.generateId` (preferred alias for GenerateID).
+	// Database mirrors better-auth's `advanced.database.generateId`.
+	// Set GenerateID to override the default 32-char alphanumeric ID generator.
 	Database AdvancedDatabase
 	IPAddress  IPAddress
 

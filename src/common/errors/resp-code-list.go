@@ -166,6 +166,15 @@ var errorText = map[RespCode]string{
 	FailedToUnlinkLastAccount:            "You can't unlink your last account",
 	SessionNotFresh:                      "Session is not fresh",
 
+	// Missing codes now get RespCode fallback via Msg(); add explicit text only when user-visible message should differ from code.
+	NotModified:       "Not modified",
+	PasswordDontMatch: "Password does not match",
+	CodeExpired:       "Code has expired",
+	UserNotActive:     "User is not active",
+	AccountBanned:     "Account has been banned",
+	Unlinked:          "Account has been unlinked",
+	UnlinkNotAllowed:  "Unlinking this account is not allowed",
+
 	//------------------------------ Entities -----------------
 	UserCreated:    "User Created",
 	UserNotCreated: "User Not Created",

@@ -20,11 +20,43 @@ func NewGORMAdminMigrator(db *gorm.DB) migration.IMigrator {
 	return &GORMMigrator{db: db}
 }
 
+// widenIDs widens `id` columns from legacy 26-char ULID / 36-char UUID to 32-char better-auth IDs.
+// It is a no-op on SQLite/Postgres (varchar is unconstrained) and only runs once on MySQL.
+func widenIDs(db *gorm.DB) error {
+	if db.Dialector.Name() != "mysql" {
+		return nil
+	}
+	m := db.Migrator()
+	for _, model := range []any{
+		&models.User{}, &models.Session{}, &models.Account{}, &models.Verification{},
+	} {
+		cols, err := m.ColumnTypes(model)
+		if err != nil {
+			continue
+		}
+		for _, col := range cols {
+			if col.Name() != "id" {
+				continue
+			}
+			length, _ := col.Length()
+			if length > 0 && length < 32 {
+				if err := m.AlterColumn(model, "id"); err != nil {
+					return fmt.Errorf("widen id: %w", err)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // Migrate executes GORM AutoMigrate for User and Session models.
 func (m *GORMMigrator) Migrate(_ context.Context) error {
-	// if err := PrepareLegacyColumns(m.db); err != nil {
-	// 	return fmt.Errorf("gorm/migrate-admin: %w", err)
-	// }
+	if err := PrepareLegacyColumns(m.db); err != nil {
+		return fmt.Errorf("gorm/migrate-admin: %w", err)
+	}
+	if err := widenIDs(m.db); err != nil {
+		return fmt.Errorf("gorm/migrate-admin: %w", err)
+	}
 	err := m.db.AutoMigrate(
 		&models.User{},
 		&models.Session{},
@@ -34,12 +66,12 @@ func (m *GORMMigrator) Migrate(_ context.Context) error {
 	if err != nil {
 		return fmt.Errorf("gorm/migrate-admin: %w", err)
 	}
-	// if err := caseSensitiveTokens(m.db); err != nil {
-	// 	return fmt.Errorf("gorm/migrate-admin: %w", err)
-	// }
-	// if err := backfillUserNames(m.db); err != nil {
-	// 	return fmt.Errorf("gorm/migrate-admin: backfill user names: %w", err)
-	// }
+	if err := caseSensitiveTokens(m.db); err != nil {
+		return fmt.Errorf("gorm/migrate-admin: %w", err)
+	}
+	if err := backfillUserNames(m.db); err != nil {
+		return fmt.Errorf("gorm/migrate-admin: backfill user names: %w", err)
+	}
 	return nil
 }
 

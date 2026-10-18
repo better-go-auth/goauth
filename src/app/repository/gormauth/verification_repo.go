@@ -89,22 +89,11 @@ func (r *VerificationRepo) DeleteVerificationsByValue(ctx context.Context, ident
 	if identifierPrefix == "" || value == "" {
 		return nil
 	}
-	var rows []models.Verification
 	db := gormutil.GetDB(ctx, r.db)
-	// filter the prefix in Go instead of LIKE, so identifiers containing % or _ need no escaping
-	if err := db.Where(&models.Verification{Value: value}, "Value").Find(&rows).Error; err != nil {
-		return fmt.Errorf("gorm/verification: find by value: %w", err)
-	}
-	var ids []string
-	for _, v := range rows {
-		if strings.HasPrefix(v.Identifier, identifierPrefix) {
-			ids = append(ids, v.ID)
-		}
-	}
-	if len(ids) == 0 {
-		return nil
-	}
-	if err := db.Where(clause.IN{Column: gormutil.Col(r.db, &models.Verification{}, "ID"), Values: toAny(ids)}).Delete(&models.Verification{}).Error; err != nil {
+	escaped := strings.ReplaceAll(identifierPrefix, "\\", "\\\\")
+	escaped = strings.ReplaceAll(escaped, "%", "\\%")
+	escaped = strings.ReplaceAll(escaped, "_", "\\_")
+	if err := db.Where("value = ? AND identifier LIKE ? ESCAPE '\\'", value, escaped+"%").Delete(&models.Verification{}).Error; err != nil {
 		return fmt.Errorf("gorm/verification: delete by value: %w", err)
 	}
 	return nil

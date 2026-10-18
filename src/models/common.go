@@ -59,19 +59,8 @@ type OperationAccessDto struct {
 }
 
 // NewID generates a 32-char alphanumeric ID (better-auth default).
-// Override via SetIDGenerator or Advanced.GenerateID; use idgen.ULID for legacy 26-char ULIDs.
-var idGenerator = func() string { return idgen.GenerateID() }
-
-// SetIDGenerator replaces the generator used for new record IDs (nil restores 32-char default).
-func SetIDGenerator(fn func() string) {
-	if fn == nil {
-		fn = func() string { return idgen.GenerateID() }
-	}
-	idGenerator = fn
-}
-
 func NewID() string {
-	return idGenerator()
+	return idgen.GenerateID()
 }
 
 func NewSecureId() string {

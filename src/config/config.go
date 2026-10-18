@@ -106,13 +106,7 @@ func (opts *AuthConfig) SetDefaults() {
 	if opts.Advanced.IPAddress.IPv6Subnet <= 0 {
 		opts.Advanced.IPAddress.IPv6Subnet = DefaultIPv6Subnet
 	}
-	// prefer advanced.database.generateId (better-auth path); fall back to Advanced.GenerateID
-	if opts.Advanced.Database.GenerateID != nil && opts.Advanced.GenerateID == nil {
-		opts.Advanced.GenerateID = opts.Advanced.Database.GenerateID
-	}
-	if opts.Advanced.GenerateID != nil && opts.Advanced.Database.GenerateID == nil {
-		opts.Advanced.Database.GenerateID = opts.Advanced.GenerateID
-	}
+
 	if opts.EmailAndPassword.MinPasswordLength <= 0 {
 		opts.EmailAndPassword.MinPasswordLength = 8
 	}
@@ -130,6 +124,9 @@ func (opts *AuthConfig) SetDefaults() {
 		opts.cachedDomainOnce = true
 	}
 
+	if opts.Session.ExpiresIn == 0 && !opts.Session.StoreSessionInDatabase {
+		opts.Session.StoreSessionInDatabase = true
+	}
 	if opts.Session.ExpiresIn <= 0 {
 		opts.Session.ExpiresIn = 7 * 24 * time.Hour
 	}

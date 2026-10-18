@@ -12,8 +12,8 @@ type Session struct {
 	UpdateAge time.Duration
 	// DisableSessionRefresh keeps expiresAt fixed regardless of UpdateAge.
 	DisableSessionRefresh bool
-	// StoreSessionInDatabase also writes sessions to the DB when secondary storage is set (default true).
-	StoreSessionInDatabase *bool
+	// StoreSessionInDatabase writes sessions to the DB when secondary storage is set (default true).
+	StoreSessionInDatabase bool
 	// PreserveSessionInDatabase keeps DB rows when a session is revoked from secondary storage.
 	PreserveSessionInDatabase bool
 	// FreshAge is how long after creation a session counts as fresh (default 1 day, negative disables the check).
@@ -57,7 +57,7 @@ type SessionJWT struct {
 
 // StoreInDatabase reports whether sessions are persisted to the database.
 func (s Session) StoreInDatabase() bool {
-	return s.StoreSessionInDatabase == nil || *s.StoreSessionInDatabase
+	return s.StoreSessionInDatabase
 }
 
 // RotatesRefreshToken reports whether /refresh issues a new refresh token (default false).

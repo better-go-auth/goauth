@@ -124,7 +124,11 @@ func (r *SessionRepo) DeleteExpiredSessions(ctx context.Context) error {
 
 func (r *SessionRepo) ListSessions(ctx context.Context, userID string) ([]models.Session, error) {
 	var sessions []models.Session
-	err := gormutil.GetDB(ctx, r.db).Where(sessionsOfUser(userID), "UserID").Find(&sessions).Error
+	err := gormutil.GetDB(ctx, r.db).
+		Where(sessionsOfUser(userID), "UserID").
+		Where("expires_at > ?", time.Now().UTC()).
+		Where("LENGTH(token) = 32").
+		Find(&sessions).Error
 	if err != nil {
 		return nil, fmt.Errorf("gorm/session: list by user: %w", err)
 	}

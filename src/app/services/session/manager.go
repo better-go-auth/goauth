@@ -52,15 +52,7 @@ type ManagerOption func(*Manager)
 // WithClock overrides the clock used for expiry/refresh checks (for tests).
 func WithClock(fn func() time.Time) ManagerOption { return func(m *Manager) { m.now = fn } }
 
-// WithIDGenerator overrides the ID generator used for new session IDs (for tests).
-func WithIDGenerator(fn func() string) ManagerOption {
-	return func(m *Manager) {
-		// stored via package-level generator; keep manager-level override if needed in future
-		if fn != nil {
-			// manager-local override not yet needed; rely on models.SetIDGenerator
-		}
-	}
-}
+
 
 // WithManagerOptions applies options to an existing Manager (for tests wiring after NewManager).
 func (mgr *Manager) WithOptions(opts ...ManagerOption) { for _, o := range opts { o(mgr) } }
