@@ -124,7 +124,7 @@ func (opts *AuthConfig) SetDefaults() {
 		opts.cachedDomainOnce = true
 	}
 
-	if opts.Session.ExpiresIn == 0 && !opts.Session.StoreSessionInDatabase {
+	if !opts.Session.StoreSessionInDatabaseSet && !opts.Session.StoreSessionInDatabase {
 		opts.Session.StoreSessionInDatabase = true
 	}
 	if opts.Session.ExpiresIn <= 0 {

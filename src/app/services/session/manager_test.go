@@ -196,8 +196,7 @@ func TestFreshness(t *testing.T) {
 }
 
 func TestSecondaryStorageOnly(t *testing.T) {
-	off := false
-	f := newFixture(t, config.Session{StoreSessionInDatabase: off}, true)
+	f := newFixture(t, config.Session{StoreSessionInDatabase: false, StoreSessionInDatabaseSet: true}, true)
 	ctx := context.Background()
 
 	a, _ := f.mgr.Create(ctx, f.user, Meta{}, CreateOptions{})

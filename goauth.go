@@ -173,7 +173,11 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 
 	// one session store for cookie, bearer and legacy JWT clients
 	cookieMgr := cookies.New(opts.AuthConfig)
-	sessionMgr := sessionsvc.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks)
+	var sessOpts []sessionsvc.ManagerOption
+	if opts.Advanced.Database.GenerateID != nil {
+		sessOpts = append(sessOpts, sessionsvc.WithGenerateID(opts.Advanced.Database.GenerateID))
+	}
+	sessionMgr := sessionsvc.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks, sessOpts...)
 	mdlWare.WithSessions(humaadapter.NewSessionClaims(sessionMgr, cookieMgr, repos))
 
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)

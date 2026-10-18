@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	authdtos "github.com/better-go-auth/goauth/src/models/dtos"
 )
@@ -30,6 +31,7 @@ type SessionCreateOptions struct {
 
 // ISessionService defines normal Better-Auth session operations (implemented by session.Manager).
 type ISessionManager interface {
+	UpdatePatch(ctx context.Context, swu *authdtos.SessionWithUser, patch config.SessionPatch) (*authdtos.SessionWithUser, error)
 	Create(ctx context.Context, user *models.User, meta SessionMeta, opt SessionCreateOptions) (*authdtos.SessionWithUser, error)
 	Get(ctx context.Context, tok string) (*authdtos.SessionWithUser, error)
 	Update(ctx context.Context, swu *authdtos.SessionWithUser, data map[string]any) (*authdtos.SessionWithUser, error)

@@ -42,6 +42,7 @@ type Manager struct {
 	conf         config.Session
 	hooks        plugins.HookRegistry
 	now          func() time.Time
+	generateID   func() string
 }
 
 var _ interfaces.ISessionManager = (*Manager)(nil)
@@ -52,6 +53,9 @@ type ManagerOption func(*Manager)
 // WithClock overrides the clock used for expiry/refresh checks (for tests).
 func WithClock(fn func() time.Time) ManagerOption { return func(m *Manager) { m.now = fn } }
 
+// WithGenerateID overrides the ID generator used for new sessions (default idgen.GenerateID).
+func WithGenerateID(fn func() string) ManagerOption { return func(m *Manager) { m.generateID = fn } }
+
 
 
 // WithManagerOptions applies options to an existing Manager (for tests wiring after NewManager).
@@ -61,7 +65,7 @@ func (mgr *Manager) WithOptions(opts ...ManagerOption) { for _, o := range opts 
 
 // NewManager builds a Manager; store and hooks may be nil.
 func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions repo_interfaces.ISessionRepo, store sec_storage.SecondaryStorage, hooks plugins.HookRegistry, opts ...ManagerOption) *Manager {
-	mgr := &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now}
+	mgr := &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now, generateID: idgen.GenerateID}
 	for _, o := range opts { o(mgr) }
 	if hooks != nil {
 		hooks.OnUserBanned(func(ctx context.Context, userID string, reason *string) error {
@@ -92,7 +96,11 @@ func (mgr *Manager) Create(ctx context.Context, user *models.User, meta Meta, op
 	tok := idgen.GenerateToken()
 	id := opt.ID
 	if id == "" {
-		id = models.NewID()
+		if mgr.generateID != nil {
+			id = mgr.generateID()
+		} else {
+			id = idgen.GenerateID()
+		}
 	}
 
 	// 4. construct session model with timestamps, metadata, and optional plugin context
@@ -436,6 +444,11 @@ func setSessionFields(s *dtos.SessionData, data map[string]any) error {
 		}
 	}
 	return nil
+}
+
+// UpdatePatch is the typed version of Update — pass SessionPatch to avoid map+reflect. It delegates to Update.
+func (mgr *Manager) UpdatePatch(ctx context.Context, swu *dtos.SessionWithUser, patch config.SessionPatch) (*dtos.SessionWithUser, error) {
+	return mgr.Update(ctx, swu, patch.ToMap())
 }
 
 // List returns the live sessions of userID.

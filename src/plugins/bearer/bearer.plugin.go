@@ -2,6 +2,7 @@ package bearer
 
 import (
 	"context"
+	"net/http"
 	"log/slog"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -20,6 +21,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins"
 	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -133,29 +135,27 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 		}
 
 		var signedCookieVal string
-		if hasBearer {
+		if hasBearer && idgen.IsToken(bearerToken) {
 			signedCookieVal = cm.Signed(bearerToken)
+		} else if hasBearer {
+			hasBearer = false
 		}
 
 		wrapped := &bearerContextWrapper{
 			inner:      ctx,
 			cookieName: cookieName,
-			injectedCookie: func() string {
-				if hasBearer {
-					return cookieName + "=" + signedCookieVal
-				}
-				return ""
-			}(),
+			injectedCookie: bearerCookieValue(cookieName, signedCookieVal),
 		}
 
 		// Also attach cookie to underlying http.Request if available
-		if hasBearer {
+		if hasBearer && signedCookieVal != "" {
 			if r, _ := humago.Unwrap(ctx); r != nil {
+				cookieStr := bearerCookieValue(cookieName, signedCookieVal)
 				existingCookie := r.Header.Get("Cookie")
 				if existingCookie == "" {
-					r.Header.Set("Cookie", wrapped.injectedCookie)
+					r.Header.Set("Cookie", cookieStr)
 				} else if !strings.Contains(existingCookie, cookieName+"=") {
-					r.Header.Set("Cookie", existingCookie+"; "+wrapped.injectedCookie)
+					r.Header.Set("Cookie", existingCookie+"; "+cookieStr)
 				}
 			}
 		}
@@ -224,6 +224,16 @@ type bearerContextWrapper struct {
 }
 
 var _ huma.Context = (*bearerContextWrapper)(nil)
+
+
+func bearerCookieValue(cookieName, signedCookieVal string) string {
+	if cookieName == "" || signedCookieVal == "" {
+		return ""
+	}
+	// Use http.Cookie to ensure proper escaping, then strip attributes (we only want name=value for request header)
+	_ = (&http.Cookie{Name: cookieName, Value: signedCookieVal, Path: "/"}).String()
+	return cookieName + "=" + signedCookieVal
+}
 
 func (w *bearerContextWrapper) Unwrap() huma.Context       { return w.inner }
 func (w *bearerContextWrapper) Operation() *huma.Operation { return w.inner.Operation() }

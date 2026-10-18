@@ -47,6 +47,8 @@ type AdvancedDatabase struct {
 }
 
 // AdvancedGoAuth holds advanced options better-auth doesn't have.
+func WithStoreInDatabase(s *Session, v bool) { s.StoreSessionInDatabase = v; s.StoreSessionInDatabaseSet = true }
+
 type AdvancedGoAuth struct {
 	// OverrideHumaErrors formats every Huma error in the process (including host routes) as {"code","message"}.
 	// By default only goauth routes use that format.

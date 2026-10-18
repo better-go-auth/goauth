@@ -2,6 +2,7 @@ package accesstoken
 
 import (
 	"context"
+	"net/http"
 	"fmt"
 	"strings"
 	"time"
@@ -25,6 +26,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
@@ -340,14 +342,12 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 							ctx = huma.WithValue(ctx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
 						}
 
-						// Inject signed session cookie so standard handlers and humago find it
-						signedCookieVal := cm.Signed(tok)
-						if r, _ := humago.Unwrap(ctx); r != nil {
-							existingCookie := r.Header.Get("Cookie")
-							if existingCookie == "" {
-								r.Header.Set("Cookie", cookieName+"="+signedCookieVal)
-							} else if !strings.Contains(existingCookie, cookieName+"=") {
-								r.Header.Set("Cookie", existingCookie+"; "+cookieName+"="+signedCookieVal)
+						if !idgen.IsToken(tok) {
+							tok = ""
+						} else {
+							signedCookieVal := cm.Signed(tok)
+							if r, _ := humago.Unwrap(ctx); r != nil {
+								injectCookieHeader(r, cookieName, signedCookieVal)
 							}
 						}
 					}
@@ -362,14 +362,10 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 						ctx = huma.WithValue(ctx, constant.CTXCompany_ID.Str(), *sw.Session.ActiveOrganizationID)
 					}
 
-					// Inject signed session cookie so standard handlers and humago find it
-					signedCookieVal := cm.Signed(raw)
-					if r, _ := humago.Unwrap(ctx); r != nil {
-						existingCookie := r.Header.Get("Cookie")
-						if existingCookie == "" {
-							r.Header.Set("Cookie", cookieName+"="+signedCookieVal)
-						} else if !strings.Contains(existingCookie, cookieName+"=") {
-							r.Header.Set("Cookie", existingCookie+"; "+cookieName+"="+signedCookieVal)
+					if idgen.IsToken(raw) {
+						signedCookieVal := cm.Signed(raw)
+						if r, _ := humago.Unwrap(ctx); r != nil {
+							injectCookieHeader(r, cookieName, signedCookieVal)
 						}
 					}
 				}
@@ -381,6 +377,57 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 }
 
 // Migrator returns nil because access-token plugin uses core tables.
+
+func injectCookieHeader(r *http.Request, cookieName, signedCookieVal string) {
+	if cookieName == "" || signedCookieVal == "" {
+		return
+	}
+	cookieStr := (&http.Cookie{Name: cookieName, Value: signedCookieVal, Path: "/"}).String()
+	// cookieStr is "name=value; Path=/"; we only need "name=value" for request header
+	if idx := len(cookieName) + 1 + len(signedCookieVal); idx < len(cookieStr) {
+		cookieStr = cookieName + "=" + signedCookieVal
+	}
+	existingCookie := r.Header.Get("Cookie")
+	if existingCookie == "" {
+		r.Header.Set("Cookie", cookieStr)
+	} else if !containsCookie(existingCookie, cookieName) {
+		r.Header.Set("Cookie", existingCookie+"; "+cookieStr)
+	}
+}
+
+func containsCookie(header, name string) bool {
+	// minimal check; full parse not needed on hot path
+	for _, part := range splitCookieHeader(header) {
+		if part == name || len(part) > len(name) && part[:len(name)+1] == name+"=" {
+			return true
+		}
+		// fallback: substring search for "name="
+		_ = part
+	}
+	// Use substring as fallback (covers compact headers)
+	return containsSubstr(header, name+"=")
+}
+
+func containsSubstr(s, sub string) bool { return len(s) >= len(sub) && indexOf(s, sub) >= 0 }
+func indexOf(s, sub string) int { for i := 0; i <= len(s)-len(sub); i++ { if s[i:i+len(sub)] == sub { return i } }; return -1 }
+func splitCookieHeader(h string) []string {
+	parts := []string{}
+	start := 0
+	for i := 0; i < len(h); i++ {
+		if h[i] == ';' {
+			parts = append(parts, trimSpace(h[start:i]))
+			start = i + 1
+		}
+	}
+	parts = append(parts, trimSpace(h[start:]))
+	return parts
+}
+func trimSpace(s string) string {
+	for len(s) > 0 && (s[0] == ' ' || s[0] == '	') { s = s[1:] }
+	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '	') { s = s[:len(s)-1] }
+	return s
+}
+
 func (p *Plugin) Migrator() migration.IMigrator {
 	return nil
 }
