@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
@@ -11,7 +10,6 @@ import (
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers/token"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -65,8 +63,6 @@ func (m *AuthMiddleware) WithSessions(r SessionClaimsResolver) { m.sessions = r 
 
 func looksLikeJWT(tok string) bool { return strings.Count(tok, ".") == 2 }
 
-// isJWT is deprecated: use looksLikeJWT.
-func isJWT(tok string) bool { return looksLikeJWT(tok) }
 
 func writeAuthError(ctx huma.Context, err *autherr.AuthError) {
 	if err == nil {
@@ -109,21 +105,7 @@ type IAuthMiddleware interface {
 	Authorize(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context))
 }
 
-type JWTTokenVerifier struct {
-	accessSecret string
-}
 
-func NewJWTTokenVerifier(accessSecret string) *JWTTokenVerifier {
-	return &JWTTokenVerifier{accessSecret: accessSecret}
-}
-
-func (v *JWTTokenVerifier) VerifyToken(tokenStr string) (token.CustomClaims, error) {
-	claims, err := jwttoken.ValidateAccessToken(tokenStr, v.accessSecret)
-	if err != nil || claims == nil {
-		return token.CustomClaims{}, fmt.Errorf("invalid token: %w", err)
-	}
-	return *claims, nil
-}
 
 // Trace Middleware adds telemetry span attributes
 func (m *AuthMiddleware) Trace(operationID string) func(huma.Context, func(huma.Context)) {

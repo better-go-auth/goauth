@@ -41,6 +41,7 @@ type InitContext struct {
 	SecondaryStorage sec_storage.SecondaryStorage
 	DB               *gorm.DB
 	CookieManager    *cookies.Manager
+	GenerateID       func() string
 
 	// Extras is intentionally disabled. We do not use this field; all
 	// dependencies are provided via the typed fields above (DB,

@@ -1,6 +1,10 @@
 package models
 
-import "time"
+import (
+	"time"
+
+	"gorm.io/gorm/schema"
+)
 
 // Account is better-auth's `account` model: one row per sign-in method of a user
 // (providerId "credential" holds the password hash; OAuth providers hold their tokens).
@@ -37,7 +41,7 @@ const (
 func (p Providers) S() string {
 	return string(p)
 }
-func (Account) TableName() string { return TableName(ModelAccount) }
+func (Account) TableName(namer schema.Namer) string { return ResolveTableName(namer, ModelAccount) }
 
 func TimeNow() time.Time {
 	return time.Now().UTC()

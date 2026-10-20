@@ -27,7 +27,7 @@ var (
 	ErrResetPasswordDisabled       = autherr.Err(http.StatusBadRequest, "RESET_PASSWORD_DISABLED", "Reset password isn't enabled")
 	ErrNoFieldsToUpdate            = autherr.Err(http.StatusBadRequest, "NO_FIELDS_TO_UPDATE", "No fields to update")
 	ErrEmailIsTheSame              = autherr.Err(http.StatusBadRequest, "EMAIL_IS_THE_SAME", "Email is the same")
-	ErrDeleteUserDisabled          = autherr.Err(http.StatusNotFound, "NOT_FOUND", "data not found")
+	ErrDeleteUserDisabled          = autherr.Err(http.StatusNotFound, "NOT_FOUND", "Not Found")
 )
 
 // Deps are the collaborators of Service. Tx is optional.

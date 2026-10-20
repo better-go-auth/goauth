@@ -32,6 +32,15 @@ const (
 	OrUpdateMemberRole = consts.OperationId("Or-15-UpdateMemberRole")
 	OrRemoveMember     = consts.OperationId("Or-16-RemoveMember")
 
+	// Teams
+	OrCreateTeam       = consts.OperationId("Or-17-CreateTeam")
+	OrUpdateTeam       = consts.OperationId("Or-18-UpdateTeam")
+	OrDeleteTeam       = consts.OperationId("Or-19-DeleteTeam")
+	OrListTeams        = consts.OperationId("Or-20-ListTeams")
+	OrAddTeamMember    = consts.OperationId("Or-21-AddTeamMember")
+	OrRemoveTeamMember = consts.OperationId("Or-22-RemoveTeamMember")
+	OrSetActiveTeam    = consts.OperationId("Or-23-SetActiveTeam")
+
 	// Admin
 	OrAdminApproveOrg = consts.OperationId("Or-Admin-1-ApproveOrg")
 	OrAdminBlockOrg   = consts.OperationId("Or-Admin-2-BlockOrg")
@@ -61,6 +70,15 @@ var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	OrListMembers:      {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "List Organization Members"},
 	OrUpdateMemberRole: {AllowedRoles: []string{orgmodels.OrgRoleOwner.String()}, Description: "Update Member Role"},
 	OrRemoveMember:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Remove Member"},
+
+	// Teams
+	OrCreateTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Create Team"},
+	OrUpdateTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Update Team"},
+	OrDeleteTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Delete Team"},
+	OrListTeams:        {AllowedRoles: []string{}, Description: "List Teams"},
+	OrAddTeamMember:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Add Team Member"},
+	OrRemoveTeamMember: {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Remove Team Member"},
+	OrSetActiveTeam:    {AllowedRoles: []string{}, Description: "Set Active Team"},
 
 	// Admin (system-level Admin role required — enforced in handler, not middleware)
 	OrAdminApproveOrg: {AllowedRoles: []string{}, Description: "Approve Pending Organization"},
@@ -226,6 +244,71 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Tags:        memberTags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.RemoveMember)
+
+	teamTags := []string{"Teams"}
+	huma.Register(api, huma.Operation{
+		OperationID: OrCreateTeam.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/organization/team/create",
+		Summary:     "Create Team",
+		Description: "Creates a new team within an organization.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.CreateTeam)
+	huma.Register(api, huma.Operation{
+		OperationID: OrUpdateTeam.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/organization/team/update",
+		Summary:     "Update Team",
+		Description: "Updates an existing team's details.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.UpdateTeam)
+	huma.Register(api, huma.Operation{
+		OperationID: OrDeleteTeam.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/organization/team/delete",
+		Summary:     "Delete Team",
+		Description: "Deletes a team from an organization.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.DeleteTeam)
+	huma.Register(api, huma.Operation{
+		OperationID: OrListTeams.Str(),
+		Method:      http.MethodGet,
+		Path:        path + "/organization/team/list",
+		Summary:     "List Teams",
+		Description: "Returns all teams within an organization.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.ListTeams)
+	huma.Register(api, huma.Operation{
+		OperationID: OrAddTeamMember.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/organization/team/add-member",
+		Summary:     "Add Team Member",
+		Description: "Adds an existing organization member to a team.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.AddTeamMember)
+	huma.Register(api, huma.Operation{
+		OperationID: OrRemoveTeamMember.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/organization/team/remove-member",
+		Summary:     "Remove Team Member",
+		Description: "Removes a member from a team.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.RemoveTeamMember)
+	huma.Register(api, huma.Operation{
+		OperationID: OrSetActiveTeam.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/organization/set-active-team",
+		Summary:     "Set Active Team",
+		Description: "Sets or unsets the active team for the session.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.SetActiveTeam)
 
 	adminTags := []string{"Admin-Orgs"}
 	// Admin Org Management

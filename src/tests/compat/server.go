@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	goauth "github.com/better-go-auth/goauth"
@@ -21,6 +22,7 @@ import (
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/google/uuid"
+	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -59,17 +61,33 @@ func WithPlugin(p plugin.Plugin) Option {
 	return func(o *goauth.GoAuthOptions) { o.Plugins = append(o.Plugins, p) }
 }
 
-// NewServer starts goauth on sqlite + in-memory secondary storage; it is closed on test cleanup.
+// WithDB configures a custom *gorm.DB connection (e.g. Postgres or shared SQLite).
+func WithDB(db *gorm.DB) Option {
+	return func(o *goauth.GoAuthOptions) { o.Conn = db }
+}
+
+// NewServer starts goauth on sqlite (or TEST_DATABASE_URL) + in-memory secondary storage; it is closed on test cleanup.
 func NewServer(t testing.TB, opts ...Option) *Server {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:compat_%s?mode=memory&cache=shared", uuid.NewString())),
-		&gorm.Config{Logger: logger.Discard})
-	if err != nil {
-		t.Fatalf("compattest: open sqlite: %v", err)
-	}
 	store, err := memory.NewSecondaryStorage()
 	if err != nil {
 		t.Fatalf("compattest: secondary storage: %v", err)
+	}
+
+	var db *gorm.DB
+	if dsn := os.Getenv("TEST_DATABASE_URL"); dsn != "" {
+		var err error
+		db, err = gorm.Open(gormpostgres.Open(dsn), &gorm.Config{Logger: logger.Discard})
+		if err != nil {
+			t.Fatalf("compattest: open postgres from TEST_DATABASE_URL: %v", err)
+		}
+	} else {
+		var err error
+		db, err = gorm.Open(sqlite.Open(fmt.Sprintf("file:compat_%s?mode=memory&cache=shared", uuid.NewString())),
+			&gorm.Config{Logger: logger.Discard})
+		if err != nil {
+			t.Fatalf("compattest: open sqlite: %v", err)
+		}
 	}
 
 	o := goauth.GoAuthOptions{
@@ -83,6 +101,7 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 	for _, opt := range opts {
 		opt(&o)
 	}
+	db = o.Conn
 
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("goauth compat", "test"))

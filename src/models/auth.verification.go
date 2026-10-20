@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 // VerificationPurpose describes what a verification token is used for.
@@ -48,4 +49,6 @@ func (v *Verification) BeforeSave(*gorm.DB) error {
 	v.ExpiresAt = v.ExpiresAt.UTC()
 	return nil
 }
-func (Verification) TableName() string { return TableName(ModelVerification) }
+func (Verification) TableName(namer schema.Namer) string {
+	return ResolveTableName(namer, ModelVerification)
+}

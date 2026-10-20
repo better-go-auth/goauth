@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"maps"
-	"reflect"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
@@ -65,6 +64,9 @@ func (mgr *Manager) WithOptions(opts ...ManagerOption) { for _, o := range opts 
 
 // NewManager builds a Manager; store and hooks may be nil.
 func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions repo_interfaces.ISessionRepo, store sec_storage.SecondaryStorage, hooks plugins.HookRegistry, opts ...ManagerOption) *Manager {
+	if !conf.StoreSessionInDatabaseSet && !conf.StoreSessionInDatabase {
+		conf.StoreSessionInDatabase = true
+	}
 	mgr := &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now, generateID: idgen.GenerateID}
 	for _, o := range opts { o(mgr) }
 	if hooks != nil {
@@ -380,18 +382,16 @@ func (mgr *Manager) DeleteUserSessions(ctx context.Context, userID string) error
 	return nil
 }
 
+// Deprecated: Use UpdatePatch instead to avoid map allocations.
 // Update writes session fields (keyed by Go field name) to the database and the cached copy.
 // It returns nil when the session no longer exists.
-// TODO: instead of map[string]any use a struct
 func (mgr *Manager) Update(ctx context.Context, swu *dtos.SessionWithUser, data map[string]any) (*dtos.SessionWithUser, error) {
-	// 1. copy update fields and set UpdatedAt to current time
 	now := mgr.now().UTC()
 	fields := make(map[string]any, len(data)+1)
 	maps.Copy(fields, data)
 	fields["UpdatedAt"] = now
 
 	out := *swu
-	// 2. apply update to database if DB storage is enabled
 	if mgr.storeInDB() {
 		s, err := mgr.sessionsRepo.UpdateSession(ctx, swu.Session.ID, fields)
 		if err != nil {
@@ -402,7 +402,6 @@ func (mgr *Manager) Update(ctx context.Context, swu *dtos.SessionWithUser, data 
 		}
 		out.Session = dtos.SessionFromModel(s)
 	} else {
-		// 2b. otherwise verify session exists in cache and update struct via reflection
 		if cached, _ := mgr.fromStore(ctx, swu.Session.Token); cached == nil {
 			return nil, nil
 		}
@@ -412,41 +411,78 @@ func (mgr *Manager) Update(ctx context.Context, swu *dtos.SessionWithUser, data 
 		out.Session.UpdatedAt = dtos.Time(now)
 	}
 
-	// 3. sync updated session to secondary storage cache
 	if mgr.secStore != nil {
 		if err := mgr.cache(ctx, &out); err != nil {
 			return nil, err
 		}
 	}
-
-	// 4. return updated session
 	return &out, nil
 }
 
-// setSessionFields applies string/nil values by Go field name to the cached session shape.
+// setSessionFields applies string/nil values by Go field name without reflection overhead.
 func setSessionFields(s *dtos.SessionData, data map[string]any) error {
-	rv := reflect.ValueOf(s).Elem()
 	for name, val := range data {
-		f := rv.FieldByName(name)
-		if !f.IsValid() || !f.CanSet() {
-			return fmt.Errorf("sessions: unknown session field %q", name)
-		}
-		str, isString := val.(string)
-		switch {
-		case val == nil:
-			f.Set(reflect.Zero(f.Type()))
-		case isString && f.Kind() == reflect.Pointer && f.Type().Elem().Kind() == reflect.String:
-			f.Set(reflect.ValueOf(&str))
-		case isString && f.Kind() == reflect.String:
-			f.SetString(str)
+		var strPtr *string
+		switch v := val.(type) {
+		case nil:
+			strPtr = nil
+		case string:
+			strPtr = &v
+		case *string:
+			strPtr = v
 		default:
 			return fmt.Errorf("sessions: cannot set %s to %T", name, val)
+		}
+
+		switch name {
+		case "ActiveOrganizationID":
+			s.ActiveOrganizationID = strPtr
+		case "ActiveOrganizationRole":
+			s.ActiveOrganizationRole = strPtr
+		case "ActiveTeamID":
+			s.ActiveTeamID = strPtr
+		case "DeviceToken":
+			s.DeviceToken = strPtr
+		case "DeviceID":
+			s.DeviceID = strPtr
+		case "DeviceName":
+			s.DeviceName = strPtr
+		case "DeviceType":
+			s.DeviceType = strPtr
+		case "ImpersonatedBy":
+			s.ImpersonatedBy = strPtr
+		default:
+			return fmt.Errorf("sessions: unknown session field %q", name)
 		}
 	}
 	return nil
 }
 
-// UpdatePatch is the typed version of Update — pass SessionPatch to avoid map+reflect. It delegates to Update.
+// func (mgr *Manager) applyPatch(s *dtos.SessionData, patch config.SessionPatch) {
+// 	if patch.ActiveOrganizationID != nil {
+// 		s.ActiveOrganizationID = patch.ActiveOrganizationID
+// 	}
+// 	if patch.ActiveOrganizationRole != nil {
+// 		s.ActiveOrganizationRole = patch.ActiveOrganizationRole
+// 	}
+// 	if patch.ActiveTeamID != nil {
+// 		s.ActiveTeamID = patch.ActiveTeamID
+// 	}
+// 	if patch.DeviceToken != nil {
+// 		s.DeviceToken = patch.DeviceToken
+// 	}
+// 	if patch.DeviceID != nil {
+// 		s.DeviceID = patch.DeviceID
+// 	}
+// 	if patch.DeviceName != nil {
+// 		s.DeviceName = patch.DeviceName
+// 	}
+// 	if patch.DeviceType != nil {
+// 		s.DeviceType = patch.DeviceType
+// 	}
+// }
+
+// UpdatePatch is the typed version of Update — applies SessionPatch with zero reflection.
 func (mgr *Manager) UpdatePatch(ctx context.Context, swu *dtos.SessionWithUser, patch config.SessionPatch) (*dtos.SessionWithUser, error) {
 	return mgr.Update(ctx, swu, patch.ToMap())
 }

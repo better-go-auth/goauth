@@ -123,9 +123,6 @@ func (h *DefaultHookRegistry) Register(service HookService) {
 	if service == nil {
 		return
 	}
-	if h.services == nil {
-		h.services = make([]HookService, 0)
-	}
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	for _, existing := range h.services {

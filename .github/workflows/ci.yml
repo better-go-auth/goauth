@@ -19,6 +19,20 @@ jobs:
           version: v1.64
   compat:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: testuser
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -31,3 +45,8 @@ jobs:
       - name: compat tests (sqlite + better-auth/client)
         working-directory: goauth
         run: go test ./... -count=1 -run 'TestStatus|TestOfficialBetterAuthClient' -timeout 120s
+      - name: compat tests (postgres + better-auth/client)
+        working-directory: goauth
+        env:
+          TEST_DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"
+        run: go test ./src/tests/compat -count=1 -run 'TestOfficialBetterAuthClient' -timeout 120s

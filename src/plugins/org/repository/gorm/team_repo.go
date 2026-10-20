@@ -46,7 +46,11 @@ func (r *TeamRepo) ListTeamsByOrgID(ctx context.Context, orgID string, pagi mode
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/team: count: %w", err)
 	}
-	if err := q.Limit(pagi.Limit).Offset(pagi.Offset).Order("created_at DESC").Find(&teams).Error; err != nil {
+	limit := 50
+	if pagi.Limit > 0 {
+		limit = pagi.Limit
+	}
+	if err := q.Limit(limit).Offset(pagi.Offset).Order("created_at DESC").Find(&teams).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/team: list: %w", err)
 	}
 	return teams, total, nil
@@ -106,7 +110,11 @@ func (r *TeamMemberRepo) ListMembersByTeamID(ctx context.Context, teamID string,
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/team-member: count: %w", err)
 	}
-	if err := q.Limit(pagi.Limit).Offset(pagi.Offset).Order("created_at DESC").Find(&out).Error; err != nil {
+	limit := 50
+	if pagi.Limit > 0 {
+		limit = pagi.Limit
+	}
+	if err := q.Limit(limit).Offset(pagi.Offset).Order("created_at DESC").Find(&out).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/team-member: list: %w", err)
 	}
 	return out, total, nil

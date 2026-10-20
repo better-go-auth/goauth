@@ -124,7 +124,7 @@ var errorText = map[RespCode]string{
 	NoRecordsDeleted:           "NO records were Deleted",
 	UpdatingAssociationsFailed: "Updating Associated Records Failed",
 	// status code messages
-	RecordNotFound: "data not found",
+	RecordNotFound: "Not Found",
 	BadRequest:     "bad request",
 	InternalError:  "An internal error occurred",
 	//

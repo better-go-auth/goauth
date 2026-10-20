@@ -92,6 +92,8 @@ func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
 		ictx.IAuthRepos,
 		sessionServ,
 	)
+	svc.Config = p.Config
+	svc.SetRepositories(p.orgRepos.ITeamRepo, p.orgRepos.ITeamMemberRepo, p.orgRepos.IOrganizationRoleRepo)
 
 	p.service = svc
 

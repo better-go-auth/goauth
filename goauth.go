@@ -124,15 +124,22 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	api = types.WrapAPI(api)
 
 	models.SetTableNames(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
+	if opts.Conn != nil && (opts.GoAuth.TablePrefix != "" || len(opts.GoAuth.TableNames) > 0) {
+		opts.Conn.Config.NamingStrategy = models.NewNamingStrategy(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
+	}
 
 	if opts.Conn == nil && opts.Repositories == nil {
 		return nil, errors.New("goauth: either Conn (*gorm.DB) or Repositories (repo_interfaces.IAuthRepos) must be provided")
 	}
 
 	// 1. Resolve Repositories
+	var repoOpts []gormauth.RepoOption
+	if opts.Advanced.Database.GenerateID != nil {
+		repoOpts = append(repoOpts, gormauth.WithGenerateID(opts.Advanced.Database.GenerateID))
+	}
 	repos := opts.Repositories
 	if repos == nil && opts.Conn != nil {
-		repos = gormauth.NewAuthRepos(opts.Conn)
+		repos = gormauth.NewAuthRepos(opts.Conn, repoOpts...)
 	}
 
 	// 2. Resolve Migrator
@@ -201,6 +208,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		SecondaryStorage: opts.SecondaryStorage,
 		DB:               opts.Conn,
 		CookieManager:    cookieMgr,
+		GenerateID:       opts.Advanced.Database.GenerateID,
 	}
 
 	// Phase 1: Initialize plugins (repos, services, and migrators configured via initCtx)

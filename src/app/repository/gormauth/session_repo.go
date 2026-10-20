@@ -17,19 +17,31 @@ import (
 
 // SessionRepo implements repo_interfaces.ISessionRepo using GORM.
 type SessionRepo struct {
-	db *gorm.DB
+	db         *gorm.DB
+	generateID func() string
 }
 
 var _ repo_interfaces.ISessionRepo = (*SessionRepo)(nil)
 
 // NewSessionRepo creates a new GORM-backed SessionRepo.
-func NewSessionRepo(db *gorm.DB) repo_interfaces.ISessionRepo {
-	return &SessionRepo{db: db}
+func NewSessionRepo(db *gorm.DB, opts ...RepoOption) repo_interfaces.ISessionRepo {
+	cfg := &RepoConfig{}
+	for _, o := range opts {
+		o(cfg)
+	}
+	return &SessionRepo{db: db, generateID: cfg.GenerateID}
+}
+
+func (r *SessionRepo) newID() string {
+	if r.generateID != nil {
+		return r.generateID()
+	}
+	return models.NewID()
 }
 
 func (r *SessionRepo) CreateSession(ctx context.Context, session *models.Session) (*models.Session, error) {
 	if session.ID == "" {
-		session.ID = models.NewID()
+		session.ID = r.newID()
 	}
 	if err := gormutil.GetDB(ctx, r.db).Create(session).Error; err != nil {
 		return nil, fmt.Errorf("gorm/session: create: %w", err)
@@ -39,7 +51,7 @@ func (r *SessionRepo) CreateSession(ctx context.Context, session *models.Session
 
 func (r *SessionRepo) UpsertSession(ctx context.Context, session *models.Session) (*models.Session, error) {
 	if session.ID == "" {
-		session.ID = models.NewID()
+		session.ID = r.newID()
 	}
 	s := &models.Session{}
 	err := gormutil.GetDB(ctx, r.db).Clauses(clause.OnConflict{
@@ -126,7 +138,6 @@ func (r *SessionRepo) ListSessions(ctx context.Context, userID string) ([]models
 	var sessions []models.Session
 	err := gormutil.GetDB(ctx, r.db).
 		Where(sessionsOfUser(userID), "UserID").
-		Where("expires_at > ?", time.Now().UTC()).
 		Find(&sessions).Error
 	if err != nil {
 		return nil, fmt.Errorf("gorm/session: list by user: %w", err)

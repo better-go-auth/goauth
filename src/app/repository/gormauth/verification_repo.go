@@ -17,19 +17,31 @@ import (
 
 // VerificationRepo implements repo_interfaces.IVerificationRepo using GORM.
 type VerificationRepo struct {
-	db *gorm.DB
+	db         *gorm.DB
+	generateID func() string
 }
 
 var _ repo_interfaces.IVerificationRepo = (*VerificationRepo)(nil)
 
 // NewVerificationRepo creates a new GORM-backed VerificationRepo.
-func NewVerificationRepo(db *gorm.DB) repo_interfaces.IVerificationRepo {
-	return &VerificationRepo{db: db}
+func NewVerificationRepo(db *gorm.DB, opts ...RepoOption) repo_interfaces.IVerificationRepo {
+	cfg := &RepoConfig{}
+	for _, o := range opts {
+		o(cfg)
+	}
+	return &VerificationRepo{db: db, generateID: cfg.GenerateID}
+}
+
+func (r *VerificationRepo) newID() string {
+	if r.generateID != nil {
+		return r.generateID()
+	}
+	return models.NewID()
 }
 
 func (r *VerificationRepo) UpsertVerificationValue(ctx context.Context, verification *models.Verification) (*models.Verification, error) {
 	if verification.ID == "" {
-		verification.ID = models.NewID()
+		verification.ID = r.newID()
 	}
 	// identifier is not unique in better-auth's schema, so replace instead of ON CONFLICT
 	db := gormutil.GetDB(ctx, r.db)

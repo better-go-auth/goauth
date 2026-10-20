@@ -11,6 +11,8 @@ import (
 
 // IOrgService defines the business-logic surface for the org plugin.
 type IOrgService interface {
+	ITeamService
+
 	// Orgs
 	CreateOrganization(ctx context.Context, creatorUserID string, input dtos.CreateOrgInput) (*models.Organization, error)
 	GetOrganization(ctx context.Context, orgID string) (*models.Organization, error)

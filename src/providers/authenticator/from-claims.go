@@ -33,6 +33,7 @@ func UserFromContext(ctx context.Context) (*dtos.UserResponse, bool) {
 func sessionResponseFromClaims(claims *token.CustomClaims, token string) (*dtos.SessionWithUser, error) {
 	var activeOrgID *string
 	var activeOrgRole *string
+	var activeTeamID *string
 
 	orgID := claims.ActiveOrgId
 	if orgID != "" {
@@ -40,6 +41,9 @@ func sessionResponseFromClaims(claims *token.CustomClaims, token string) (*dtos.
 	}
 	if claims.ActiveOrgRole != "" {
 		activeOrgRole = &claims.ActiveOrgRole
+	}
+	if claims.ActiveTeamId != "" {
+		activeTeamID = &claims.ActiveTeamId
 	}
 	return &dtos.SessionWithUser{
 		User: dtos.UserResponse{
@@ -52,6 +56,7 @@ func sessionResponseFromClaims(claims *token.CustomClaims, token string) (*dtos.
 			Token:                  token,
 			ActiveOrganizationID:   activeOrgID,
 			ActiveOrganizationRole: activeOrgRole,
+			ActiveTeamID:           activeTeamID,
 		},
 	}, nil
 }

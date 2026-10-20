@@ -17,17 +17,29 @@ import (
 
 // UserRepo implements repoimpl.IUserRepo using GORM.
 type UserRepo struct {
-	db *gorm.DB
+	db         *gorm.DB
+	generateID func() string
 }
 
 // NewUserRepo creates a new GORM-backed UserRepo.
-func NewUserRepo(db *gorm.DB) repo_interfaces.IUserRepo {
-	return &UserRepo{db: db}
+func NewUserRepo(db *gorm.DB, opts ...RepoOption) repo_interfaces.IUserRepo {
+	cfg := &RepoConfig{}
+	for _, o := range opts {
+		o(cfg)
+	}
+	return &UserRepo{db: db, generateID: cfg.GenerateID}
+}
+
+func (r *UserRepo) newID() string {
+	if r.generateID != nil {
+		return r.generateID()
+	}
+	return models.NewID()
 }
 
 func (r *UserRepo) CreateUser(ctx context.Context, user *models.User) (*models.User, error) {
 	if user.ID == "" {
-		user.ID = models.NewID()
+		user.ID = r.newID()
 	}
 	if err := gormutil.GetDB(ctx, r.db).Create(user).Error; err != nil {
 		return nil, fmt.Errorf("gorm/user: create: %w", err)

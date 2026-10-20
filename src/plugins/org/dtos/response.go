@@ -96,3 +96,83 @@ func InvitationToResponse(i *models.Invitation) *InvitationResponse {
 		CreatedAt:      createdAt,
 	}
 }
+
+// TeamResponse is the public team response.
+type TeamResponse struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	OrganizationID string `json:"organizationId"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
+}
+
+// TeamMemberResponse is the public team member response.
+type TeamMemberResponse struct {
+	ID        string                 `json:"id"`
+	TeamID    string                 `json:"teamId"`
+	UserID    string                 `json:"userId"`
+	User      *coredtos.UserResponse `json:"user,omitempty"`
+	CreatedAt string                 `json:"createdAt"`
+}
+
+// OrgRoleResponse is the public organization role response.
+type OrgRoleResponse struct {
+	ID             string `json:"id"`
+	OrganizationID string `json:"organizationId"`
+	Role           string `json:"role"`
+	Permission     string `json:"permission"`
+	CreatedAt      string `json:"createdAt"`
+	UpdatedAt      string `json:"updatedAt"`
+}
+
+// TeamToResponse converts a models.Team to a TeamResponse DTO.
+func TeamToResponse(t *models.Team) *TeamResponse {
+	if t == nil {
+		return nil
+	}
+	createdAt := t.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
+	updatedAt := t.UpdatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
+	return &TeamResponse{
+		ID:             t.ID,
+		Name:           t.Name,
+		OrganizationID: t.OrganizationID,
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
+	}
+}
+
+// TeamMemberToResponse converts a models.TeamMember to a TeamMemberResponse DTO.
+func TeamMemberToResponse(m *models.TeamMember) *TeamMemberResponse {
+	if m == nil {
+		return nil
+	}
+	createdAt := m.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
+	resp := &TeamMemberResponse{
+		ID:        m.ID,
+		TeamID:    m.TeamID,
+		UserID:    m.UserID,
+		CreatedAt: createdAt,
+	}
+	if m.User != nil {
+		u := coredtos.UserFromModel(m.User)
+		resp.User = &u
+	}
+	return resp
+}
+
+// OrgRoleToResponse converts a models.OrganizationRole to an OrgRoleResponse DTO.
+func OrgRoleToResponse(r *models.OrganizationRole) *OrgRoleResponse {
+	if r == nil {
+		return nil
+	}
+	createdAt := r.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
+	updatedAt := r.UpdatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
+	return &OrgRoleResponse{
+		ID:             r.ID,
+		OrganizationID: r.OrganizationID,
+		Role:           r.Role,
+		Permission:     r.Permission,
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
+	}
+}

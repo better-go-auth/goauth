@@ -69,3 +69,70 @@ type AdminBlockOrgInput struct {
 	Reason         string `json:"reason"`
 }
 
+// ─── Team Request DTOs ───────────────────────────────────────────────────────
+
+// CreateTeamInput matches better-auth POST /organization/team/create body.
+type CreateTeamInput struct {
+	OrganizationID string `json:"organizationId" validate:"required"`
+	Name           string `json:"name"           validate:"required,min=1"`
+}
+
+// UpdateTeamInput matches better-auth POST /organization/team/update body.
+type UpdateTeamInput struct {
+	TeamID         string `json:"teamId"         validate:"required"`
+	Name           string `json:"name"           validate:"required,min=1"`
+	OrganizationID string `json:"organizationId"`
+}
+
+// DeleteTeamInput matches better-auth POST /organization/team/delete body.
+type DeleteTeamInput struct {
+	TeamID         string `json:"teamId"         validate:"required"`
+	OrganizationID string `json:"organizationId"`
+}
+
+// ListTeamsInput matches better-auth GET /organization/team/list query.
+type ListTeamsInput struct {
+	OrganizationID string `json:"organizationId"`
+}
+
+// AddTeamMemberInput matches better-auth POST /organization/team/add-member body.
+type AddTeamMemberInput struct {
+	TeamID         string `json:"teamId"         validate:"required"`
+	UserID         string `json:"userId"         validate:"required"`
+	OrganizationID string `json:"organizationId"`
+}
+
+// RemoveTeamMemberInput matches better-auth POST /organization/team/remove-member body.
+type RemoveTeamMemberInput struct {
+	TeamID         string `json:"teamId"         validate:"required"`
+	UserID         string `json:"userId"         validate:"required"`
+	OrganizationID string `json:"organizationId"`
+}
+
+// SetActiveTeamInput matches better-auth POST /organization/set-active-team body.
+type SetActiveTeamInput struct {
+	TeamID *string `json:"teamId"` // nil to unset active team
+}
+
+// ─── Dynamic Access Control DTOs ─────────────────────────────────────────────
+
+// CreateOrgRoleInput represents the payload to create a dynamic organization role.
+type CreateOrgRoleInput struct {
+	OrganizationID string `json:"organizationId" validate:"required"`
+	Role           string `json:"role"           validate:"required,min=1"`
+	Permission     string `json:"permission"     validate:"required"` // JSON document
+}
+
+// UpdateOrgRoleInput represents the payload to update a dynamic organization role.
+type UpdateOrgRoleInput struct {
+	OrganizationID string `json:"organizationId" validate:"required"`
+	Role           string `json:"role"           validate:"required,min=1"`
+	Permission     string `json:"permission"     validate:"required"` // JSON document
+}
+
+// DeleteOrgRoleInput represents the payload to delete a dynamic organization role.
+type DeleteOrgRoleInput struct {
+	OrganizationID string `json:"organizationId" validate:"required"`
+	Role           string `json:"role"           validate:"required,min=1"`
+}
+

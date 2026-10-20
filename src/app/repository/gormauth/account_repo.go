@@ -16,17 +16,29 @@ import (
 
 // AccountRepo implements corerepo.IOAuthAccountRepo using GORM.
 type AccountRepo struct {
-	db *gorm.DB
+	db         *gorm.DB
+	generateID func() string
 }
 
 // NewAccountRepo creates a new GORM-backed AccountRepo.
-func NewAccountRepo(db *gorm.DB) repo_interfaces.IOAuthAccountRepo {
-	return &AccountRepo{db: db}
+func NewAccountRepo(db *gorm.DB, opts ...RepoOption) repo_interfaces.IOAuthAccountRepo {
+	cfg := &RepoConfig{}
+	for _, o := range opts {
+		o(cfg)
+	}
+	return &AccountRepo{db: db, generateID: cfg.GenerateID}
+}
+
+func (r *AccountRepo) newID() string {
+	if r.generateID != nil {
+		return r.generateID()
+	}
+	return models.NewID()
 }
 
 func (r *AccountRepo) CreateAccount(ctx context.Context, account *models.Account) (*models.Account, error) {
 	if account.ID == "" {
-		account.ID = models.NewID()
+		account.ID = r.newID()
 	}
 	if err := gormutil.GetDB(ctx, r.db).Create(account).Error; err != nil {
 		return nil, fmt.Errorf("gorm/account: create: %w", err)

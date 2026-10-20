@@ -60,6 +60,13 @@ func (h *OrgHandler) RequireOrgMember(ctx context.Context, auth humatypes.AuthHe
 			return sessionResp, orgID, nil
 		}
 	}
+	if h.Org.DynamicAccessControlEnabled() {
+		for _, requiredRole := range roles {
+			if allowed, err := h.Org.HasPermission(ctx, orgID, string(member.Role), "organization", requiredRole); err == nil && allowed {
+				return sessionResp, orgID, nil
+			}
+		}
+	}
 	return nil, "", autherr.ErrForbidden
 }
 

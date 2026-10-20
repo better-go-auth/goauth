@@ -28,9 +28,9 @@ func (e *AuthError) Is(target error) bool {
 	return e.Code == t.Code
 }
 
-// New creates and registers a new AuthError. Duplicate codes with differing messages panic.
+// New creates a new AuthError instance.
 func New(code RespCode, message string, status int) *AuthError {
-	return Err(status, string(code), message)
+	return &AuthError{StatusCode: status, Code: code, Message: message}
 }
 
 func NotFoundErr(message string) *AuthError {

@@ -69,7 +69,8 @@ func (h *OrgHandler) UpdateMemberRole(ctx context.Context, input *UpdateMemberRo
 }
 
 func (h *OrgHandler) RemoveMember(ctx context.Context, input *RemoveMemberInput) (*humatypes.SuccessOutput, error) {
-	if _, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrRemoveMember)...); err != nil {
+	sessionResp, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrRemoveMember)...)
+	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
 	target, err := h.targetMember(ctx, input.Body.OrganizationID, input.Body.MemberID)
@@ -79,7 +80,7 @@ func (h *OrgHandler) RemoveMember(ctx context.Context, input *RemoveMemberInput)
 	if target.Role == orgmodels.OrgRoleOwner {
 		return nil, humatypes.RespondErr(autherr.New("CANNOT_REMOVE_OWNER", "Cannot remove the organization owner", http.StatusBadRequest))
 	}
-	if err := h.Org.RemoveMember(ctx, input.Body, target.UserID); err != nil {
+	if err := h.Org.RemoveMember(ctx, input.Body, sessionResp.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
 	return humatypes.SuccessRes(http.StatusOK), nil

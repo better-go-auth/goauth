@@ -5,6 +5,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 // Session is better-auth's `session` model plus goauth extras.
@@ -46,7 +47,7 @@ type SessionQuery struct {
 	dtos.PaginationInput
 }
 
-func (Session) TableName() string { return TableName(ModelSession) }
+func (Session) TableName(namer schema.Namer) string { return ResolveTableName(namer, ModelSession) }
 
 // BeforeSave stores ExpiresAt in UTC; SQLite compares timestamps as text, so mixed zones misorder.
 func (s *Session) BeforeSave(*gorm.DB) error {

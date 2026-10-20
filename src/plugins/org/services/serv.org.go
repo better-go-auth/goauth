@@ -25,9 +25,12 @@ import (
 
 // OrgService implements IOrgService.
 type OrgService struct {
-	orgRepo    orgrepo.IOrgRepo
-	memberRepo orgrepo.IMemberRepo
-	inviteRepo orgrepo.IInvitationRepo
+	orgRepo        orgrepo.IOrgRepo
+	memberRepo     orgrepo.IMemberRepo
+	inviteRepo     orgrepo.IInvitationRepo
+	teamRepo       orgrepo.ITeamRepo
+	teamMemberRepo orgrepo.ITeamMemberRepo
+	orgRoleRepo    orgrepo.IOrganizationRoleRepo
 	// sessionRepo repoimpl2.ISessionRepo
 	// emailSender emailiface.IVerificationSender
 	userRepo   corerepo.IUserRepo
@@ -52,6 +55,13 @@ func (s *OrgService) SetHooks(hooks plugins.HookRegistry) {
 // SetSessionService configures the normal session service on the org service.
 func (s *OrgService) SetSessionService(sessionServ serv_interfaces.ISessionManager) {
 	s.sessionMgr = sessionServ
+}
+
+// SetRepositories configures team and role repos on the org service.
+func (s *OrgService) SetRepositories(teamRepo orgrepo.ITeamRepo, teamMemberRepo orgrepo.ITeamMemberRepo, orgRoleRepo orgrepo.IOrganizationRoleRepo) {
+	s.teamRepo = teamRepo
+	s.teamMemberRepo = teamMemberRepo
+	s.orgRoleRepo = orgRoleRepo
 }
 
 // HandleUserDeleted cleans up a deleted user's memberships across organizations.
@@ -126,6 +136,25 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		if _, err := s.memberRepo.CreateMember(txCtx, member); err != nil {
 			return fmt.Errorf("orgsvc: add owner member: %w", err)
 		}
+
+		// If teams are enabled and default team is configured, create default team
+		if s.TeamsEnabled() && s.teamRepo != nil {
+			if s.Config.Teams.DefaultTeam == nil || *s.Config.Teams.DefaultTeam {
+				defaultTeam := &models.Team{
+					Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
+					Name:           created.Name,
+					OrganizationID: created.ID,
+				}
+				if createdTeam, err := s.teamRepo.CreateTeam(txCtx, defaultTeam); err == nil && s.teamMemberRepo != nil {
+					tm := &models.TeamMember{
+						Base:   coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
+						TeamID: createdTeam.ID,
+						UserID: creatorUserID,
+					}
+					_, _ = s.teamMemberRepo.CreateTeamMember(txCtx, tm)
+				}
+			}
+		}
 		return nil
 	})
 	if err != nil {
@@ -143,6 +172,10 @@ func (s *OrgService) GetOrganization(ctx context.Context, orgID string) (*models
 }
 
 func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error) {
+	requester, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
+	if err != nil || !isAdminOrOwner(requester) {
+		return nil, autherr.ErrForbidden
+	}
 	data := map[string]interface{}{}
 	if input.Name != nil {
 		data["Name"] = *input.Name

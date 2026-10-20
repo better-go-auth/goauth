@@ -9,6 +9,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 type User struct {
@@ -125,7 +126,7 @@ type UserQuery struct {
 // 	return q.UserFilter, q.PaginationInput, &generic.Opt{Preloads: []string{"CompanyRole"}}
 // }
 
-func (User) TableName() string { return TableName(ModelUser) }
+func (User) TableName(namer schema.Namer) string { return ResolveTableName(namer, ModelUser) }
 
 // type IntUsr interface {
 // 	GetID() string

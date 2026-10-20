@@ -34,7 +34,9 @@ func New(conf config.AuthConfig) *Checker {
 	compiled := make(map[string]*regexp.Regexp, len(patterns))
 	for _, pat := range patterns {
 		if strings.ContainsAny(pat, "*?") {
-			compiled[pat] = wildcard(pat)
+			if re := wildcard(pat); re != nil {
+				compiled[pat] = re
+			}
 		}
 	}
 	return &Checker{patterns: patterns, compiled: compiled}
@@ -59,6 +61,9 @@ func (c *Checker) matchesCached(raw, pattern string, allowRelative bool) bool {
 		re, ok := c.compiled[pattern]
 		if !ok {
 			re = wildcard(pattern)
+		}
+		if re == nil {
+			return false
 		}
 		if strings.Contains(pattern, "://") {
 			target := originOf(raw)
@@ -89,15 +94,19 @@ func Matches(raw, pattern string, allowRelative bool) bool {
 		return relativePath.MatchString(raw)
 	}
 	if strings.ContainsAny(pattern, "*?") {
+		re := wildcard(pattern)
+		if re == nil {
+			return false
+		}
 		if strings.Contains(pattern, "://") {
 			target := originOf(raw)
 			if target == "" {
 				target = raw
 			}
-			return wildcard(pattern).MatchString(target)
+			return re.MatchString(target)
 		}
 		host := hostOf(raw)
-		return host != "" && wildcard(pattern).MatchString(host)
+		return host != "" && re.MatchString(host)
 	}
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -127,6 +136,7 @@ func hostOf(raw string) string {
 }
 
 // wildcard compiles a glob: "**" matches anything, "*" anything but "/", "?" one character.
+// Returns nil if compilation fails.
 func wildcard(pattern string) *regexp.Regexp {
 	var b strings.Builder
 	b.WriteString("^")
@@ -144,5 +154,9 @@ func wildcard(pattern string) *regexp.Regexp {
 		}
 	}
 	b.WriteString("$")
-	return regexp.MustCompile(b.String())
+	re, err := regexp.Compile(b.String())
+	if err != nil {
+		return nil
+	}
+	return re
 }
