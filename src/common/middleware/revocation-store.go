@@ -6,11 +6,16 @@ import (
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
 
+// RevocationStore checks if a session or token has been invalidated
+type RevocationStore interface {
+	IsRevoked(ctx context.Context, sessionID string) (bool, error)
+	IsTokenBlacklisted(ctx context.Context, tokenID string) (bool, error)
+}
 type KeyValRevocationStore struct {
 	storage sec_storage.SecondaryStorage
 }
 
-func NewKeyValRevocationStore(storage sec_storage.SecondaryStorage) *KeyValRevocationStore {
+func NewKeyValRevocationStore(storage sec_storage.SecondaryStorage) RevocationStore {
 	return &KeyValRevocationStore{storage: storage}
 }
 

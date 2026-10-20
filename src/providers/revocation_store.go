@@ -37,29 +37,30 @@ type SessionRevocationChecker interface {
 type RevocationStore struct {
 	db          *gorm.DB
 	sessionRepo SessionRevocationChecker
-	store       sec_storage.SecondaryStorage
+	secStore    sec_storage.SecondaryStorage
 	sConfig     config.SessionJWT
 }
 
 // NewRevocationStore creates a RevocationStore backed by database and optional key-value storage.
-func NewRevocationStore(db *gorm.DB, store sec_storage.SecondaryStorage, sconfig config.SessionJWT) *RevocationStore {
-	if isNil(store) {
-		store = nil
+func NewRevocationStore(db *gorm.DB, secStore sec_storage.SecondaryStorage, sconfig config.SessionJWT) *RevocationStore {
+	if isNil(secStore) {
+		secStore = nil
 	}
 	if isNil(db) {
 		db = nil
 	}
 	rs := &RevocationStore{
-		db:      db,
-		store:   store,
-		sConfig: sconfig,
+		db:       db,
+		secStore: secStore,
+		sConfig:  sconfig,
 	}
-	if db != nil {
-		rs.sessionRepo = gormSessionChecker{db: db}
-	}
+	// if db != nil {
+	// 	rs.sessionRepo = gormSessionChecker{db: db}
+	// }
 	return rs
 }
 
+// TODO: remove all gorm dependent funcitons: abstract the connection with repo
 type gormSessionChecker struct {
 	db *gorm.DB
 }
@@ -86,7 +87,7 @@ func NewRevocationStoreWithRepo(repo SessionRevocationChecker, store sec_storage
 	}
 	return &RevocationStore{
 		sessionRepo: repo,
-		store:       store,
+		secStore:    store,
 		sConfig:     sconfig,
 	}
 }
@@ -98,8 +99,8 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 	}
 
 	// 1. Check secondary storage (e.g. Redis) if available
-	if r.store != nil {
-		if exists, err := r.store.Exists(ctx, sec_storage.RevokedSessionPrefix+sessionID); err == nil && exists {
+	if r.secStore != nil {
+		if exists, err := r.secStore.Exists(ctx, sec_storage.RevokedSessionPrefix+sessionID); err == nil && exists {
 			return true, nil
 		}
 	}

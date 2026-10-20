@@ -7,11 +7,11 @@ import (
 	"time"
 
 	bettergoauth "github.com/better-go-auth/goauth"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers"
-	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"

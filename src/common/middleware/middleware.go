@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
-	"github.com/better-go-auth/goauth/src/common/util"
 	autherr "github.com/better-go-auth/goauth/src/common/errors"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers/token"
@@ -19,23 +18,6 @@ import (
 //
 //========================================================================================|
 
-// TokenVerifier handles cryptographic token verification
-type TokenVerifier interface {
-	VerifyToken(tokenStr string) (token.CustomClaims, error)
-}
-
-// RevocationStore checks if a session or token has been invalidated
-type RevocationStore interface {
-	IsRevoked(ctx context.Context, sessionID string) (bool, error)
-	IsTokenBlacklisted(ctx context.Context, tokenID string) (bool, error)
-}
-
-// DynamicRoleResolver checks database/cache for up-to-date roles & permissions
-// Dynamic Resolver should exist only on the dynamic role plugin
-type DynamicRoleResolver interface {
-	GetUserRoles(ctx context.Context, companyID, userID string) ([]string, error)
-	HasPermission(ctx context.Context, companyID, userID string, operationID string) (bool, error)
-}
 
 // SessionClaimsResolver turns a better-auth session token (opaque bearer token or the signed session cookie)
 // into claims, so cookie and bearer clients pass the same middleware as legacy JWT clients.
@@ -63,7 +45,6 @@ func (m *AuthMiddleware) WithSessions(r SessionClaimsResolver) { m.sessions = r 
 
 func looksLikeJWT(tok string) bool { return strings.Count(tok, ".") == 2 }
 
-
 func writeAuthError(ctx huma.Context, err *autherr.AuthError) {
 	if err == nil {
 		err = autherr.ErrUnauthorized
@@ -86,18 +67,14 @@ func claimsFromCtx(ctx huma.Context) (token.CustomClaims, bool) {
 	return token.CustomClaims{}, false
 }
 
-type ICoreMiddleWareFunc interface {
-	TokenVerifier
-	RevocationStore
-}
+// type ICoreMiddleWareFunc interface {
+// 	TokenVerifier
+// 	RevocationStore
+// }
 
 //============================ Actual Middlewares ================================|
 //
 //========================================================================================|
-
-type IOrgMiddleware interface {
-	AuthorizeOrg(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context))
-}
 
 type IAuthMiddleware interface {
 	Trace(operationID string) func(huma.Context, func(huma.Context))
@@ -105,18 +82,6 @@ type IAuthMiddleware interface {
 	Authorize(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context))
 }
 
-
-
-// Trace Middleware adds telemetry span attributes
-func (m *AuthMiddleware) Trace(operationID string) func(huma.Context, func(huma.Context)) {
-	return func(ctx huma.Context, next func(huma.Context)) {
-		span := trace.SpanFromContext(ctx.Context())
-		if span != nil && span.IsRecording() && operationID != "" {
-			span.SetAttributes(attribute.String("http.operation_id", operationID))
-		}
-		next(ctx)
-	}
-}
 
 // Authenticate Middleware (Handles Token Verification + Revocation Check).
 // It accepts a legacy access JWT, or, when WithSessions is set, a session token as bearer or cookie.
@@ -195,26 +160,14 @@ func (m *AuthMiddleware) Authorize(operationID consts.OperationId, allowedRoles 
 	}
 }
 
-// AuthorizeOrg Middleware
-func (m *AuthMiddleware) AuthorizeOrg(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context)) {
-	return func(ctx huma.Context, next func(huma.Context)) {
-		claims, ok := claimsFromCtx(ctx)
-		if !ok {
-			writeAuthError(ctx, autherr.ErrUnauthorized)
-			return
-		}
 
-		if claims.ActiveOrgId == "" || claims.ActiveOrgRole == "" || claims.UserID == "" {
-			writeAuthError(ctx, autherr.ErrForbidden)
-			return
-		}
-		if len(allowedRoles) == 0 {
-			next(ctx)
-			return
-		}
-		if !util.ElementExists(claims.ActiveOrgRole, allowedRoles...) {
-			writeAuthError(ctx, autherr.ErrForbidden)
-			return
+
+// Trace Middleware adds telemetry span attributes
+func (m *AuthMiddleware) Trace(operationID string) func(huma.Context, func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		span := trace.SpanFromContext(ctx.Context())
+		if span != nil && span.IsRecording() && operationID != "" {
+			span.SetAttributes(attribute.String("http.operation_id", operationID))
 		}
 		next(ctx)
 	}

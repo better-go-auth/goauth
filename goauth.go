@@ -166,9 +166,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	var revocationStore middleware.RevocationStore
 	if repos != nil {
 		revocationStore = providers.NewRevocationStoreWithRepo(repos, opts.SecondaryStorage, opts.AuthConfig.GoAuth.Session.JWT)
-	} else {
-		revocationStore = providers.NewRevocationStore(opts.Conn, opts.SecondaryStorage, opts.AuthConfig.GoAuth.Session.JWT)
-	}
+	} 
+	// else {
+	// 	revocationStore = providers.NewRevocationStore(opts.Conn, opts.SecondaryStorage, opts.AuthConfig.GoAuth.Session.JWT)
+	// }
 
 	// make a middleware
 	mdlWare := middleware.NewAuthMiddleware(verifier, revocationStore, nil)

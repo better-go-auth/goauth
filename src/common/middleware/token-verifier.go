@@ -7,11 +7,16 @@ import (
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
+// TokenVerifier handles cryptographic token verification
+type TokenVerifier interface {
+	VerifyToken(tokenStr string) (token.CustomClaims, error)
+}
+
 type JWTTokenVerifier struct {
 	accessSecret string
 }
 
-func NewJWTTokenVerifier(accessSecret string) *JWTTokenVerifier {
+func NewJWTTokenVerifier(accessSecret string) TokenVerifier {
 	return &JWTTokenVerifier{accessSecret: accessSecret}
 }
 
