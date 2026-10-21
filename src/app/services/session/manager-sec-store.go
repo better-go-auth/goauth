@@ -54,6 +54,9 @@ func (mgr *Manager) activeList(ctx context.Context, userID string) []activeEntry
 // trackActive maintains better-auth's "active-sessions-<userId>" index (sorted by expiry, expired pruned).
 // "active-sessions-<userId>": [{token:"abc", expiresAt:123}, {token:"xyz", expiresAt:456}]
 func (mgr *Manager) trackActive(ctx context.Context, userID, tok string, expiresAt time.Time) {
+	mgr.activeMu.Lock()
+	defer mgr.activeMu.Unlock()
+
 	// 1. prune expired sessions and avoid duplicates
 	nowMs := mgr.now().UnixMilli()
 	list := []activeEntry{}
@@ -69,6 +72,9 @@ func (mgr *Manager) trackActive(ctx context.Context, userID, tok string, expires
 }
 
 func (mgr *Manager) untrackActive(ctx context.Context, userID, tok string) {
+	mgr.activeMu.Lock()
+	defer mgr.activeMu.Unlock()
+
 	// 1. filter out expired sessions and the specified token to remove
 	nowMs := mgr.now().UnixMilli()
 	list := []activeEntry{}

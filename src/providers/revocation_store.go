@@ -41,6 +41,7 @@ type RevocationStore struct {
 	sConfig     config.SessionJWT
 }
 
+//TODO: remove this because it depends on db
 // NewRevocationStore creates a RevocationStore backed by database and optional key-value storage.
 func NewRevocationStore(db *gorm.DB, secStore sec_storage.SecondaryStorage, sconfig config.SessionJWT) *RevocationStore {
 	if isNil(secStore) {
@@ -54,9 +55,9 @@ func NewRevocationStore(db *gorm.DB, secStore sec_storage.SecondaryStorage, scon
 		secStore: secStore,
 		sConfig:  sconfig,
 	}
-	// if db != nil {
-	// 	rs.sessionRepo = gormSessionChecker{db: db}
-	// }
+	if db != nil {
+		rs.sessionRepo = gormSessionChecker{db: db}
+	}
 	return rs
 }
 

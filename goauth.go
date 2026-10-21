@@ -124,7 +124,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	api = types.WrapAPI(api)
 
 	models.SetTableNames(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
-	if opts.Conn != nil && (opts.GoAuth.TablePrefix != "" || len(opts.GoAuth.TableNames) > 0) {
+	if opts.Conn != nil {
 		opts.Conn.Config.NamingStrategy = models.NewNamingStrategy(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
 	}
 

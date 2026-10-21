@@ -396,7 +396,11 @@ func (s *JWTService) VerifyJWT(ctx context.Context, tokenStr string, issuer stri
 		expectedIss = s.baseURL
 	}
 	if expectedIss != "" {
-		if issVal, ok := claims["iss"].(string); ok && issVal != expectedIss {
+		issVal, ok := claims["iss"].(string)
+		if !ok || issVal == "" {
+			return nil, errors.New("jwt: missing iss claim")
+		}
+		if issVal != expectedIss {
 			return nil, fmt.Errorf("jwt: issuer mismatch: expected %s, got %s", expectedIss, issVal)
 		}
 	}
@@ -406,8 +410,31 @@ func (s *JWTService) VerifyJWT(ctx context.Context, tokenStr string, issuer stri
 		expectedAud = s.baseURL
 	}
 	if expectedAud != "" {
-		if audVal, ok := claims["aud"].(string); ok && audVal != expectedAud {
-			return nil, fmt.Errorf("jwt: audience mismatch: expected %s, got %s", expectedAud, audVal)
+		audClaim, ok := claims["aud"]
+		if !ok || audClaim == nil {
+			return nil, errors.New("jwt: missing aud claim")
+		}
+		matched := false
+		switch v := audClaim.(type) {
+		case string:
+			matched = v == expectedAud
+		case []string:
+			for _, item := range v {
+				if item == expectedAud {
+					matched = true
+					break
+				}
+			}
+		case []interface{}:
+			for _, item := range v {
+				if sItem, ok := item.(string); ok && sItem == expectedAud {
+					matched = true
+					break
+				}
+			}
+		}
+		if !matched {
+			return nil, fmt.Errorf("jwt: audience mismatch: expected %s, got %v", expectedAud, audClaim)
 		}
 	}
 

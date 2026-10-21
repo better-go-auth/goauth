@@ -14,6 +14,8 @@ This directory contains the Phase 4 engineering tasks, security remediations, pe
 | Document | Topic | Description |
 | :--- | :--- | :--- |
 | [**01. Phase 4 Tasks**](01-phase4-tasks.md) | Prioritized Task Queue | Full backlog spanning Security Vulnerabilities (VULN-01, 04, 05), Operational Bugs (BUG-01, 03, 04, 05, 06, 08), Session & Claims Performance, and Architecture Cleanup. |
+| [**02. Generic Session.AdditionalFields Plan**](02-session-additional-fields-plan.md) | Architectural Plan | Schema design, config interface, JSON persistence, validation engine, and API mapping for generic session additional fields. |
+| [**03. Phase 4 Execution Report**](03-phase4-execution-report.md) | Resolution Report | Verification and implementation details for all 13 resolved Phase 4 tasks across security, bugs, performance, and tech debt. |
 
 ---
 

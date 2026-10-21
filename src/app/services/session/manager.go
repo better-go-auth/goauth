@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"sync"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
@@ -42,6 +43,7 @@ type Manager struct {
 	hooks        plugins.HookRegistry
 	now          func() time.Time
 	generateID   func() string
+	activeMu     sync.Mutex
 }
 
 var _ interfaces.ISessionManager = (*Manager)(nil)
@@ -239,7 +241,7 @@ func (mgr *Manager) Refresh(ctx context.Context, swu *dtos.SessionWithUser) (*dt
 
 	// 2. update session ExpiresAt and UpdatedAt in the database
 	if mgr.storeInDB() {
-		if _, err := mgr.sessionsRepo.UpdateSession(ctx, swu.Session.ID, map[string]interface{}{
+		if _, err := mgr.sessionsRepo.UpdateSession(ctx, swu.Session.ID, map[string]any{
 			"ExpiresAt": expiresAt,
 			"UpdatedAt": now,
 		}); err != nil {
@@ -458,33 +460,56 @@ func setSessionFields(s *dtos.SessionData, data map[string]any) error {
 	return nil
 }
 
-// func (mgr *Manager) applyPatch(s *dtos.SessionData, patch config.SessionPatch) {
-// 	if patch.ActiveOrganizationID != nil {
-// 		s.ActiveOrganizationID = patch.ActiveOrganizationID
-// 	}
-// 	if patch.ActiveOrganizationRole != nil {
-// 		s.ActiveOrganizationRole = patch.ActiveOrganizationRole
-// 	}
-// 	if patch.ActiveTeamID != nil {
-// 		s.ActiveTeamID = patch.ActiveTeamID
-// 	}
-// 	if patch.DeviceToken != nil {
-// 		s.DeviceToken = patch.DeviceToken
-// 	}
-// 	if patch.DeviceID != nil {
-// 		s.DeviceID = patch.DeviceID
-// 	}
-// 	if patch.DeviceName != nil {
-// 		s.DeviceName = patch.DeviceName
-// 	}
-// 	if patch.DeviceType != nil {
-// 		s.DeviceType = patch.DeviceType
-// 	}
-// }
+func applyPatch(s *dtos.SessionData, patch config.SessionPatch) {
+	if patch.ActiveOrganizationID != nil {
+		s.ActiveOrganizationID = patch.ActiveOrganizationID
+	}
+	if patch.ActiveOrganizationRole != nil {
+		s.ActiveOrganizationRole = patch.ActiveOrganizationRole
+	}
+	if patch.ActiveTeamID != nil {
+		s.ActiveTeamID = patch.ActiveTeamID
+	}
+	if patch.DeviceToken != nil {
+		s.DeviceToken = patch.DeviceToken
+	}
+	if patch.DeviceID != nil {
+		s.DeviceID = patch.DeviceID
+	}
+	if patch.DeviceName != nil {
+		s.DeviceName = patch.DeviceName
+	}
+	if patch.DeviceType != nil {
+		s.DeviceType = patch.DeviceType
+	}
+}
 
 // UpdatePatch is the typed version of Update — applies SessionPatch with zero reflection.
 func (mgr *Manager) UpdatePatch(ctx context.Context, swu *dtos.SessionWithUser, patch config.SessionPatch) (*dtos.SessionWithUser, error) {
-	return mgr.Update(ctx, swu, patch.ToMap())
+	if swu == nil {
+		return nil, errors.New("sessions: session is required")
+	}
+	copied := *swu
+	sess := copied.Session
+	applyPatch(&sess, patch)
+	copied.Session = sess
+
+	if mgr.storeInDB() {
+		data := patch.ToMap()
+		if len(data) > 0 {
+			s, err := mgr.sessionsRepo.UpdateSession(ctx, sess.ID, data)
+			if err != nil {
+				return nil, fmt.Errorf("sessions: update: %w", err)
+			}
+			if s != nil {
+				copied.Session = dtos.SessionFromModel(s)
+			}
+		}
+	}
+	if mgr.secStore != nil {
+		_ = mgr.cache(ctx, &copied)
+	}
+	return &copied, nil
 }
 
 // List returns the live sessions of userID.

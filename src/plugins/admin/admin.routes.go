@@ -13,6 +13,7 @@ func (p *Plugin) SetupHumaRoutes(api huma.API, mdlware *middleware.AuthMiddlewar
 		return
 	}
 	handler := humaadmin.NewAdminHandler(p.service, p.config, mdlware, p.authenticate)
+	handler.Cfg = p.rootConfig
 	handler.Cfg.GoAuth.Session = p.sessionConf
 	if p.basePath != "" {
 		handler.Cfg.BasePath = p.basePath

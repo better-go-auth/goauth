@@ -45,11 +45,15 @@ func (vSvc *VerificationService) SendVerification(ctx context.Context, identifie
 	if vSvc.Repo == nil {
 		return dtos.InternalErrMS[bool]("no storage"), errors.New("no storage configured")
 	}
-	verificationCode := ""
+	var verificationCode string
 	if vSvc.Config.GoAuth.CodeGenerator != nil {
 		verificationCode = vSvc.Config.GoAuth.CodeGenerator()
 	} else {
-		verificationCode = util.GenerateRandomString(6)
+		code, err := util.GenerateRandomString(6)
+		if err!=nil{
+			return dtos.InternalErrMS[bool]("could not generate random verification code"), errors.New("could not generate random verification code")
+		}
+		verificationCode=code
 	}
 
 	codeHash, err := authcrypto.HashPasswordBcrypt(verificationCode)

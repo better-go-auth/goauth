@@ -122,9 +122,11 @@ func (h *handler) UpdateUser(ctx context.Context, in *updateUserInput) (*statusO
 				upd.Image = &s
 			}
 		case "email":
-			s, _ := v.(string)
-			upd.Email = &s
+			return nil, autherr.ErrEmailCanNotBeUpdated
 		default:
+			if len(k) == 0 {
+				continue
+			}
 			if upd.Fields == nil {
 				upd.Fields = map[string]any{}
 			}

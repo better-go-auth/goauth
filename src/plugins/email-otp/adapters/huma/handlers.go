@@ -3,9 +3,11 @@ package humaemailotp
 import (
 	"context"
 	"net/http"
+	"strings"
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/email-otp/dtos"
@@ -160,17 +162,45 @@ func (h *EmailOTPHandler) ResetPassword(ctx context.Context, in *resetPasswordIn
 
 // ─── Email Change ─────────────────────────────────────────────────────────────
 
-func (h *EmailOTPHandler) getSession(ctx context.Context) (*modeldtos.SessionWithUser, bool) {
+func (h *EmailOTPHandler) getSession(ctx context.Context, auth types.AuthHeaders) (*modeldtos.SessionWithUser, bool) {
 	if sw, ok := humaadapter.FromContext(ctx); ok && sw != nil {
 		return sw, true
 	}
 	if sw, ok := authenticator.SessionFromContext(ctx); ok && sw != nil {
 		return sw, true
 	}
+
+	var tok string
+	if auth.Authorization != "" {
+		tok = strings.TrimPrefix(auth.Authorization, "Bearer ")
+		tok = strings.TrimPrefix(tok, "bearer ")
+	}
+	if tok == "" && auth.Cookie != "" && h.Cookies != nil {
+		tok, _ = h.Cookies.SessionToken(auth.Cookie)
+	}
+	if tok == "" {
+		req := config.GetHTTPRequest(ctx)
+		if req != nil {
+			if a := req.Header.Get("Authorization"); a != "" {
+				tok = strings.TrimPrefix(a, "Bearer ")
+				tok = strings.TrimPrefix(tok, "bearer ")
+			}
+			if tok == "" && h.Cookies != nil {
+				tok, _ = h.Cookies.SessionToken(req.Header.Get("Cookie"))
+			}
+		}
+	}
+	if tok != "" && h.Service != nil && h.Service.SessionManager() != nil {
+		if sw, err := h.Service.SessionManager().Get(ctx, tok); err == nil && sw != nil {
+			return sw, true
+		}
+	}
+
 	return nil, false
 }
 
 type requestEmailChangeInput struct {
+	types.AuthHeaders
 	Body dtos.RequestEmailChangeInput
 }
 
@@ -179,7 +209,7 @@ type requestEmailChangeOutput struct {
 }
 
 func (h *EmailOTPHandler) RequestEmailChange(ctx context.Context, in *requestEmailChangeInput) (*requestEmailChangeOutput, error) {
-	sw, ok := h.getSession(ctx)
+	sw, ok := h.getSession(ctx, in.AuthHeaders)
 	if !ok || sw == nil {
 		return nil, huma.NewError(http.StatusUnauthorized, "Unauthorized")
 	}
@@ -193,6 +223,7 @@ func (h *EmailOTPHandler) RequestEmailChange(ctx context.Context, in *requestEma
 }
 
 type changeEmailInput struct {
+	types.AuthHeaders
 	Body dtos.ChangeEmailOTPInput
 }
 
@@ -201,7 +232,7 @@ type changeEmailOutput struct {
 }
 
 func (h *EmailOTPHandler) ChangeEmail(ctx context.Context, in *changeEmailInput) (*changeEmailOutput, error) {
-	sw, ok := h.getSession(ctx)
+	sw, ok := h.getSession(ctx, in.AuthHeaders)
 	if !ok || sw == nil {
 		return nil, huma.NewError(http.StatusUnauthorized, "Unauthorized")
 	}
@@ -212,3 +243,4 @@ func (h *EmailOTPHandler) ChangeEmail(ctx context.Context, in *changeEmailInput)
 	out.Body.Status = true
 	return out, nil
 }
+

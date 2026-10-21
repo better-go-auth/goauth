@@ -99,8 +99,6 @@ type GetSessionResult struct {
 type UpdateUserInput struct {
 	Name  *string
 	Image *string
-	// Email is rejected (EMAIL_CAN_NOT_BE_UPDATED); use ChangeEmail.
-	Email *string
 	// Fields holds additional user fields keyed by Go field name (e.g. "DisplayName").
 	Fields map[string]any
 }

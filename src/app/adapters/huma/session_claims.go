@@ -42,16 +42,25 @@ func (r *SessionClaims) ClaimsFromSession(ctx context.Context, bearer, cookieHea
 	if sw.Session.ActiveTeamID != nil {
 		claims.ActiveTeamId = *sw.Session.ActiveTeamID
 	}
-	// role and org role are not part of the better-auth session snapshot (DB lookups may be stale)
-	if u, err := r.repos.FindUserByID(ctx, sw.User.ID); err == nil && u != nil {
-		claims.Role = string(u.Role)
-	} else if err != nil {
-		slog.Debug("session_claims: FindUserByID failed, using cached role", "err", err)
+	// Fast path: use role and org role from session snapshot; fallback to DB only if missing
+	if sw.User.Role != "" {
+		claims.Role = string(sw.User.Role)
+	} else if r.repos != nil {
+		if u, err := r.repos.FindUserByID(ctx, sw.User.ID); err == nil && u != nil {
+			claims.Role = string(u.Role)
+		} else if err != nil {
+			slog.Debug("session_claims: FindUserByID failed, using cached role", "err", err)
+		}
 	}
-	if s, err := r.repos.FindSessionByID(ctx, sw.Session.ID); err == nil && s != nil && s.ActiveOrganizationRole != nil {
-		claims.ActiveOrgRole = *s.ActiveOrganizationRole
-	} else if err != nil {
-		slog.Debug("session_claims: FindSessionByID failed, org role may be stale", "err", err)
+	//
+	if sw.Session.ActiveOrganizationRole != nil && *sw.Session.ActiveOrganizationRole != "" {
+		claims.ActiveOrgRole = *sw.Session.ActiveOrganizationRole
+	} else if r.repos != nil && claims.ActiveOrgId != "" {
+		if s, err := r.repos.FindSessionByID(ctx, sw.Session.ID); err == nil && s != nil && s.ActiveOrganizationRole != nil {
+			claims.ActiveOrgRole = *s.ActiveOrganizationRole
+		} else if err != nil {
+			slog.Debug("session_claims: FindSessionByID failed, org role may be stale", "err", err)
+		}
 	}
 	return claims, nil
 }

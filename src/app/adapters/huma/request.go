@@ -78,10 +78,16 @@ func (h *handler) originCheck(formCSRF bool) func(huma.Context, func(huma.Contex
 			next(ctx)
 			return
 		}
-		// if authHeader := ctx.Header("Authorization"); strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-		// 	next(ctx)
-		// 	return
-		// }
+		if authHeader := ctx.Header("Authorization"); strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			o := ctx.Header("Origin")
+			if o == "" {
+				o = ctx.Header("Referer")
+			}
+			if o == "" {
+				next(ctx)
+				return
+			}
+		}
 		if err := h.validateOrigin(ctx, formCSRF); err != nil {
 			writeError(ctx, err)
 			return

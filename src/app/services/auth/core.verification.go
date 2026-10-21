@@ -239,6 +239,15 @@ func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWi
 		}
 		active = sw
 	}
+	// check if the new email is already in use by another user
+	existing, err := acceptNotFound(s.repos.FindUserByEmail(ctx, strings.ToLower(updateTo)))
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil && existing.ID != user.ID {
+		return nil, autherr.ErrUserAlreadyExistsUseAnotherEmail
+	}
+
 	// change-email-verification: the new address is proven; legacy tokens (no requestType) still need verifying
 	verified := requestType == changeEmailVerification
 	updated, err := s.repos.UpdateUser(ctx, user.ID, map[string]interface{}{"Email": updateTo, "EmailVerified": verified})

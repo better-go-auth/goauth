@@ -26,6 +26,7 @@ type Plugin struct {
 	service      adminsvc.IAdminService
 	hookService  *adminsvc.AdminHookService
 	sessionConf  config.SessionGoAuth
+	rootConfig   config.AuthConfig
 	basePath     string
 	handler      *humaadmin.AdminHandler
 	authenticate authenticator.AuthenticateFunc
@@ -112,6 +113,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.hookService = adminsvc.NewAdminHookService(p.adminRepos.AdminRepo)
 
 	if ictx != nil {
+		p.rootConfig = ictx.Config
 		p.authenticate = ictx.Authenticator
 		svc.SetAuthConfig(ictx.Config)
 

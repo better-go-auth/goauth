@@ -46,8 +46,7 @@ type Plugin struct {
 
 	authSvc    *services.AuthService
 	sessionSvc *services.SessionService
-	// profileSvc *services.ProfileService
-	vSvc *services.VerificationService
+	vSvc       *services.VerificationService
 	//
 	handler *humaaccesstoken.AccessTokenHandler
 
@@ -196,7 +195,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.vSvc = services.NewVerificationService(repos, vConf)
 	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
 	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
-	// p.profileSvc = services.NewProfileService(p.vSvc, p.sessionSvc, repos, txMgr, p.passwords)
 
 	// Register lifecycle hook to blacklist session and clean up sid index upon revocation
 	if ictx.Hooks != nil {
@@ -435,9 +433,8 @@ func (p *Plugin) Migrator() migration.IMigrator {
 // Services returns services exposed by this plugin.
 func (p *Plugin) Services() map[string]any {
 	return map[string]any{
-		"access_token_auth":    p.authSvc,
-		"access_token_session": p.sessionSvc,
-		// "access_token_profile":      p.profileSvc,
+		"access_token_auth":         p.authSvc,
+		"access_token_session":      p.sessionSvc,
 		"access_token_verification": p.vSvc,
 	}
 }
@@ -469,11 +466,6 @@ func (p *Plugin) AuthService() *services.AuthService {
 func (p *Plugin) SessionService() *services.SessionService {
 	return p.sessionSvc
 }
-
-// ProfileService returns the initialized ProfileService.
-// func (p *Plugin) ProfileService() *services.ProfileService {
-// 	return p.profileSvc
-// }
 
 // VerificationService returns the initialized VerificationService.
 func (p *Plugin) VerificationService() *services.VerificationService {

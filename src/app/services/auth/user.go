@@ -31,11 +31,9 @@ func (s *Service) UpdateUser(ctx context.Context, current *dtos.SessionWithUser,
 		return nil, autherr.ErrUnauthorized
 	}
 	// email changes must go through ChangeEmail (verification)
-	if in.Email != nil {
-		return nil, autherr.ErrEmailCanNotBeUpdated
-	}
+
 	// the update map is keyed by Go field names, which both repositories understand
-	data := map[string]interface{}{}
+	data := map[string]any{}
 	for k, v := range in.Fields {
 		// reject anything outside the allowlist (blocks e.g. {"Role": "admin"})
 		if !updatableUserFields[k] {
