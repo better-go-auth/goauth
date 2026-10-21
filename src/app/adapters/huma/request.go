@@ -98,7 +98,7 @@ func (h *handler) originCheck(formCSRF bool) func(huma.Context, func(huma.Contex
 
 func (h *handler) validateOrigin(ctx huma.Context, formCSRF bool) *autherr.AuthError {
 	req := requestOf(ctx.Context())
-	hasCookies := false
+	var hasCookies bool
 	if req != nil {
 		hasCookies = req.Header.Get("Cookie") != ""
 	} else {
