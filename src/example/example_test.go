@@ -47,10 +47,8 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 	api := humago.New(mux, apiConfig)
 
 	jwt := accesstokenconfig.SessionJWT{
-		AccessSecret:     "test-secret-must-be-32-chars-long!",
-		RefreshSecret:    "test-refresh-must-be-32-chars-long!",
-		AccessExpiresIn:  time.Hour,
-		RefreshExpiresIn: 24 * time.Hour,
+		AccessSecret:    "test-secret-must-be-32-chars-long!",
+		AccessExpiresIn: time.Hour,
 	}
 
 	emailSender := &ConsoleEmailSender{}

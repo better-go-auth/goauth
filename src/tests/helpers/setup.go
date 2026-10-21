@@ -45,8 +45,7 @@ import (
 )
 
 const (
-	TestAccessSecret  = "test-access-secret-key-1234567890"
-	TestRefreshSecret = "test-refresh-secret-key-1234567890"
+	TestAccessSecret = "test-access-secret-key-1234567890"
 )
 
 type TestEnv struct {
@@ -170,13 +169,9 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 			t.Fatalf("failed to create in-memory secondary storage: %v", err)
 		}
 	}
-	rot := true
 	jwt := accesstokenconfig.SessionJWT{
-		AccessSecret:       TestAccessSecret,
-		RefreshSecret:      TestRefreshSecret,
-		AccessExpiresIn:    time.Hour,
-		RefreshExpiresIn:   24 * time.Hour,
-		RotateRefreshToken: &rot,
+		AccessSecret:    TestAccessSecret,
+		AccessExpiresIn: time.Hour,
 	}
 
 	mockEmail := NewMockEmailSender()

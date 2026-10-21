@@ -83,19 +83,13 @@ func main() {
 	if accessSecret == "" {
 		accessSecret = "example-jwt-access-secret-32-chars-long!"
 	}
-	refreshSecret := os.Getenv("JWT_REFRESH_SECRET")
-	if refreshSecret == "" {
-		refreshSecret = "example-jwt-refresh-secret-32-chars-long!"
-	}
 
 	mux := http.NewServeMux()
 	apiConfig := huma.DefaultConfig("Better Go Auth Example Server", "1.0.0")
 	api := humago.New(mux, apiConfig)
 	jwt := accesstokenconfig.SessionJWT{
-		AccessSecret:     accessSecret,
-		RefreshSecret:    refreshSecret,
-		AccessExpiresIn:  time.Hour,
-		RefreshExpiresIn: 24 * time.Hour,
+		AccessSecret:    accessSecret,
+		AccessExpiresIn: time.Hour,
 	}
 
 	emailSender := &ConsoleEmailSender{}

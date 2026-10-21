@@ -269,7 +269,7 @@ func (mgr *Manager) Refresh(ctx context.Context, swu *dtos.SessionWithUser) (*dt
 	return &out, nil
 }
 
-// RotateToken gives the session a new token and invalidates the old one (legacy refresh-token rotation).
+// RotateToken gives the session a new token and invalidates the old one: is an option for session security.
 // It returns nil when the session no longer exists.
 func (mgr *Manager) RotateToken(ctx context.Context, swu *dtos.SessionWithUser) (*dtos.SessionWithUser, error) {
 	// 1. generate a new token and record current time

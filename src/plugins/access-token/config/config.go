@@ -6,26 +6,24 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 )
 
-// SessionJWT configures the access and refresh JWT tokens issued by the access-token plugin.
+// SessionJWT configures the access token JWT issued by the access-token plugin.
+// The session.token itself serves as the refresh token (governed by core Session config).
 type SessionJWT struct {
 	// AccessSecret signs access tokens; defaults to a key derived from core Secret.
 	AccessSecret string `koanf:"ACCESS_SECRET"`
-	// RefreshSecret signs refresh tokens; defaults to a different key derived from core Secret.
-	RefreshSecret string `koanf:"REFRESH_SECRET"`
 	// AccessExpiresIn is the access token lifetime (default 15 minutes).
 	AccessExpiresIn time.Duration
-	// RefreshExpiresIn is the refresh token lifetime (default 7 days).
-	RefreshExpiresIn time.Duration
-	// RotateRefreshToken replaces the refresh (session) token on every /refresh (default false).
+
+	// RotateSessionToken replaces the refresh (session) token on every /refresh (default false).
 	// Turn it on to keep the session token changing across refreshes.
-	RotateRefreshToken *bool
+	RotateSessionToken *bool
 	// CheckRevocation verifies session validity in repository/DB on every request carrying an access token.
 	CheckRevocation bool
 }
 
 // RotatesRefreshToken reports whether /refresh issues a new refresh token (default false).
 func (j SessionJWT) RotatesRefreshToken() bool {
-	return j.RotateRefreshToken != nil && *j.RotateRefreshToken
+	return j.RotateSessionToken != nil && *j.RotateSessionToken
 }
 
 // DefaultUpdatableSessionFields defines the default allowed session patch fields.
@@ -66,8 +64,7 @@ func DefaultAccessTokenConfig() AccessTokenConfig {
 		BasePath: "/api/auth",
 		Session: SessionGoAuth{
 			JWT: SessionJWT{
-				AccessExpiresIn:  15 * time.Minute,
-				RefreshExpiresIn: 7 * 24 * time.Hour,
+				AccessExpiresIn: 15 * time.Minute,
 			},
 			UpdatableFields: DefaultUpdatableSessionFields,
 		},

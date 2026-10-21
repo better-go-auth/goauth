@@ -33,17 +33,6 @@ type LegacySessionService interface {
 	RefreshTokens(ctx context.Context, s *models.Session, role string) (*models.AuthTokens, error)
 }
 
-type ILegacyAuthServices interface {
-	IVerificationService
-	LegacySessionService
-}
-
-// LegacyAuthServiceImpl Add a concrete combiner type to account_interfaces/core.interface.go
-type LegacyAuthServiceImpl struct {
-	IVerificationService
-	LegacySessionService
-}
-
 // IAccessTokenAuthService defines authentication endpoints for access-token / JWT flow.
 type IAccessTokenAuthService interface {
 	RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (*svcint.SignUpResult, error)
@@ -58,13 +47,4 @@ type IAccessTokenAuthService interface {
 // IAccessTokenSessionService manages JWT access token + refresh token sessions.
 type IAccessTokenSessionService interface {
 	LegacySessionService
-}
-
-// IAccessTokenProfileService handles user profile operations.
-type IAccessTokenProfileService interface {
-	// GetProfile(ctx context.Context, userID string) (*models.User, error)
-	// UpdateProfile(ctx context.Context, userID string, update models.ProfileUpdateDto) (*models.User, error)
-	// ChangePassword(ctx context.Context, userID, sessionID string, update models.PasswordUpdateDto) (dtos.GResp[models.User], error)
-	// SendChangeEmail(ctx context.Context, userID string, update models.ChangeEmailReqDto) (dtos.GResp[bool], error)
-	// VerifyChangeEmail(ctx context.Context, userID, sessionID string, update models.VerifyEmailDto) (dtos.GResp[models.User], error)
 }

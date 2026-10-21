@@ -9,7 +9,6 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	leg_int "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	constant "github.com/better-go-auth/goauth/src/common/consts"
@@ -112,9 +111,6 @@ func New(cfg accesstokenconfig.AccessTokenConfig, opts ...Option) *Plugin {
 	if cfg.Session.JWT.AccessExpiresIn <= 0 {
 		cfg.Session.JWT.AccessExpiresIn = defaultCfg.Session.JWT.AccessExpiresIn
 	}
-	if cfg.Session.JWT.RefreshExpiresIn <= 0 {
-		cfg.Session.JWT.RefreshExpiresIn = defaultCfg.Session.JWT.RefreshExpiresIn
-	}
 	if cfg.Verification.GoAuth.CodeExpiresIn <= 0 {
 		cfg.Verification.GoAuth.CodeExpiresIn = defaultCfg.Verification.GoAuth.CodeExpiresIn
 	}
@@ -133,6 +129,11 @@ func New(cfg accesstokenconfig.AccessTokenConfig, opts ...Option) *Plugin {
 // ID returns the unique identifier of the plugin.
 func (p *Plugin) ID() string {
 	return PluginID
+}
+
+// SessionConfig returns the session and JWT configuration of the access-token plugin.
+func (p *Plugin) SessionConfig() accesstokenconfig.SessionGoAuth {
+	return p.sessionConf
 }
 
 // Init initializes services and mounts Huma routes if API is provided in InitContext.
@@ -164,13 +165,9 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	sConf := p.sessionConf
 	if sConf.JWT.AccessSecret == "" && ictx.Config.Secret != "" {
 		sConf.JWT.AccessSecret = config.DeriveKey(ictx.Config.Secret, "goauth-access")
-		sConf.JWT.RefreshSecret = config.DeriveKey(ictx.Config.Secret, "goauth-refresh")
 	}
 	if sConf.JWT.AccessExpiresIn <= 0 {
 		sConf.JWT.AccessExpiresIn = 15 * time.Minute
-	}
-	if sConf.JWT.RefreshExpiresIn <= 0 {
-		sConf.JWT.RefreshExpiresIn = 7 * 24 * time.Hour
 	}
 	p.sessionConf = sConf
 
@@ -236,7 +233,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	// 2. Initialize handlers and mount routes if huma API is present
 	refreshMaxAge := ictx.Config.Session.ExpiresIn
 	if refreshMaxAge <= 0 {
-		refreshMaxAge = sConf.JWT.RefreshExpiresIn
+		refreshMaxAge = 7 * 24 * time.Hour
 	}
 	cookieAttrs := humaaccesstoken.CookieAttrs{
 		Secure:        ictx.Config.SecureCookies(),
@@ -244,14 +241,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		RefreshMaxAge: refreshMaxAge,
 	}
 
-	p.handler = &humaaccesstoken.AccessTokenHandler{
-		AuthServ:    p.authSvc,
-		SessionServ: p.sessionSvc,
-		// ProfileServ: p.profileSvc,
-		SessionRepo: repos,
-		Config:      &sConf,
-		Cookies:     cookieAttrs,
-	}
+	p.handler = humaaccesstoken.NewAccessTokenHandler(p.authSvc, p.sessionSvc, &sConf, cookieAttrs)
 
 	if ictx.Api != nil {
 		ictx.Api.UseMiddleware(p.Middleware(ictx.Config))
@@ -323,7 +313,7 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 									}
 								}
 							}
-							//if we have found the session with user, update the sid:token
+							// if we have found the session with user, update the sid:token
 							if sessWithUsr != nil {
 								sessToken = sess.Token
 								ttl := time.Until(sess.ExpiresAt)
@@ -337,7 +327,7 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 							}
 						}
 					}
-					//put he session user in the context
+					// put he session user in the context
 					if sessWithUsr != nil {
 						tok := sessToken
 						if tok == "" {
@@ -499,15 +489,4 @@ func (p *Plugin) SessionService() *services.SessionService {
 // VerificationService returns the initialized VerificationService.
 func (p *Plugin) VerificationService() *services.VerificationService {
 	return p.vSvc
-}
-
-// LegacyAuthServices returns the combined ILegacyAuthServices implementation.
-func (p *Plugin) LegacyAuthServices() leg_int.ILegacyAuthServices {
-	if p.vSvc == nil && p.sessionSvc == nil {
-		return nil
-	}
-	return leg_int.LegacyAuthServiceImpl{
-		IVerificationService: p.vSvc,
-		LegacySessionService: p.sessionSvc,
-	}
 }

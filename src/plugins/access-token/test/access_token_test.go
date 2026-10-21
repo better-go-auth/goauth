@@ -65,10 +65,8 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	}
 	sConf := accesstokenconfig.SessionGoAuth{
 		JWT: accesstokenconfig.SessionJWT{
-			AccessSecret:     "secret-access-token-key-32-bytes!",
-			RefreshSecret:    "secret-refresh-token-key-32-byte!",
-			AccessExpiresIn:  15 * time.Minute,
-			RefreshExpiresIn: 24 * time.Hour,
+			AccessSecret:    "secret-access-token-key-32-bytes!",
+			AccessExpiresIn: 15 * time.Minute,
 		},
 	}
 
@@ -198,17 +196,6 @@ func TestAccessTokenConfigDefaults(t *testing.T) {
 	}
 	if cfg.Session.JWT.AccessExpiresIn != 15*time.Minute {
 		t.Errorf("expected AccessExpiresIn 15m, got %v", cfg.Session.JWT.AccessExpiresIn)
-	}
-	if cfg.Session.JWT.RefreshExpiresIn != 7*24*time.Hour {
-		t.Errorf("expected RefreshExpiresIn 7d, got %v", cfg.Session.JWT.RefreshExpiresIn)
-	}
-	if cfg.Session.JWT.RotatesRefreshToken() {
-		t.Errorf("expected RotatesRefreshToken to default to false")
-	}
-	rot := true
-	cfg.Session.JWT.RotateRefreshToken = &rot
-	if !cfg.Session.JWT.RotatesRefreshToken() {
-		t.Errorf("expected RotatesRefreshToken to be true when explicitly enabled")
 	}
 }
 

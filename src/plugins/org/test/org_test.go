@@ -177,10 +177,23 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			var refData struct {
 				Body struct {
 					Token string `json:"token"`
+					Body  struct {
+						Token      string             `json:"token"`
+						AuthTokens *models.AuthTokens `json:"authTokens"`
+					} `json:"body"`
 				} `json:"body"`
 			}
-			if err := json.Unmarshal([]byte(refBody), &refData); err == nil && refData.Body.Token != "" {
-				ownerAuthHeader = map[string]string{"Authorization": "Bearer " + refData.Body.Token}
+			if err := json.Unmarshal([]byte(refBody), &refData); err == nil {
+				tok := refData.Body.Token
+				if tok == "" {
+					tok = refData.Body.Body.Token
+				}
+				if tok == "" && refData.Body.Body.AuthTokens != nil {
+					tok = refData.Body.Body.AuthTokens.AccessToken
+				}
+				if tok != "" {
+					ownerAuthHeader = map[string]string{"Authorization": "Bearer " + tok}
+				}
 			}
 		}
 	})

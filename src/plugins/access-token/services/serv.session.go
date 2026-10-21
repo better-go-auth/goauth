@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
@@ -12,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
 	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
@@ -160,12 +162,29 @@ func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*models.Aut
 	return &models.AuthTokens{AccessToken: access, RefreshToken: s.Token}, nil
 }
 
-// FindByRefreshToken returns the live session behind a refresh token, or nil (unknown, expired or revoked).
+// FindByRefreshToken returns the live session behind a refresh token (the session.token itself),
+// or nil (unknown, expired or revoked). Accepts both raw opaque tokens and signed session tokens (<token>.<signature>).
 func (aus *SessionService) FindByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error) {
-	sw, err := aus.Mgr.Get(ctx, refreshToken)
+	// 1. extract raw session token if a signed token was provided
+	tok := refreshToken
+	if strings.Contains(tok, ".") {
+		if aus.SConf.JWT.AccessSecret != "" {
+			if verified, ok := cookies.VerifyCookieValue(tok, aus.SConf.JWT.AccessSecret); ok {
+				tok = verified
+			}
+		}
+		if dot := strings.LastIndex(tok, "."); dot > 0 {
+			tok = tok[:dot]
+		}
+	}
+
+	// 2. lookup live session in session manager
+	sw, err := aus.Mgr.Get(ctx, tok)
 	if err != nil || sw == nil {
 		return nil, err
 	}
+
+	// 3. fetch full session model from repository
 	return aus.SessionRepo.FindSessionByID(ctx, sw.Session.ID)
 }
 
@@ -177,6 +196,8 @@ func (aus *SessionService) RefreshTokens(ctx context.Context, s *models.Session,
 	if err != nil {
 		return nil, err
 	}
+
+	// 2. slide session expiry if UpdateAge has passed
 	if swu != nil && aus.Mgr.ShouldRefresh(swu, false) {
 		swu, err = aus.Mgr.Refresh(ctx, swu)
 		if err != nil {
@@ -201,6 +222,8 @@ func (aus *SessionService) RefreshTokens(ctx context.Context, s *models.Session,
 	if swu == nil {
 		return nil, autherr.ErrInvalidToken
 	}
+
+	// 4. load updated session row and issue tokens with the session token as RefreshToken
 	updated, err := aus.SessionRepo.FindSessionByID(ctx, swu.Session.ID)
 	if err != nil {
 		return nil, err

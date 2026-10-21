@@ -76,7 +76,7 @@ func TestLoginKeepsOtherSessions(t *testing.T) {
 	}
 }
 
-func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
+func TestRefreshKeepsOrgContext(t *testing.T) {
 	env := helpers.SetupTestEnv(t, true)
 	ctx := context.Background()
 	email, pwd := "org_refresh@example.com", "password123!"
@@ -128,11 +128,11 @@ func TestRefreshKeepsOrgContextAndRotates(t *testing.T) {
 		t.Fatalf("device token lost on refresh: %q", stored.DeviceToken)
 	}
 
-	if _, err := env.AuthService.ResetToken(ctx, tokens.RefreshToken); err == nil {
-		t.Fatal("old refresh token must be rejected after rotation")
+	if res.Body.AuthTokens.RefreshToken != tokens.RefreshToken {
+		t.Fatalf("refresh token is the session token and should stay stable, expected %q got %q", tokens.RefreshToken, res.Body.AuthTokens.RefreshToken)
 	}
 	if _, err := env.AuthService.ResetToken(ctx, res.Body.AuthTokens.RefreshToken); err != nil {
-		t.Fatalf("rotated refresh token must work: %v", err)
+		t.Fatalf("subsequent refresh must work: %v", err)
 	}
 }
 

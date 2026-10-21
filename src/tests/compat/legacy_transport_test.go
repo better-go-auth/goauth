@@ -34,9 +34,7 @@ func (s *Server) bare(t *testing.T, method, path, bearer string) int {
 }
 
 func TestLegacyJWTOnSharedSessions(t *testing.T) {
-	rot := true
 	atCfg := accesstokenconfig.DefaultAccessTokenConfig()
-	atCfg.Session.JWT.RotateRefreshToken = &rot
 	s := NewServer(t, WithAccessTokenConfig(atCfg), WithConfig(compatMode))
 	expectStatus(t, s.Post(t, "/api/auth/sign-up/email", signUpBody("legacy@example.com")), http.StatusOK)
 
@@ -68,17 +66,17 @@ func TestLegacyJWTOnSharedSessions(t *testing.T) {
 		t.Fatal("unknown token must be rejected")
 	}
 
-	// refresh rotates the session token by default
+	// refresh uses the session token and issues fresh access token
 	r = s.Post(t, "/api/auth/refresh", map[string]any{"token": refresh})
 	expectStatus(t, r, http.StatusCreated)
 	var next legacyTokens
 	r.JSON(t, &next)
 	newRefresh := next.Body.AuthTokens.RefreshToken
-	if newRefresh == "" || newRefresh == refresh {
-		t.Fatalf("refresh token must rotate: %s", r.Body)
+	if newRefresh != refresh {
+		t.Fatalf("refresh token is the session token and must stay stable, got %s vs %s", newRefresh, refresh)
 	}
-	if r := s.Post(t, "/api/auth/refresh", map[string]any{"token": refresh}); r.Status == http.StatusCreated {
-		t.Fatal("rotated-out refresh token must be rejected")
+	if next.Body.AuthTokens.AccessToken == "" {
+		t.Fatalf("expected new access token: %s", r.Body)
 	}
 
 	// sign-out revokes the shared session: its access token stops working and it leaves list-sessions
@@ -103,9 +101,7 @@ func TestLegacyJWTOnSharedSessions(t *testing.T) {
 }
 
 func TestLegacyRefreshWithoutRotation(t *testing.T) {
-	keep := false
 	atCfg := accesstokenconfig.DefaultAccessTokenConfig()
-	atCfg.Session.JWT.RotateRefreshToken = &keep
 	s := NewServer(t, WithAccessTokenConfig(atCfg), WithConfig(compatMode))
 	expectStatus(t, s.Post(t, "/api/auth/sign-up/email", signUpBody("stable@example.com")), http.StatusOK)
 	var login legacyTokens

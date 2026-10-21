@@ -44,7 +44,7 @@ type Option func(*Plugin)
 // WithRequireSignature sets whether only signed tokens are accepted.
 func WithRequireSignature(req bool) Option {
 	return func(p *Plugin) {
-		p.config.RequireSignature = req
+		p.config.RequireSignature = &req
 	}
 }
 
@@ -97,7 +97,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		return fmt.Errorf("bearer plugin: Huma API is required")
 	}
 
-	if !p.config.RequireSignature {
+	if !p.config.RequiresSignature() {
 		slog.Warn("bearer: RequireSignature is disabled — unsigned bearer tokens will be accepted; enable it to require HMAC-signed tokens")
 	}
 
@@ -125,7 +125,7 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 			raw := strings.TrimSpace(authHeader[7:])
 			if raw != "" {
-				if tok, ok := VerifyAndExtractToken(raw, authCfg.Secret, p.config.RequireSignature); ok {
+				if tok, ok := VerifyAndExtractToken(raw, authCfg.Secret, p.config.RequiresSignature()); ok {
 					bearerToken = tok
 					hasBearer = true
 					// Attach raw session token to context

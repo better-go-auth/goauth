@@ -28,6 +28,8 @@ import (
 
 const testSecret = "test-secret-bearer-plugin-01234567890"
 
+func boolPtr(b bool) *bool { return &b }
+
 func signToken(raw, secret string, encoding *base64.Encoding) string {
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(raw))
@@ -120,7 +122,7 @@ func setupTestServer(t *testing.T, bearerCfg bearerconfig.BearerConfig) (*httpte
 }
 
 func TestBearerPlugin_RoundTrip(t *testing.T) {
-	ts, _ := setupTestServer(t, bearerconfig.BearerConfig{RequireSignature: false})
+	ts, _ := setupTestServer(t, bearerconfig.BearerConfig{RequireSignature: boolPtr(false)})
 
 	// 1. Sign up a new user via /api/auth/sign-up/email
 	signUpBody := `{"email":"bearer-test@example.com","password":"Password123!","name":"Bearer User"}`
@@ -222,7 +224,7 @@ func TestBearerPlugin_RoundTrip(t *testing.T) {
 }
 
 func TestBearerPlugin_RequireSignature(t *testing.T) {
-	ts, _ := setupTestServer(t, bearerconfig.BearerConfig{RequireSignature: true})
+	ts, _ := setupTestServer(t, bearerconfig.BearerConfig{RequireSignature: boolPtr(true)})
 
 	// Sign up
 	signUpBody := `{"email":"bearer-sig@example.com","password":"Password123!","name":"Sig User"}`
@@ -274,7 +276,7 @@ func TestBearerPlugin_RequireSignature(t *testing.T) {
 }
 
 func TestBearerPlugin_UntrustedOriginBlocked(t *testing.T) {
-	ts, _ := setupTestServer(t, bearerconfig.BearerConfig{RequireSignature: false})
+	ts, _ := setupTestServer(t, bearerconfig.BearerConfig{RequireSignature: boolPtr(false)})
 
 	// Sign up to get a valid token
 	signUpBody := `{"email":"bearer-csrf@example.com","password":"Password123!","name":"CSRF User"}`
@@ -303,5 +305,50 @@ func TestBearerPlugin_UntrustedOriginBlocked(t *testing.T) {
 	if signOutResp.StatusCode != http.StatusForbidden {
 		body, _ := io.ReadAll(signOutResp.Body)
 		t.Fatalf("expected 403 Forbidden for untrusted origin with bearer token, got %d: %s", signOutResp.StatusCode, body)
+	}
+}
+
+func TestBearerPlugin_DefaultRequireSignature(t *testing.T) {
+	emptyCfg := bearerconfig.BearerConfig{}
+	if !emptyCfg.RequiresSignature() {
+		t.Fatalf("expected BearerConfig{} to default RequiresSignature() to true")
+	}
+	defaultCfg := bearerconfig.DefaultConfig()
+	if !defaultCfg.RequiresSignature() {
+		t.Fatalf("expected DefaultConfig() to have RequiresSignature() == true")
+	}
+
+	// Verify server with empty config rejects unsigned tokens
+	ts, _ := setupTestServer(t, emptyCfg)
+	signUpBody := `{"email":"bearer-default-sig@example.com","password":"Password123!","name":"Default Sig User"}`
+	req, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/auth/sign-up/email", strings.NewReader(signUpBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Origin", ts.URL)
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	signedToken := resp.Header.Get("set-auth-token")
+	if signedToken == "" {
+		t.Fatalf("expected set-auth-token")
+	}
+
+	rawToken := signedToken
+	if dot := strings.Index(signedToken, "."); dot != -1 {
+		rawToken = signedToken[:dot]
+	}
+	getSessReqUnsigned, _ := http.NewRequest(http.MethodGet, ts.URL+"/api/auth/get-session", nil)
+	getSessReqUnsigned.Header.Set("Authorization", "Bearer "+rawToken)
+	getSessReqUnsigned.Header.Set("Origin", ts.URL)
+	sessRespUnsigned, err := http.DefaultClient.Do(getSessReqUnsigned)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer sessRespUnsigned.Body.Close()
+	unsignedBody, _ := io.ReadAll(sessRespUnsigned.Body)
+	if strings.Contains(string(unsignedBody), "bearer-default-sig@example.com") {
+		t.Fatalf("unsigned token should have been rejected by default when RequireSignature is unset, but got: %s", unsignedBody)
 	}
 }

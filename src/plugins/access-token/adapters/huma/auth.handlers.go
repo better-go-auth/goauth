@@ -3,14 +3,14 @@ package humaaccesstoken
 import (
 	"context"
 	"net/http"
+	"time"
 
-	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	Icnst "github.com/better-go-auth/goauth/src/common"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
-	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/models"
 	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	services "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 )
@@ -19,12 +19,20 @@ import (
 type AccessTokenHandler struct {
 	AuthServ    services.IAccessTokenAuthService
 	SessionServ services.IAccessTokenSessionService
-	ProfileServ services.IAccessTokenProfileService
-	SessionRepo repo_interfaces.ISessionRepo
-	Config      *accesstokenconfig.SessionGoAuth
-	Cookies     CookieAttrs
+
+	// SessionRepo repo_interfaces.ISessionRepo
+	Config  *accesstokenconfig.SessionGoAuth
+	Cookies CookieAttrs
 }
 
+func NewAccessTokenHandler(authserv services.IAccessTokenAuthService, sessionserv services.IAccessTokenSessionService, config *accesstokenconfig.SessionGoAuth, cookies CookieAttrs) *AccessTokenHandler {
+	return &AccessTokenHandler{
+		AuthServ:    authserv,
+		SessionServ: sessionserv,
+		Config:      config,
+		Cookies:     cookies,
+	}
+}
 func (h *AccessTokenHandler) tokenCookies(tokens *models.AuthTokens) []http.Cookie {
 	if tokens == nil {
 		return nil
@@ -32,7 +40,7 @@ func (h *AccessTokenHandler) tokenCookies(tokens *models.AuthTokens) []http.Cook
 	accessExpiry := h.Config.JWT.AccessExpiresIn
 	refreshExpiry := h.Cookies.RefreshMaxAge
 	if refreshExpiry <= 0 {
-		refreshExpiry = h.Config.JWT.RefreshExpiresIn
+		refreshExpiry = 7 * 24 * time.Hour
 	}
 	return []http.Cookie{
 		CreateCookie(Icnst.AccessToken, tokens.AccessToken, accessExpiry, h.Cookies),
@@ -55,20 +63,6 @@ func (h *AccessTokenHandler) Register(ctx context.Context, inputs *humatypes.Hum
 	return humatypes.MakeResPtr(&gresp, 200), nil
 }
 
-// VerifyRegisteredAccount handles POST /verify.
-// func (h *AccessTokenHandler) VerifyRegisteredAccount(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerificationInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
-// 	usr, err := h.AuthServ.VerifyRegisteredUser(ctx, inputs.Body)
-// 	if err != nil {
-// 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
-// 	}
-// 	u := authDtos.UserFromModel(&usr.Body)
-// 	resp := authDtos.VerifyEmailResponse{
-// 		User:   &u,
-// 		Status: true,
-// 	}
-// 	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
-// 	return humatypes.MakeRes(gresp, 200), nil
-// }
 
 // Login handles POST /login.
 func (h *AccessTokenHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.LoginData]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
@@ -112,56 +106,19 @@ func (h *AccessTokenHandler) RefreshToken(ctx context.Context, inputs *humatypes
 	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201, cookies...), nil
 }
 
-// Logout handles POST /logout.
-// Deprecated: Use core's POST /api/auth/sign-out with Authorization: Bearer <access_token>.
-// func (h *AccessTokenHandler) Logout(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.RefreshTokenInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.SuccessResponse]], error) {
-// 	tkn, err := h.AuthServ.Logout(ctx, inputs.Body.Token)
+
+
+// VerifyRegisteredAccount handles POST /verify.
+// func (h *AccessTokenHandler) VerifyRegisteredAccount(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerificationInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
+// 	usr, err := h.AuthServ.VerifyRegisteredUser(ctx, inputs.Body)
 // 	if err != nil {
 // 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
 // 	}
-// 	resp := authDtos.SuccessResponse{
-// 		Success: tkn.Body,
+// 	u := authDtos.UserFromModel(&usr.Body)
+// 	resp := authDtos.VerifyEmailResponse{
+// 		User:   &u,
+// 		Status: true,
 // 	}
-// 	cookies := []http.Cookie{
-// 		ExpireCookie(Icnst.AccessToken, h.Cookies),
-// 		ExpireCookie(Icnst.RefreshToken, h.Cookies),
-// 	}
-// 	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201, cookies...), nil
-// }
-
-// ForgotPwd handles POST /forgot_password.
-// func (h *AccessTokenHandler) ForgotPwd(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerifyReqInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
-// 	tkn, err := h.AuthServ.ForgotPwd(ctx, inputs.Body)
-// 	if err != nil {
-// 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
-// 	}
-// 	resp := authDtos.StatusResponse{
-// 		Status:  tkn.Body,
-// 		Message: "Password reset verification code sent",
-// 	}
-// 	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
-// }
-
-// ResetPwd handles POST /reset_password.
-// func (h *AccessTokenHandler) ResetPwd(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.PwdResetInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.StatusResponse]], error) {
-// 	tkn, err := h.AuthServ.ResetPwd(ctx, inputs.Body)
-// 	if err != nil {
-// 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
-// 	}
-// 	resp := authDtos.StatusResponse{
-// 		Status:  tkn.Body,
-// 		Message: "Password reset successfully",
-// 	}
-// 	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201), nil
-// }
-
-// func (ah *GinAuthHandler[T]) ChangeActiveCompany(ctx context.Context, inputs *dtos.HumaReqBody[ChangeActiveCompanyInput]) (*dtos.HumaResponse[dtos.GResp[TokenResponse]], error) {
-// 	userID := ctx.Value(consts.CTXUser_ID.Str()).(string)
-// 	tkn, err := ah.AdminAuthServ.ChangeActiveCompany(ctx, userID, inputs.Body)
-// 	if err != nil {
-// 		return dtos.HumaReturnG(tkn, err)
-// 	}
-// 	refreshCookie := CreateCookie(Icnst.RefreshToken, tkn.Body.AuthTokens.RefreshToken, ah.AdminAuthServ.Config.JwtVar.RefreshExpireMin)
-// 	accessCookie := CreateCookie(Icnst.AccessToken, tkn.Body.AuthTokens.AccessToken, ah.AdminAuthServ.Config.JwtVar.AccessExpireMin)
-// 	return dtos.HumaReturnGWithCookie(tkn, err, []http.Cookie{refreshCookie, accessCookie})
+// 	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
+// 	return humatypes.MakeRes(gresp, 200), nil
 // }

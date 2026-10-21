@@ -67,8 +67,8 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 		// AccessTokenConfig defaults
 		atCfg := accesstokenconfig.DefaultAccessTokenConfig()
 		jwt := atCfg.Session.JWT
-		if jwt.AccessExpiresIn != 15*time.Minute || jwt.RefreshExpiresIn != 7*24*time.Hour {
-			t.Errorf("unexpected JWT lifetimes %v / %v", jwt.AccessExpiresIn, jwt.RefreshExpiresIn)
+		if jwt.AccessExpiresIn != 15*time.Minute {
+			t.Errorf("unexpected JWT lifetime %v", jwt.AccessExpiresIn)
 		}
 	})
 }

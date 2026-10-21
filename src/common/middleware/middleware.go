@@ -70,12 +70,6 @@ func claimsFromCtx(ctx huma.Context) (token.CustomClaims, bool) {
 	}
 	return token.CustomClaims{}, false
 }
-
-// type ICoreMiddleWareFunc interface {
-// 	TokenVerifier
-// 	RevocationStore
-// }
-
 //============================ Actual Middlewares ================================|
 //
 //========================================================================================|

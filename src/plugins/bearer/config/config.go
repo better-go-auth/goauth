@@ -1,18 +1,27 @@
 package config
 
 // BearerConfig holds configuration options for the Bearer plugin.
-// RequireSignature defaults to false for Better Auth compat; enabling it
-// requires HMAC-signed bearer tokens and is recommended for production.
+// RequireSignature defaults to true; enabling it requires HMAC-signed
+// bearer tokens (<token>.<signature>) matching Better Auth's signed tokens.
 type BearerConfig struct {
-	// RequireSignature: if true, only signed tokens (<token>.<signature>)
+	// RequireSignature: if true (default), only signed tokens (<token>.<signature>)
 	// will be converted to session cookies. Unsigned tokens will be rejected.
-	// Default: false (matches Better Auth default).
-	RequireSignature bool
+	// Default: true.
+	RequireSignature *bool
 }
 
-// DefaultConfig returns the default BearerConfig.
+// DefaultConfig returns the default BearerConfig with RequireSignature enabled.
 func DefaultConfig() BearerConfig {
+	t := true
 	return BearerConfig{
-		RequireSignature: true,
+		RequireSignature: &t,
 	}
+}
+
+// RequiresSignature reports whether signed tokens are required (default: true).
+func (c BearerConfig) RequiresSignature() bool {
+	if c.RequireSignature == nil {
+		return true
+	}
+	return *c.RequireSignature
 }
