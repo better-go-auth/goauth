@@ -1,7 +1,7 @@
 package dtos
 
 import (
-	apperrors "github.com/better-go-auth/goauth/src/common/errors"
+	apperrors "github.com/better-go-auth/goauth/src/common/autherr"
 )
 
 type PResp[T any] struct {

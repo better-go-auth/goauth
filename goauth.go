@@ -19,7 +19,6 @@ import (
 	"github.com/better-go-auth/goauth/src/models/migration"
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
-	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/origin"
@@ -36,31 +35,32 @@ import (
 // Fields are read-only after SetupGoAuth returns; mutating them is not
 // supported and may break middleware, hooks, and session handling.
 type GoAuth struct {
-	options             GoAuthOptions
-	plugins             map[string]plugin.Plugin
-	hooks               plugin.HookRegistry
-	iLegacyAuthServices interfaces1.ILegacyAuthServices
-	middleWare          middleware.AuthMiddleware
-	middlewareInt       middleware.IAuthMiddleware
-	revocationStore     middleware.RevocationStore
-	transactionManager  interfaces.ITransactionManager
-	provider            *providers.IProviderS
-	repositories        repo_interfaces.IAuthRepos
-	sessions            *sessionsvc.Manager
-	auth                *authsvc.Service
-	sessionResolver     *humaadapter.Resolver
-	cookies             *cookies.Manager
+	options GoAuthOptions
+	plugins map[string]plugin.Plugin
+	hooks   plugin.HookRegistry
+	// middleware
+
+	middlewareInt      middleware.IAuthMiddleware
+	revocationStore    middleware.RevocationStore
+	transactionManager interfaces.ITransactionManager
+	provider           *providers.IProviderS
+	repositories       repo_interfaces.IAuthRepos
+	sessions           *sessionsvc.Manager
+	auth               *authsvc.Service
+	sessionResolver    *humaadapter.Resolver
+	cookies            *cookies.Manager
 }
 
-func (g *GoAuth) Options() GoAuthOptions                            { return g.options }
-func (g *GoAuth) Plugins() map[string]plugin.Plugin                 { return g.plugins }
-func (g *GoAuth) Hooks() plugin.HookRegistry                        { return g.hooks }
-func (g *GoAuth) ILegacyAuthServices() interfaces1.ILegacyAuthServices { return g.iLegacyAuthServices }
-func (g *GoAuth) MiddleWare() middleware.AuthMiddleware              { return g.middleWare }
+func (g *GoAuth) Options() GoAuthOptions            { return g.options }
+func (g *GoAuth) Plugins() map[string]plugin.Plugin { return g.plugins }
+func (g *GoAuth) Hooks() plugin.HookRegistry        { return g.hooks }
+
+// func (g *GoAuth) ILegacyAuthServices() interfaces1.ILegacyAuthServices { return g.iLegacyAuthServices }
+// func (g *GoAuth) MiddleWare() middleware.AuthMiddleware              { return g.middleWare }
 func (g *GoAuth) MiddlewareInt() middleware.IAuthMiddleware          { return g.middlewareInt }
 func (g *GoAuth) RevocationStore() middleware.RevocationStore        { return g.revocationStore }
 func (g *GoAuth) TransactionManager() interfaces.ITransactionManager { return g.transactionManager }
-func (g *GoAuth) Provider() *providers.IProviderS                   { return g.provider }
+func (g *GoAuth) Provider() *providers.IProviderS                    { return g.provider }
 func (g *GoAuth) Repositories() repo_interfaces.IAuthRepos           { return g.repositories }
 func (g *GoAuth) Sessions() *sessionsvc.Manager                      { return g.sessions }
 func (g *GoAuth) Auth() *authsvc.Service                             { return g.auth }
@@ -162,17 +162,19 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	//=======================  Middlewares ==============================================|
 	//                                                                                   |
 	//===================================================================================|
-	verifier := middleware.NewJWTTokenVerifier(opts.GoAuth.Session.JWT.AccessSecret)
-	var revocationStore middleware.RevocationStore
-	if repos != nil {
-		revocationStore = providers.NewRevocationStoreWithRepo(repos, opts.SecondaryStorage, opts.AuthConfig.GoAuth.Session.JWT)
-	} 
-	// else {
-	// 	revocationStore = providers.NewRevocationStore(opts.Conn, opts.SecondaryStorage, opts.AuthConfig.GoAuth.Session.JWT)
-	// }
+	// Core JWT fallback secret (from access-token plugin or derived from AuthConfig.Secret)
 
-	// make a middleware
-	mdlWare := middleware.NewAuthMiddleware(verifier, revocationStore, nil)
+	verifier := middleware.NewJWTTokenVerifier(config.DeriveKey(opts.Secret, "goauth-access"))
+	memRevocation := middleware.NewKeyValRevocationStore(opts.SecondaryStorage)
+	mdlWare,err := middleware.NewAuthMiddleware(verifier, memRevocation, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	//====================       ! End of middleware ! ===============================|
+	//                                                                                |
+	//================================================================================
+
 	// initialize the provider
 	providerService := providers.NewProvider(opts.Conn, opts.SecondaryStorage, mdlWare, txManager)
 
@@ -193,7 +195,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager, Hooks: hooks})
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
-	authenticate := authenticator.NewDefaultAuthenticator(opts.GoAuth.Session.JWT.AccessSecret, repos)
+	authenticate := authenticator.NewDefaultAuthenticator(config.DeriveKey(opts.Secret, "goauth-access"), repos)
 	initCtx := &plugin.InitContext{
 		Ctx:            ctx,
 		Api:            api,
@@ -201,7 +203,6 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		TxManager:      txManager,
 		SessionManager: sessionMgr,
 		IAuthSvc:       authService,
-
 		IAuthRepos:       repos,
 		MiddleWare:       mdlWare,
 		Authenticator:    authenticate,
@@ -250,12 +251,14 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		options:            opts,
 		plugins:            pluginMap,
 		hooks:              hooks,
-		middleWare:         *mdlWare,
-		revocationStore:    revocationStore,
+		//middlewares
+		// middleWare:         *mdlWare,
+		middlewareInt:      mdlWare,
+		//middleware
+		revocationStore:    memRevocation,
 		transactionManager: txManager,
 		provider:           providerService,
 		repositories:       repos,
-		middlewareInt:      mdlWare,
 		sessions:           sessionMgr,
 		auth:               authService,
 		sessionResolver:    resolver,

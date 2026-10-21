@@ -9,3 +9,8 @@ ther might be comments inside fuction explaining what each step do, dont remove 
 
 infact when you implement a function with many steps add comments to explain each step.
 
+
+
+## mark tasks as done
+
+When ever you finish tasks 

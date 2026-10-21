@@ -13,7 +13,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/common/dtos"
-	loc_errors "github.com/better-go-auth/goauth/src/common/errors"
+	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models"
 )
 

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 )

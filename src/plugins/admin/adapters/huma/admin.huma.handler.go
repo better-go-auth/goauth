@@ -3,7 +3,7 @@ package humaadmin
 import (
 	"context"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/middleware"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"

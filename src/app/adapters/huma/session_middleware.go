@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/danielgtaylor/huma/v2"

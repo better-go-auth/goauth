@@ -4,7 +4,7 @@ import (
 	"context"
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/models"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/services"
 	"github.com/danielgtaylor/huma/v2"

@@ -1,4 +1,4 @@
-package errors
+package autherr
 
 // Generic Http Status codes
 const (
@@ -69,9 +69,9 @@ const (
 	UserBanned         = RespCode("USER_BANNED")
 	Unauthorized       = RespCode("UNAUTHORIZED")
 	Forbidden          = RespCode("FORBIDDEN")
-	
-	InvalidEmail       = RespCode("INVALID_EMAIL")
-	SessionExpired     = RespCode("SESSION_EXPIRED")
+
+	InvalidEmail   = RespCode("INVALID_EMAIL")
+	SessionExpired = RespCode("SESSION_EXPIRED")
 
 	// not found
 	SessionNotFound  = RespCode("SESSION_NOT_FOUND")
@@ -91,7 +91,6 @@ const (
 	FailedToUnlinkLastAccount            = RespCode("FAILED_TO_UNLINK_LAST_ACCOUNT")
 	SessionNotFresh                      = RespCode("SESSION_NOT_FRESH")
 )
-
 
 // Account Status Codes
 const (
@@ -143,15 +142,15 @@ var errorText = map[RespCode]string{
 	InvalidToken:        "Invalid token",
 
 	// Predefined Auth Plugin Error Messages
-	InvalidCredentials:                   "Invalid email or password",
-	EmailNotVerified:                     "Email not verified",
-	UserBanned:                           "This account has been banned",
-	SessionNotFound:                      "Session not found",
-	SessionExpired:                       "Session has expired",
-	Unauthorized:                         "Unauthorized",
-	Forbidden:                            "Forbidden",
-	WeakPassword:                         "Password does not meet requirements",
-//
+	InvalidCredentials: "Invalid email or password",
+	EmailNotVerified:   "Email not verified",
+	UserBanned:         "This account has been banned",
+	SessionNotFound:    "Session not found",
+	SessionExpired:     "Session has expired",
+	Unauthorized:       "Unauthorized",
+	Forbidden:          "Forbidden",
+	WeakPassword:       "Password does not meet requirements",
+	//
 	InvalidEmail:                         "Invalid email",
 	PasswordTooShort:                     "Password too short",
 	PasswordTooLong:                      "Password too long",

@@ -9,7 +9,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"

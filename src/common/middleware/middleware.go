@@ -3,10 +3,12 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers/token"
 	"github.com/danielgtaylor/huma/v2"
@@ -17,7 +19,6 @@ import (
 //============================ Functions Used By Middlewares ================================|
 //
 //========================================================================================|
-
 
 // SessionClaimsResolver turns a better-auth session token (opaque bearer token or the signed session cookie)
 // into claims, so cookie and bearer clients pass the same middleware as legacy JWT clients.
@@ -32,12 +33,15 @@ type AuthMiddleware struct {
 	sessions   SessionClaimsResolver // Optional
 }
 
-func NewAuthMiddleware(verifier TokenVerifier, revocation RevocationStore, roles DynamicRoleResolver) *AuthMiddleware {
+func NewAuthMiddleware(verifier TokenVerifier, revocation RevocationStore, roles DynamicRoleResolver) (*AuthMiddleware, error) {
+	if verifier == nil {
+		return nil, errors.New("verifier is nil")
+	}
 	return &AuthMiddleware{
 		verifier:   verifier,
 		revocation: revocation,
 		roles:      roles,
-	}
+	}, nil
 }
 
 // WithSessions enables session-token authentication next to access JWTs.
@@ -82,7 +86,6 @@ type IAuthMiddleware interface {
 	Authorize(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context))
 }
 
-
 // Authenticate Middleware (Handles Token Verification + Revocation Check).
 // It accepts a legacy access JWT, or, when WithSessions is set, a session token as bearer or cookie.
 func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
@@ -93,6 +96,7 @@ func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 		}
 		var claims token.CustomClaims
 		switch {
+		// if we have a n authorization token and it is a jwt token verify it with the verifier
 		case bearer != "" && looksLikeJWT(bearer):
 			c, err := m.verifier.VerifyToken(bearer)
 			if err != nil {
@@ -159,8 +163,6 @@ func (m *AuthMiddleware) Authorize(operationID consts.OperationId, allowedRoles 
 		next(ctx)
 	}
 }
-
-
 
 // Trace Middleware adds telemetry span attributes
 func (m *AuthMiddleware) Trace(operationID string) func(huma.Context, func(huma.Context)) {

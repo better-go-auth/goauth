@@ -6,7 +6,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/token"
 )

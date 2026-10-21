@@ -3,7 +3,7 @@ package orgerrors
 import (
 	"net/http"
 
-	errors "github.com/better-go-auth/goauth/src/common/errors"
+	errors "github.com/better-go-auth/goauth/src/common/autherr"
 )
 
 const (

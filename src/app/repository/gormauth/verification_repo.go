@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	loc_errors "github.com/better-go-auth/goauth/src/common/errors"
+	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	"gorm.io/gorm"

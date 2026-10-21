@@ -3,7 +3,7 @@ package gormauth
 
 import (
 	"context"
-	loc_errors "github.com/better-go-auth/goauth/src/common/errors"
+	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
 	"errors"
 	"fmt"
 

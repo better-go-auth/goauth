@@ -16,10 +16,40 @@ import (
 
 type AuthConfig struct {
 	AppName string
-	// BasePath is the base mount path for Better Auth routes (default: "/api/auth").
-	BasePath string // usualy /api/auth
 	// BaseURL is the public origin of the auth server (e.g. https://example.com).
+	/**
+	 * Base URL for the Better Auth. This is typically the
+	 * root URL where your application server is hosted.
+	 *
+	 * Can be configured as:
+	 * - A static string: `"https://myapp.com"`
+	 * - A dynamic config with allowed hosts for multi-domain deployments
+	 *
+	 * If not explicitly set, the system will check environment variables:
+	 * `BETTER_AUTH_URL`, `NEXT_PUBLIC_BETTER_AUTH_URL`, etc.
+	 *
+	 * @example
+	 * ```ts
+	 * // Static URL
+	 * baseURL: "https://myapp.com"
+	 *
+	 * // Dynamic with allowed hosts (for Vercel, multi-domain, etc.)
+	 * baseURL: {
+	 *   allowedHosts: ["myapp.com", "*.vercel.app", "preview-*.myapp.com"],
+	 *   fallback: "https://myapp.com"
+	 * }
+	 * ```
+	 */
 	BaseURL string
+	// BasePath is the base mount path for Better Auth routes (default: "/api/auth").
+	/**
+	 * Base path for the Better Auth. This is typically
+	 * the path where the
+	 * Better Auth routes are mounted.
+	 *
+	 * @default "/api/auth"
+	 */
+	BasePath string // usualy /api/auth
 	// Secret signs cookies and tokens; defaults to $BETTER_AUTH_SECRET.
 	Secret         string
 	TrustedOrigins []string
@@ -81,24 +111,8 @@ func (opts *AuthConfig) SetDefaults() {
 	if opts.Secret == "" {
 		opts.Secret = os.Getenv(SecretEnvVar)
 	}
-	jwt := &opts.GoAuth.Session.JWT
-	if opts.Secret == "" && opts.GoAuth.Mode == ModeLegacy {
-		opts.Secret = jwt.AccessSecret
-	}
-	if jwt.AccessSecret == "" && opts.Secret != "" {
-		jwt.AccessSecret = DeriveKey(opts.Secret, "goauth-access")
-	}
-	if jwt.RefreshSecret == "" && opts.Secret != "" {
-		jwt.RefreshSecret = DeriveKey(opts.Secret, "goauth-refresh")
-	}
-	if jwt.AccessExpiresIn <= 0 {
-		jwt.AccessExpiresIn = time.Hour
-	}
 	if opts.GoAuth.Session.UpdatableFields == nil {
 		opts.GoAuth.Session.UpdatableFields = DefaultUpdatableSessionFields
-	}
-	if jwt.RefreshExpiresIn <= 0 {
-		jwt.RefreshExpiresIn = 7 * 24 * time.Hour
 	}
 	if opts.Advanced.CookiePrefix == "" {
 		opts.Advanced.CookiePrefix = DefaultCookiePrefix
@@ -177,12 +191,8 @@ func (opts *AuthConfig) Validate() error {
 	if opts.Advanced.CrossSubDomainCookies.Enabled && opts.CookieDomain() == "" {
 		return errors.New("goauth: CrossSubDomainCookies requires Domain or BaseURL")
 	}
-	jwt := opts.GoAuth.Session.JWT
-	if jwt.AccessSecret == "" || jwt.RefreshSecret == "" {
-		return errors.New("goauth: Secret (or GoAuth.Session.JWT.AccessSecret and RefreshSecret) is required")
-	}
-	if jwt.AccessSecret == jwt.RefreshSecret {
-		return errors.New("goauth: GoAuth.Session.JWT.AccessSecret and RefreshSecret must differ")
+	if opts.Secret == "" {
+		return errors.New("goauth: Secret (or $" + SecretEnvVar + ") is required")
 	}
 	if opts.Secret != "" && len(opts.Secret) < MinSecretLength {
 		slog.Warn("goauth: Secret is shorter than recommended", "min", MinSecretLength, "len", len(opts.Secret))

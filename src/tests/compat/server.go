@@ -61,6 +61,20 @@ func WithPlugin(p plugin.Plugin) Option {
 	return func(o *goauth.GoAuthOptions) { o.Plugins = append(o.Plugins, p) }
 }
 
+// WithAccessTokenConfig sets custom configuration for the access-token plugin.
+func WithAccessTokenConfig(cfg accesstokenconfig.AccessTokenConfig) Option {
+	return func(o *goauth.GoAuthOptions) {
+		var filtered []plugin.Plugin
+		for _, p := range o.Plugins {
+			if p.ID() != accesstoken.PluginID {
+				filtered = append(filtered, p)
+			}
+		}
+		filtered = append(filtered, accesstoken.New(cfg))
+		o.Plugins = filtered
+	}
+}
+
 // WithDB configures a custom *gorm.DB connection (e.g. Postgres or shared SQLite).
 func WithDB(db *gorm.DB) Option {
 	return func(o *goauth.GoAuthOptions) { o.Conn = db }

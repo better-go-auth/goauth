@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/better-go-auth/goauth/src/config"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 )
 
 type legacyTokens struct {
@@ -34,11 +34,10 @@ func (s *Server) bare(t *testing.T, method, path, bearer string) int {
 }
 
 func TestLegacyJWTOnSharedSessions(t *testing.T) {
-	s := NewServer(t, WithConfig(func(c *config.AuthConfig) {
-		compatMode(c)
-		rot := true
-		c.GoAuth.Session.JWT.RotateRefreshToken = &rot
-	}))
+	rot := true
+	atCfg := accesstokenconfig.DefaultAccessTokenConfig()
+	atCfg.Session.JWT.RotateRefreshToken = &rot
+	s := NewServer(t, WithAccessTokenConfig(atCfg), WithConfig(compatMode))
 	expectStatus(t, s.Post(t, "/api/auth/sign-up/email", signUpBody("legacy@example.com")), http.StatusOK)
 
 	// legacy login creates a normal better-auth session; the refresh token is its session token
@@ -105,10 +104,9 @@ func TestLegacyJWTOnSharedSessions(t *testing.T) {
 
 func TestLegacyRefreshWithoutRotation(t *testing.T) {
 	keep := false
-	s := NewServer(t, WithConfig(func(c *config.AuthConfig) {
-		compatMode(c)
-		c.GoAuth.Session.JWT.RotateRefreshToken = &keep
-	}))
+	atCfg := accesstokenconfig.DefaultAccessTokenConfig()
+	atCfg.Session.JWT.RotateRefreshToken = &keep
+	s := NewServer(t, WithAccessTokenConfig(atCfg), WithConfig(compatMode))
 	expectStatus(t, s.Post(t, "/api/auth/sign-up/email", signUpBody("stable@example.com")), http.StatusOK)
 	var login legacyTokens
 	s.Post(t, "/api/auth/login", map[string]any{"info": "stable@example.com", "password": "password123"}).JSON(t, &login)

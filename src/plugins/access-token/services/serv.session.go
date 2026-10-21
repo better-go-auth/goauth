@@ -6,8 +6,8 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
-	"github.com/better-go-auth/goauth/src/config"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
@@ -107,7 +107,7 @@ type SessionService struct {
 	SessionRepo repo_interfaces.ISessionRepo
 	Users       repo_interfaces.IUserRepo
 	Mgr         serv_interfaces.ISessionManager
-	SConf       config.SessionGoAuth
+	SConf       accesstokenconfig.SessionGoAuth
 	SStore      sec_storage.SecondaryStorage
 	Hooks       plugins.HookRegistry
 }
@@ -116,7 +116,7 @@ var _ interfaces1.IAccessTokenSessionService = (*SessionService)(nil)
 
 // NewSessionService builds the legacy session service; mgr is the shared session manager (goauth.GoAuth.Sessions).
 func NewSessionService(
-	conf config.SessionGoAuth,
+	conf accesstokenconfig.SessionGoAuth,
 	repos repo_interfaces.IAuthRepos,
 	mgr serv_interfaces.ISessionManager,
 	sStore sec_storage.SecondaryStorage,

@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	authdtos "github.com/better-go-auth/goauth/src/models/dtos"

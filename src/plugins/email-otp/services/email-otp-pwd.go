@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 )

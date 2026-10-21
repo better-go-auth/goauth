@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"

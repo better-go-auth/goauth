@@ -9,6 +9,7 @@ import (
 // RevocationStore checks if a session or token has been invalidated
 type RevocationStore interface {
 	IsRevoked(ctx context.Context, sessionID string) (bool, error)
+	// Depricated: this is just kept for compatability
 	IsTokenBlacklisted(ctx context.Context, tokenID string) (bool, error)
 }
 type KeyValRevocationStore struct {

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/util"
 	"github.com/danielgtaylor/huma/v2"
 )

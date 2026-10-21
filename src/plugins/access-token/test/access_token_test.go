@@ -63,8 +63,8 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 			CodeSender:    mockSender,
 		},
 	}
-	sConf := config.SessionGoAuth{
-		JWT: config.SessionJWT{
+	sConf := accesstokenconfig.SessionGoAuth{
+		JWT: accesstokenconfig.SessionJWT{
 			AccessSecret:     "secret-access-token-key-32-bytes!",
 			RefreshSecret:    "secret-refresh-token-key-32-byte!",
 			AccessExpiresIn:  15 * time.Minute,
@@ -84,9 +84,6 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 		Secret:            "test-app-secret-32-bytes-long!",
 		Session:           config.Session{ExpiresIn: 24 * time.Hour},
 		EmailVerification: vConf,
-		GoAuth: config.GoAuthConfig{
-			Session: sConf,
-		},
 	}
 	authCfg.SetDefaults()
 
@@ -193,3 +190,25 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 		t.Fatalf("expected ResetToken to fail after logout")
 	}
 }
+
+func TestAccessTokenConfigDefaults(t *testing.T) {
+	cfg := accesstokenconfig.DefaultAccessTokenConfig()
+	if cfg.BasePath != "/api/auth" {
+		t.Errorf("expected BasePath '/api/auth', got %q", cfg.BasePath)
+	}
+	if cfg.Session.JWT.AccessExpiresIn != 15*time.Minute {
+		t.Errorf("expected AccessExpiresIn 15m, got %v", cfg.Session.JWT.AccessExpiresIn)
+	}
+	if cfg.Session.JWT.RefreshExpiresIn != 7*24*time.Hour {
+		t.Errorf("expected RefreshExpiresIn 7d, got %v", cfg.Session.JWT.RefreshExpiresIn)
+	}
+	if cfg.Session.JWT.RotatesRefreshToken() {
+		t.Errorf("expected RotatesRefreshToken to default to false")
+	}
+	rot := true
+	cfg.Session.JWT.RotateRefreshToken = &rot
+	if !cfg.Session.JWT.RotatesRefreshToken() {
+		t.Errorf("expected RotatesRefreshToken to be true when explicitly enabled")
+	}
+}
+

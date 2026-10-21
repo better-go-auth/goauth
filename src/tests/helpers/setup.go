@@ -171,7 +171,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		}
 	}
 	rot := true
-	jwt := loc_conf.SessionJWT{
+	jwt := accesstokenconfig.SessionJWT{
 		AccessSecret:       TestAccessSecret,
 		RefreshSecret:      TestRefreshSecret,
 		AccessExpiresIn:    time.Hour,
@@ -184,7 +184,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Better Go Auth Test API", "1.0.0"))
 
-	adminPlugin, err := admin.NewWithGorm(gormDB, admin.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}))
+	adminPlugin, err := admin.NewWithGorm(gormDB)
 	if err != nil {
 		t.Fatalf("failed to initialize admin plugin: %v", err)
 	}
@@ -195,7 +195,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	}
 
 	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
-		Session: loc_conf.SessionGoAuth{JWT: jwt},
+		Session: accesstokenconfig.SessionGoAuth{JWT: jwt},
 		Verification: loc_conf.EmailVerification{
 			GoAuth: loc_conf.EmailVerificationGoAuth{
 				CodeExpiresIn: 15 * time.Minute,
@@ -208,6 +208,7 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 		Conn:             gormDB,
 		SecondaryStorage: secStorage,
 		AuthConfig: loc_conf.AuthConfig{
+			Secret: TestAccessSecret,
 			EmailVerification: loc_conf.EmailVerification{
 				GoAuth: loc_conf.EmailVerificationGoAuth{
 					CodeExpiresIn: 15 * time.Minute,
@@ -215,9 +216,6 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 				},
 			},
 			TrustedOrigins: []string{"http://127.0.0.1:*", "http://localhost:*"},
-			GoAuth: loc_conf.GoAuthConfig{
-				Session: loc_conf.SessionGoAuth{JWT: jwt},
-			},
 		},
 		Plugins: []plugin.Plugin{
 			adminPlugin,

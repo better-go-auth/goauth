@@ -7,9 +7,6 @@ import (
 // SetDefaults sets sensible default values for unspecified options.
 func (opts *GoAuthOptions) SetDefaults() {
 	opts.AuthConfig.SetDefaults()
-	if opts.SecondaryStorage == nil {
-		opts.GoAuth.Session.JWT.CheckRevocation = true
-	}
 }
 
 // Validate verifies that required options are present and valid.

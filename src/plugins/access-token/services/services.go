@@ -6,17 +6,17 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
-	"github.com/better-go-auth/goauth/src/config"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/plugins"
 	accTokInterfaces "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/providers"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 )
 
 // AuthService implements IAccessTokenAuthService for legacy JWT/token authentication.
 type AuthService struct {
-	Config   *config.SessionGoAuth
+	Config   *accesstokenconfig.SessionGoAuth
 	Provider *providers.IProviderS
 	// services
 	VSvc        accTokInterfaces.IVerificationService
@@ -37,7 +37,7 @@ var _ accTokInterfaces.IAccessTokenAuthService = (*AuthService)(nil)
 
 // NewAuthService creates a new AuthService for the access-token plugin.
 func NewAuthService(
-	conf *config.SessionGoAuth,
+	conf *accesstokenconfig.SessionGoAuth,
 	coreAuthSvc authint.IAuthService,
 	vSvc accTokInterfaces.IVerificationService,
 	sSvc *SessionService,

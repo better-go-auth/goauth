@@ -7,13 +7,12 @@ import (
 
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/middleware"
-	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"gorm.io/gorm"
 )
 
-var _ middleware.RevocationStore = (*RevocationStore)(nil)
+// var _ middleware.RevocationStore = (*RevocationStore)(nil)
 
 func isNil(i any) bool {
 	if i == nil {
@@ -33,17 +32,23 @@ type SessionRevocationChecker interface {
 	FindSessionByID(ctx context.Context, id string) (*models.Session, error)
 }
 
+// RevocationConfig configures revocation checking behavior.
+type RevocationConfig struct {
+	// CheckRevocation verifies session validity in repository/DB on every request.
+	CheckRevocation bool
+}
+
 // RevocationStore checks if a session or token has been revoked or invalidated.
 type RevocationStore struct {
 	db          *gorm.DB
 	sessionRepo SessionRevocationChecker
 	secStore    sec_storage.SecondaryStorage
-	sConfig     config.SessionJWT
+	cfg         RevocationConfig
 }
 
 //TODO: remove this because it depends on db
 // NewRevocationStore creates a RevocationStore backed by database and optional key-value storage.
-func NewRevocationStore(db *gorm.DB, secStore sec_storage.SecondaryStorage, sconfig config.SessionJWT) *RevocationStore {
+func NewRevocationStore(db *gorm.DB, secStore sec_storage.SecondaryStorage, cfg RevocationConfig) middleware.RevocationStore {
 	if isNil(secStore) {
 		secStore = nil
 	}
@@ -53,7 +58,7 @@ func NewRevocationStore(db *gorm.DB, secStore sec_storage.SecondaryStorage, scon
 	rs := &RevocationStore{
 		db:       db,
 		secStore: secStore,
-		sConfig:  sconfig,
+		cfg:      cfg,
 	}
 	if db != nil {
 		rs.sessionRepo = gormSessionChecker{db: db}
@@ -79,7 +84,7 @@ func (g gormSessionChecker) FindSessionByID(ctx context.Context, id string) (*mo
 }
 
 // NewRevocationStoreWithRepo creates a RevocationStore backed by a SessionRevocationChecker repository.
-func NewRevocationStoreWithRepo(repo SessionRevocationChecker, store sec_storage.SecondaryStorage, sconfig config.SessionJWT) *RevocationStore {
+func NewRevocationStoreWithRepo(repo SessionRevocationChecker, store sec_storage.SecondaryStorage, cfg RevocationConfig) *RevocationStore {
 	if isNil(store) {
 		store = nil
 	}
@@ -89,7 +94,7 @@ func NewRevocationStoreWithRepo(repo SessionRevocationChecker, store sec_storage
 	return &RevocationStore{
 		sessionRepo: repo,
 		secStore:    store,
-		sConfig:     sconfig,
+		cfg:         cfg,
 	}
 }
 
@@ -106,7 +111,7 @@ func (r *RevocationStore) IsRevoked(ctx context.Context, sessionID string) (bool
 		}
 	}
 
-	if r.sConfig.CheckRevocation {
+	if r.cfg.CheckRevocation {
 		// 2. Check via session repository interface if configured
 		if r.sessionRepo != nil {
 			sess, err := r.sessionRepo.FindSessionByID(ctx, sessionID)

@@ -3,7 +3,7 @@ package dtos
 import (
 	"net/http"
 
-	apperrors "github.com/better-go-auth/goauth/src/common/errors"
+	apperrors "github.com/better-go-auth/goauth/src/common/autherr"
 )
 
 

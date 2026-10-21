@@ -9,7 +9,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	corerepo "github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"

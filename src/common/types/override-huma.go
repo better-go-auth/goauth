@@ -6,7 +6,7 @@ import (
 	"strings"
 	"sync"
 
-	erors "github.com/better-go-auth/goauth/src/common/errors"
+	erors "github.com/better-go-auth/goauth/src/common/autherr"
 
 	"github.com/danielgtaylor/huma/v2"
 )

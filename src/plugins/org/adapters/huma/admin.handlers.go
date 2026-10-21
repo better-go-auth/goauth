@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"

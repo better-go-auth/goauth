@@ -46,7 +46,7 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 	apiConfig := huma.DefaultConfig("Example Test Server", "1.0.0")
 	api := humago.New(mux, apiConfig)
 
-	jwt := loc_conf.SessionJWT{
+	jwt := accesstokenconfig.SessionJWT{
 		AccessSecret:     "test-secret-must-be-32-chars-long!",
 		RefreshSecret:    "test-refresh-must-be-32-chars-long!",
 		AccessExpiresIn:  time.Hour,
@@ -54,7 +54,7 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 	}
 
 	emailSender := &ConsoleEmailSender{}
-	adminPlugin, err := admin.NewWithGorm(db, admin.WithSessionConfig(loc_conf.SessionGoAuth{JWT: jwt}))
+	adminPlugin, err := admin.NewWithGorm(db)
 	if err != nil {
 		t.Fatalf("failed to create admin plugin: %v", err)
 	}
@@ -65,7 +65,7 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 	}
 
 	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
-		Session: loc_conf.SessionGoAuth{JWT: jwt},
+		Session: accesstokenconfig.SessionGoAuth{JWT: jwt},
 		Verification: loc_conf.EmailVerification{
 			GoAuth: loc_conf.EmailVerificationGoAuth{
 				CodeExpiresIn: 15 * time.Minute,
@@ -84,14 +84,12 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 	_, err = bettergoauth.SetupGoAuth(context.Background(), api, bettergoauth.GoAuthOptions{
 		Conn: db,
 		AuthConfig: loc_conf.AuthConfig{
+			Secret: "test-secret-must-be-32-chars-long!",
 			EmailVerification: loc_conf.EmailVerification{
 				GoAuth: loc_conf.EmailVerificationGoAuth{
 					CodeExpiresIn: 15 * time.Minute,
 					CodeSender:    emailSender,
 				},
-			},
-			GoAuth: loc_conf.GoAuthConfig{
-				Session: loc_conf.SessionGoAuth{JWT: jwt},
 			},
 		},
 		Plugins: []plugin.Plugin{

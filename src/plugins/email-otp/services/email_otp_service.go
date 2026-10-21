@@ -12,7 +12,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"

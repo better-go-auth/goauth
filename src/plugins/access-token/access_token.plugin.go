@@ -2,8 +2,8 @@ package accesstoken
 
 import (
 	"context"
-	"net/http"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -39,7 +39,7 @@ const PluginID = "access-token"
 type Plugin struct {
 	config      accesstokenconfig.AccessTokenConfig
 	basePath    string
-	sessionConf config.SessionGoAuth
+	sessionConf accesstokenconfig.SessionGoAuth
 	//
 	vConf     config.EmailVerification
 	passwords *authcrypto.Passwords
@@ -79,7 +79,7 @@ func WithBasePath(basePath string) Option {
 }
 
 // WithSessionConfig sets session settings for JWT.
-func WithSessionConfig(conf config.SessionGoAuth) Option {
+func WithSessionConfig(conf accesstokenconfig.SessionGoAuth) Option {
 	return func(p *Plugin) {
 		p.sessionConf = conf
 		p.config.Session = conf
@@ -162,8 +162,15 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	// Resolve configs
 	sConf := p.sessionConf
-	if sConf.JWT.AccessSecret == "" {
-		sConf = ictx.Config.GoAuth.Session
+	if sConf.JWT.AccessSecret == "" && ictx.Config.Secret != "" {
+		sConf.JWT.AccessSecret = config.DeriveKey(ictx.Config.Secret, "goauth-access")
+		sConf.JWT.RefreshSecret = config.DeriveKey(ictx.Config.Secret, "goauth-refresh")
+	}
+	if sConf.JWT.AccessExpiresIn <= 0 {
+		sConf.JWT.AccessExpiresIn = 15 * time.Minute
+	}
+	if sConf.JWT.RefreshExpiresIn <= 0 {
+		sConf.JWT.RefreshExpiresIn = 7 * 24 * time.Hour
 	}
 	p.sessionConf = sConf
 
@@ -261,8 +268,8 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 	cm := cookies.New(authCfg)
 	cookieName := cm.Name(cookies.CookieSessionToken)
 	accessSecret := p.sessionConf.JWT.AccessSecret
-	if accessSecret == "" {
-		accessSecret = authCfg.GoAuth.Session.JWT.AccessSecret
+	if accessSecret == "" && authCfg.Secret != "" {
+		accessSecret = config.DeriveKey(authCfg.Secret, "goauth-access")
 	}
 	if accessSecret == "" {
 		accessSecret = authCfg.Secret
@@ -276,43 +283,48 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 
 		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 			raw := strings.TrimSpace(authHeader[7:])
+			// if the raw is a jwt token verify and attach the session with the request
 			if raw != "" && strings.Count(raw, ".") == 2 {
 				// 1. Verify access JWT
 				claims, err := jwttoken.ValidateAccessToken(raw, accessSecret)
 				if err == nil && claims != nil && claims.SessionID != "" {
-					// 2. Revocation check — check if session is blacklisted in secondary storage.
+					// 2. Revocation check — check if session is blacklisted in secondary storage.:
+					// TODO: not really needed if we use secondary storage sessions
 					isRevoked := false
 					if p.secStorage != nil {
 						if _, exists, _ := p.secStorage.Get(ctx.Context(), sec_storage.RevokedSessionPrefix+claims.SessionID); exists {
-					isRevoked = true
-				}
+							isRevoked = true
+						}
 					}
 					// 3. Fast-path: plugin-owned sid: -> token index (zero DB hit when cache warm)
-					var sw *dtos.SessionWithUser
+					var sessWithUsr *dtos.SessionWithUser
 					var sessToken string
 					if !isRevoked && p.sessionSvc != nil {
 						if cached, _ := p.sessionSvc.GetBySID(ctx.Context(), claims.SessionID); cached != nil {
-							sw = cached
+							sessWithUsr = cached
 							sessToken = cached.Session.Token
 						}
 					}
 					// 4. DB fallback on index miss + backfill
-					if sw == nil && !isRevoked && p.repos != nil {
+					if sessWithUsr == nil && !isRevoked && p.repos != nil {
+						// find the session by session.id
 						sess, err := p.repos.FindSessionByID(ctx.Context(), claims.SessionID)
 						if err == nil && sess != nil && sess.ExpiresAt.After(time.Now()) {
 							if p.sessionMgr != nil {
-								sw, _ = p.sessionMgr.Get(ctx.Context(), sess.Token)
+								sessWithUsr, _ = p.sessionMgr.Get(ctx.Context(), sess.Token)
 							}
-							if sw == nil {
+							// if the session is not in the cache, add it to the cache
+							if sessWithUsr == nil {
 								u, err := p.repos.FindUserByID(ctx.Context(), sess.UserID)
 								if err == nil && u != nil {
-									sw = &dtos.SessionWithUser{
+									sessWithUsr = &dtos.SessionWithUser{
 										Session: dtos.SessionFromModel(sess),
 										User:    dtos.UserFromModel(u),
 									}
 								}
 							}
-							if sw != nil {
+							//if we have found the session with user, update the sid:token
+							if sessWithUsr != nil {
 								sessToken = sess.Token
 								ttl := time.Until(sess.ExpiresAt)
 								if ttl > 0 {
@@ -325,14 +337,14 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 							}
 						}
 					}
-
-					if sw != nil {
+					//put he session user in the context
+					if sessWithUsr != nil {
 						tok := sessToken
 						if tok == "" {
-							tok = sw.Session.Token
+							tok = sessWithUsr.Session.Token
 						}
 						// Attach to context
-						ctx = huma.WithContext(ctx, humaadapter.WithSession(ctx.Context(), sw))
+						ctx = huma.WithContext(ctx, humaadapter.WithSession(ctx.Context(), sessWithUsr))
 						ctx = huma.WithContext(ctx, humaadapter.WithBearerToken(ctx.Context(), tok))
 						ctx = huma.WithValue(ctx, constant.CtxClaims.Str(), *claims)
 						ctx = huma.WithValue(ctx, constant.CTXUser_ID.Str(), claims.UserID)
@@ -374,8 +386,6 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 	}
 }
 
-// Migrator returns nil because access-token plugin uses core tables.
-
 func injectCookieHeader(r *http.Request, cookieName, signedCookieVal string) {
 	if cookieName == "" || signedCookieVal == "" {
 		return
@@ -407,7 +417,15 @@ func containsCookie(header, name string) bool {
 }
 
 func containsSubstr(s, sub string) bool { return len(s) >= len(sub) && indexOf(s, sub) >= 0 }
-func indexOf(s, sub string) int { for i := 0; i <= len(s)-len(sub); i++ { if s[i:i+len(sub)] == sub { return i } }; return -1 }
+func indexOf(s, sub string) int {
+	for i := 0; i <= len(s)-len(sub); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}
+
 func splitCookieHeader(h string) []string {
 	parts := []string{}
 	start := 0
@@ -420,12 +438,18 @@ func splitCookieHeader(h string) []string {
 	parts = append(parts, trimSpace(h[start:]))
 	return parts
 }
+
 func trimSpace(s string) string {
-	for len(s) > 0 && (s[0] == ' ' || s[0] == '	') { s = s[1:] }
-	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '	') { s = s[:len(s)-1] }
+	for len(s) > 0 && (s[0] == ' ' || s[0] == '	') {
+		s = s[1:]
+	}
+	for len(s) > 0 && (s[len(s)-1] == ' ' || s[len(s)-1] == '	') {
+		s = s[:len(s)-1]
+	}
 	return s
 }
 
+// Migrator returns nil because access-token plugin uses core tables.
 func (p *Plugin) Migrator() migration.IMigrator {
 	return nil
 }
@@ -450,6 +474,11 @@ func (p *Plugin) SetupHumaRoutes(api huma.API, mdlware *middleware.AuthMiddlewar
 		return
 	}
 	humaaccesstoken.SetupAccessTokenRoutes(api, p.handler, mdlware, p.basePath)
+}
+
+// AccessSecret returns the configured JWT access token signing secret, if any.
+func (p *Plugin) AccessSecret() string {
+	return p.sessionConf.JWT.AccessSecret
 }
 
 // Handler returns the initialized AccessTokenHandler.

@@ -87,9 +87,12 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 
 	passwords := authcrypto.NewPasswords(opts.AuthConfig)
 	// access token services
+	atCfg := accesstokenconfig.DefaultAccessTokenConfig()
+	atCfg.Session.JWT.AccessSecret = opts.Secret
+	atCfg.Session.JWT.RefreshSecret = "derived-refresh-secret-for-test"
 	aTVfcSvc := services.NewVerificationService(mockRepos, opts.EmailVerification)
-	aTsSvc := services.NewSessionService(opts.GoAuth.Session, mockRepos, app.Sessions(), nil, app.Hooks())
-	aTauthSvc := services.NewAuthService(&opts.GoAuth.Session, app.Auth(), aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords, app.Hooks())
+	aTsSvc := services.NewSessionService(atCfg.Session, mockRepos, app.Sessions(), nil, app.Hooks())
+	aTauthSvc := services.NewAuthService(&atCfg.Session, app.Auth(), aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords, app.Hooks())
 	// aTprofileSvc := services.NewProfileService(aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords)
 
 	// 1. Register with email

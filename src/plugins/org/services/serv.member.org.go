@@ -3,7 +3,7 @@ package orgsvc
 import (
 	"context"
 
-	autherr "github.com/better-go-auth/goauth/src/common/errors"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"

@@ -8,7 +8,7 @@ import (
 	Icnst "github.com/better-go-auth/goauth/src/common"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
-	"github.com/better-go-auth/goauth/src/config"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/models"
 	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
@@ -21,7 +21,7 @@ type AccessTokenHandler struct {
 	SessionServ services.IAccessTokenSessionService
 	ProfileServ services.IAccessTokenProfileService
 	SessionRepo repo_interfaces.ISessionRepo
-	Config      *config.SessionGoAuth
+	Config      *accesstokenconfig.SessionGoAuth
 	Cookies     CookieAttrs
 }
 

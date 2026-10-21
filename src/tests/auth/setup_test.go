@@ -9,6 +9,7 @@ import (
 	bettergoauth "github.com/better-go-auth/goauth"
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers"
@@ -56,18 +57,18 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 		opts.Secret = "secret"
 		opts.SetDefaults()
 
-		jwt := opts.GoAuth.Session.JWT
 		if opts.BasePath != "/api/auth" {
 			t.Errorf("Expected BasePath '/api/auth', got %q", opts.BasePath)
 		}
-		if jwt.AccessExpiresIn != time.Hour || jwt.RefreshExpiresIn != 7*24*time.Hour {
-			t.Errorf("unexpected JWT lifetimes %v / %v", jwt.AccessExpiresIn, jwt.RefreshExpiresIn)
-		}
-		if jwt.AccessSecret == "" || jwt.RefreshSecret == "" || jwt.AccessSecret == jwt.RefreshSecret {
-			t.Errorf("JWT secrets must be derived and differ: %q %q", jwt.AccessSecret, jwt.RefreshSecret)
-		}
 		if opts.EmailVerification.GoAuth.CodeExpiresIn != 15*time.Minute {
 			t.Errorf("Expected CodeExpiresIn 15m, got %v", opts.EmailVerification.GoAuth.CodeExpiresIn)
+		}
+
+		// AccessTokenConfig defaults
+		atCfg := accesstokenconfig.DefaultAccessTokenConfig()
+		jwt := atCfg.Session.JWT
+		if jwt.AccessExpiresIn != 15*time.Minute || jwt.RefreshExpiresIn != 7*24*time.Hour {
+			t.Errorf("unexpected JWT lifetimes %v / %v", jwt.AccessExpiresIn, jwt.RefreshExpiresIn)
 		}
 	})
 }
@@ -90,8 +91,7 @@ func TestRevocationStore_IsRevoked(t *testing.T) {
 		t.Fatalf("Failed to create test user for revocation tests: %v", err)
 	}
 
-	revConf := env.Options.GoAuth.Session.JWT
-	revConf.CheckRevocation = true
+	revConf := providers.RevocationConfig{CheckRevocation: true}
 	revStore := providers.NewRevocationStore(env.DB, env.SecondaryStorage, revConf)
 
 	t.Run("Empty sessionID is not revoked", func(t *testing.T) {
