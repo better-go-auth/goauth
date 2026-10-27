@@ -50,28 +50,44 @@ func WithSecondaryStorage(storage sec_storage.SecondaryStorage) Option {
 func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) (*OrgPlugin, error) {
 	repos := gormorg.NewOrgRepos(db)
 	orgOptions := OrgOptions{
-		repo:   repos,
-		config: cfg,
+		Repo:   repos,
+		Config: cfg,
 	}
 	return New(orgOptions, opts...)
 }
 
 type OrgOptions struct {
-	repo   orgrepo.OrgRepositories
-	config config.OrgConfig
+	Repo   orgrepo.OrgRepositories
+	Config config.OrgConfig
 }
 
 // New creates a new Org plugin instance with optional configuration.
 func New(options OrgOptions, opts ...Option) (*OrgPlugin, error) {
-	p := &OrgPlugin{orgRepos: options.repo, Config: options.config}
+	p := &OrgPlugin{orgRepos: options.Repo, Config: options.Config}
 
 	for _, opt := range opts {
 		opt(p)
 	}
 
+	// Step 1: Ensure core repositories and migrator are provided
 	if p.orgRepos.IOrgRepo == nil || p.orgRepos.IMemberRepo == nil || p.orgRepos.IInvitationRepo == nil || p.orgRepos.IMigrator == nil {
 		return nil, fmt.Errorf("org plugin: OrgRepo, MemberRepo, InviteRepo and Migrator are required")
 	}
+
+	// Step 2: Ensure team repositories are provided when teams feature is enabled
+	if p.Config.Teams != nil && p.Config.Teams.Enabled {
+		if p.orgRepos.ITeamRepo == nil || p.orgRepos.ITeamMemberRepo == nil {
+			return nil, fmt.Errorf("org plugin: TeamRepo and TeamMemberRepo are required when teams are enabled")
+		}
+	}
+
+	// Step 3: Ensure organization role repository is provided when dynamic access control is enabled
+	if p.Config.DynamicAccessControl != nil && p.Config.DynamicAccessControl.Enabled {
+		if p.orgRepos.IOrganizationRoleRepo == nil {
+			return nil, fmt.Errorf("org plugin: OrganizationRoleRepo is required when dynamic access control is enabled")
+		}
+	}
+
 	p.migrator = p.orgRepos.IMigrator
 	return p, nil
 }
@@ -105,7 +121,7 @@ func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
 		sessionServ,
 	)
 	svc.Config = p.Config
-	svc.SetRepositories(p.orgRepos.ITeamRepo, p.orgRepos.ITeamMemberRepo, p.orgRepos.IOrganizationRoleRepo)
+	svc.SetRepositories(p.orgRepos)
 	if p.secStorage != nil {
 		svc.SetSecondaryStorage(p.secStorage)
 	} else if ictx != nil && ictx.SecondaryStorage != nil {

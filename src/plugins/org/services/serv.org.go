@@ -71,11 +71,18 @@ func (s *OrgService) SetSessionService(sessionServ serv_interfaces.ISessionManag
 	s.sessionMgr = sessionServ
 }
 
-// SetRepositories configures team and role repos on the org service.
-func (s *OrgService) SetRepositories(teamRepo orgrepo.ITeamRepo, teamMemberRepo orgrepo.ITeamMemberRepo, orgRoleRepo orgrepo.IOrganizationRoleRepo) {
-	s.teamRepo = teamRepo
-	s.teamMemberRepo = teamMemberRepo
-	s.orgRoleRepo = orgRoleRepo
+// SetRepositories configures team and role repos on the org service
+// conditionally based on whether teams or dynamic access control are enabled.
+func (s *OrgService) SetRepositories(repos orgrepo.OrgRepositories) {
+	// Step 1: If teams are enabled in config, set the team and team member repositories
+	if s.TeamsEnabled() {
+		s.teamRepo = repos.ITeamRepo
+		s.teamMemberRepo = repos.ITeamMemberRepo
+	}
+	// Step 2: If dynamic access control is enabled in config, set the organization role repository
+	if s.DynamicAccessControlEnabled() {
+		s.orgRoleRepo = repos.IOrganizationRoleRepo
+	}
 }
 
 // SetSecondaryStorage configures secondary storage for dynamic role caching.

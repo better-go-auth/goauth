@@ -7,14 +7,19 @@ import (
 	"net/http"
 	"testing"
 
-	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
+	"github.com/better-go-auth/goauth/src/plugins/org"
+	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
+	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
+	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
+	"github.com/stretchr/testify/require"
 )
 
 func isSuccess(status int) bool {
@@ -377,4 +382,89 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 	})
 
 	_ = ownerUserID
+}
+
+// TestOrgPlugin_RepoValidation verifies that org.New validates required repositories when features are enabled,
+// and that svc.SetRepositories conditionally binds repositories based on configuration.
+func TestOrgPlugin_RepoValidation(t *testing.T) {
+	db := helpers.SetupTestDB(t, helpers.DBTypeSQLite)
+	baseRepos := orgrepo.NewOrgRepos(db)
+
+	t.Run("Teams enabled requires TeamRepo and TeamMemberRepo", func(t *testing.T) {
+		// Step 1: Omit team repo while teams are enabled
+		reposWithoutTeam := baseRepos
+		reposWithoutTeam.ITeamRepo = nil
+
+		cfg := orgconfig.OrgConfig{
+			Teams: &orgconfig.TeamsConfig{
+				Enabled: true,
+			},
+		}
+
+		// Step 2: Attempt to create OrgPlugin -> should return descriptive error
+		_, err := org.New(org.OrgOptions{
+			Repo:   reposWithoutTeam,
+			Config: cfg,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "TeamRepo and TeamMemberRepo are required when teams are enabled")
+	})
+
+	t.Run("Dynamic access control enabled requires OrganizationRoleRepo", func(t *testing.T) {
+		// Step 1: Omit role repo while dynamic access control is enabled
+		reposWithoutRole := baseRepos
+		reposWithoutRole.IOrganizationRoleRepo = nil
+
+		cfg := orgconfig.OrgConfig{
+			DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{
+				Enabled: true,
+			},
+		}
+
+		// Step 2: Attempt to create OrgPlugin -> should return descriptive error
+		_, err := org.New(org.OrgOptions{
+			Repo:   reposWithoutRole,
+			Config: cfg,
+		})
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "OrganizationRoleRepo is required when dynamic access control is enabled")
+	})
+
+	t.Run("Valid repos with all features enabled succeeds", func(t *testing.T) {
+		cfg := orgconfig.OrgConfig{
+			Teams: &orgconfig.TeamsConfig{
+				Enabled: true,
+			},
+			DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{
+				Enabled: true,
+			},
+		}
+
+		p, err := org.New(org.OrgOptions{
+			Repo:   baseRepos,
+			Config: cfg,
+		})
+		require.NoError(t, err)
+		require.NotNil(t, p)
+	})
+
+	t.Run("svc.SetRepositories conditionally binds repos based on enabled features", func(t *testing.T) {
+		// Step 1: When teams are enabled and dynamic roles disabled
+		svc1 := orgsvc.New(baseRepos.IOrgRepo, baseRepos.IMemberRepo, baseRepos.IInvitationRepo, nil, nil, nil)
+		svc1.Config = orgconfig.OrgConfig{
+			Teams: &orgconfig.TeamsConfig{Enabled: true},
+		}
+		svc1.SetRepositories(baseRepos)
+		require.True(t, svc1.TeamsEnabled())
+		require.False(t, svc1.DynamicAccessControlEnabled())
+
+		// Step 2: When dynamic roles are enabled and teams disabled
+		svc2 := orgsvc.New(baseRepos.IOrgRepo, baseRepos.IMemberRepo, baseRepos.IInvitationRepo, nil, nil, nil)
+		svc2.Config = orgconfig.OrgConfig{
+			DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{Enabled: true},
+		}
+		svc2.SetRepositories(baseRepos)
+		require.False(t, svc2.TeamsEnabled())
+		require.True(t, svc2.DynamicAccessControlEnabled())
+	})
 }

@@ -8,6 +8,7 @@ import (
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
+	pluginrepos "github.com/better-go-auth/goauth/src/plugins/org/repository"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
@@ -139,7 +140,9 @@ func TestPermission_OrgServiceEndToEnd(t *testing.T) {
 			nil,
 		)
 		svc.Config = cfg
-		svc.SetRepositories(nil, nil, orgrepo.NewOrganizationRoleRepo(db))
+		svc.SetRepositories(pluginrepos.OrgRepositories{
+			IOrganizationRoleRepo: orgrepo.NewOrganizationRoleRepo(db),
+		})
 
 		ctx := context.Background()
 

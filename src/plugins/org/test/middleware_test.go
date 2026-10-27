@@ -11,6 +11,7 @@ import (
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgmiddleware "github.com/better-go-auth/goauth/src/plugins/org/middleware"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
+	pluginrepos "github.com/better-go-auth/goauth/src/plugins/org/repository"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	"github.com/better-go-auth/goauth/src/providers/token"
@@ -74,7 +75,11 @@ func TestOrgMiddleware_Authorization(t *testing.T) {
 			nil,
 		)
 		svc.Config = cfg
-		svc.SetRepositories(orgrepo.NewTeamRepo(db), orgrepo.NewTeamMemberRepo(db), orgrepo.NewOrganizationRoleRepo(db))
+		svc.SetRepositories(pluginrepos.OrgRepositories{
+			ITeamRepo:             orgrepo.NewTeamRepo(db),
+			ITeamMemberRepo:       orgrepo.NewTeamMemberRepo(db),
+			IOrganizationRoleRepo: orgrepo.NewOrganizationRoleRepo(db),
+		})
 
 		ctx := context.Background()
 

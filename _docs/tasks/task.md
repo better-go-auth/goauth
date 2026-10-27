@@ -32,6 +32,7 @@ it is doing a redundant logic.
 - [x] Extended `ITeamService` / `OrgService` with strongly typed `CreateRole`, `CreateRoleWithOps`, `UpdateRole`, `UpdateRoleWithOps`, `HasOperation`, and `AuthorizeRole` using `models.Permission` and `models.Operations` instead of `any`.
 - [x] Exported Huma and standard `net/http` authorization middleware on `OrgPlugin` (`Authorize`, `RequirePermission`, `RequireOperation`, `HTTPAuthorize`, `HTTPRequirePermission`, `HTTPRequireOperation`) resolving active org and role via fast-path claims or DB fallback.
 - [x] Added comprehensive tests modularized into clean, focused test files (`permission_test.go`, `permission_db_test.go`, `dynamic_role_caching_test.go`, `middleware_test.go`) verifying `Operations`/`Permission` scanner/valuer, two-tier cache hits/invalidation, operations checks, and middleware enforcement across SQLite, PostgreSQL, and MySQL testcontainers.
+- [x] Enforced strict repository validation in `org.New()` (verifying `ITeamRepo` and `ITeamMemberRepo` when teams are enabled, and `IOrganizationRoleRepo` when dynamic roles are enabled), and refactored `svc.SetRepositories(p.orgRepos)` to conditionally bind repositories according to active feature configs.
 
 ## Multi-Database Support & MySQL Testcontainer Refactoring
 - [x] Implemented MySQL testcontainer (`mysql:8.0`) and multi-database test helpers in `src/tests/helpers/db_testcontainers.go`.
