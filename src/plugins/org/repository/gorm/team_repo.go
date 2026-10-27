@@ -164,11 +164,31 @@ func (r *OrganizationRoleRepo) ListRolesByOrgID(ctx context.Context, orgID strin
 	return out, nil
 }
 
-func (r *OrganizationRoleRepo) UpdateRole(ctx context.Context, orgID, role string, permission string) (*models.OrganizationRole, error) {
-	result := getDB(ctx, r.db).Model(&models.OrganizationRole{}).Where(&models.OrganizationRole{OrganizationID: orgID, Role: role}, "OrganizationID", "Role").Updates(map[string]interface{}{"Permission": permission})
+func (r *OrganizationRoleRepo) UpdateRole(ctx context.Context, orgID, role string, permission models.Permission) (*models.OrganizationRole, error) {
+	// Step 1: Execute update statement with new permission document
+	result := getDB(ctx, r.db).Model(&models.OrganizationRole{}).
+		Where(&models.OrganizationRole{OrganizationID: orgID, Role: role}, "OrganizationID", "Role").
+		Updates(map[string]any{"permission": permission})
 	if result.Error != nil {
 		return nil, fmt.Errorf("gorm/org-role: update: %w", result.Error)
 	}
+	// Step 2: Fetch and return updated role
+	return r.GetRole(ctx, orgID, role)
+}
+
+func (r *OrganizationRoleRepo) UpdateRoleWithOps(ctx context.Context, orgID, role string, permission models.Permission, ops models.Operations) (*models.OrganizationRole, error) {
+	// Step 1: Execute update statement with new permission and operations documents
+	updates := map[string]any{
+		"permission": permission,
+		"ops":        ops,
+	}
+	result := getDB(ctx, r.db).Model(&models.OrganizationRole{}).
+		Where(&models.OrganizationRole{OrganizationID: orgID, Role: role}, "OrganizationID", "Role").
+		Updates(updates)
+	if result.Error != nil {
+		return nil, fmt.Errorf("gorm/org-role: update with ops: %w", result.Error)
+	}
+	// Step 2: Fetch and return updated role
 	return r.GetRole(ctx, orgID, role)
 }
 

@@ -117,12 +117,13 @@ type TeamMemberResponse struct {
 
 // OrgRoleResponse is the public organization role response.
 type OrgRoleResponse struct {
-	ID             string `json:"id"`
-	OrganizationID string `json:"organizationId"`
-	Role           string `json:"role"`
-	Permission     string `json:"permission"`
-	CreatedAt      string `json:"createdAt"`
-	UpdatedAt      string `json:"updatedAt"`
+	ID             string            `json:"id"`
+	OrganizationID string            `json:"organizationId"`
+	Role           string            `json:"role"`
+	Permission     models.Permission `json:"permission,omitempty"`
+	Ops            models.Operations `json:"ops,omitempty"`
+	CreatedAt      string            `json:"createdAt"`
+	UpdatedAt      string            `json:"updatedAt"`
 }
 
 // TeamToResponse converts a models.Team to a TeamResponse DTO.
@@ -172,6 +173,7 @@ func OrgRoleToResponse(r *models.OrganizationRole) *OrgRoleResponse {
 		OrganizationID: r.OrganizationID,
 		Role:           r.Role,
 		Permission:     r.Permission,
+		Ops:            r.Ops,
 		CreatedAt:      createdAt,
 		UpdatedAt:      updatedAt,
 	}

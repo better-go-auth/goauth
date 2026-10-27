@@ -39,9 +39,10 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 			t.Fatalf("SignUp failed: %v", err)
 		}
 
-		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(map[string]any{
-			"email_verified": true,
-			"active":         true,
+		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(&models.User{
+			UserDto: models.UserDto{
+				EmailVerified: true,
+			},
 		}).Error; err != nil {
 			t.Fatalf("Failed to verify user: %v", err)
 		}

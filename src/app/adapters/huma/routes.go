@@ -45,15 +45,15 @@ const (
 // RegisterRoutes mounts better-auth's core endpoints under Conf.BasePath.
 func RegisterRoutes(api huma.API, d Deps) {
 	h := &handler{Deps: d}
-	reg := func(op huma.Operation, a access, register func(huma.Operation)) {
+	reg := func(op huma.Operation, accessFlag access, register func(huma.Operation)) {
 		if slices.Contains(d.Conf.DisabledPaths, op.Path) {
 			return
 		}
 		op.Path = strings.TrimSuffix(d.Conf.BasePath, "/") + op.Path
 		op.Tags = []string{"better-auth"}
 		op.Metadata = map[string]any{types.RawBodyMetaKey: true}
-		op.Middlewares = append(op.Middlewares, h.requestContext(), h.originCheck(a == form))
-		switch a {
+		op.Middlewares = append(op.Middlewares, h.requestContext(), h.originCheck(accessFlag == form))
+		switch accessFlag {
 		case withSession:
 			op.Middlewares = append(op.Middlewares, d.Resolver.Optional())
 		case session:

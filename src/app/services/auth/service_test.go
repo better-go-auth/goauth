@@ -40,7 +40,6 @@ func newEnv(t *testing.T, mutate func(*config.AuthConfig), store sec_storage.Sec
 	cfg := config.AuthConfig{
 		Secret:  secret,
 		BaseURL: "http://localhost:3000",
-		GoAuth:  config.GoAuthConfig{Mode: config.ModeCompat},
 	}
 	cfg.EmailVerification.SendVerificationEmail = func(d config.EmailVerificationData, _ *httpRequest) error {
 		e.mails = append(e.mails, d)
@@ -589,18 +588,18 @@ func TestUpdateSessionDeviceFields(t *testing.T) {
 func TestUpdatableSessionFieldsConfig(t *testing.T) {
 	for _, fields := range [][]string{{"activeOrganizationId"}, {"token"}, {"nope"}} {
 		cfg := config.AuthConfig{}
-		cfg.GoAuth.Session.UpdatableFields = fields
+		cfg.Session.GoAuth.UpdatableFields = fields
 		if authsvc.ValidateConfig(cfg) == nil {
 			t.Fatalf("%v must be rejected", fields)
 		}
 	}
 	cfg := config.AuthConfig{}
-	cfg.GoAuth.Session.UpdatableFields = config.DefaultUpdatableSessionFields
+	cfg.Session.GoAuth.UpdatableFields = config.DefaultUpdatableSessionFields
 	if err := authsvc.ValidateConfig(cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	e := newEnv(t, func(c *config.AuthConfig) { c.GoAuth.Session.UpdatableFields = []string{} }, nil)
+	e := newEnv(t, func(c *config.AuthConfig) { c.Session.GoAuth.UpdatableFields = []string{} }, nil)
 	res := e.signUp(t, "none@example.com", "password123")
 	if _, err := e.svc.UpdateSession(context.Background(), res.Session, map[string]any{"deviceName": "x"}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
 		t.Fatalf("an empty allowlist disables update-session: %v", err)

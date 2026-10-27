@@ -12,9 +12,6 @@ func TestSetDefaults(t *testing.T) {
 		c := AuthConfig{Secret: "app-secret"}
 		c.SetDefaults()
 
-		if c.GoAuth.Mode != ModeLegacy {
-			t.Errorf("Mode = %q, want legacy", c.GoAuth.Mode)
-		}
 		if c.AppName != DefaultAppName || c.BasePath != "/api/auth" || c.Advanced.CookiePrefix != DefaultCookiePrefix {
 			t.Errorf("unexpected defaults: %q %q %q", c.AppName, c.BasePath, c.Advanced.CookiePrefix)
 		}
@@ -24,7 +21,7 @@ func TestSetDefaults(t *testing.T) {
 		if c.EmailAndPassword.MinPasswordLength != 8 || c.EmailAndPassword.MaxPasswordLength != 128 {
 			t.Errorf("password length defaults = %d/%d", c.EmailAndPassword.MinPasswordLength, c.EmailAndPassword.MaxPasswordLength)
 		}
-		if len(c.GoAuth.Session.UpdatableFields) == 0 {
+		if len(c.Session.GoAuth.UpdatableFields) == 0 {
 			t.Errorf("expected UpdatableFields to be set")
 		}
 	})
@@ -46,10 +43,29 @@ func TestSetDefaults(t *testing.T) {
 		}
 	})
 
-	t.Run("explicit values are kept", func(t *testing.T) {
-		c := AuthConfig{AppName: "My App", BasePath: "/auth", Secret: "x", Advanced: Advanced{CookiePrefix: "my"}}
+	t.Run("base url from BETTER_AUTH_URL env", func(t *testing.T) {
+		t.Setenv(BaseURLEnvVar, "https://env.example.com")
+		c := AuthConfig{}
 		c.SetDefaults()
-		if c.AppName != "My App" || c.BasePath != "/auth" || c.Secret != "x" || c.Advanced.CookiePrefix != "my" {
+		if c.BaseURL != "https://env.example.com" {
+			t.Errorf("BaseURL = %q, want https://env.example.com", c.BaseURL)
+		}
+	})
+
+	t.Run("base url from NEXT_PUBLIC_BETTER_AUTH_URL env fallback", func(t *testing.T) {
+		t.Setenv(BaseURLEnvVar, "")
+		t.Setenv(NextBaseURLEnvVar, "https://next.example.com")
+		c := AuthConfig{}
+		c.SetDefaults()
+		if c.BaseURL != "https://next.example.com" {
+			t.Errorf("BaseURL = %q, want https://next.example.com", c.BaseURL)
+		}
+	})
+
+	t.Run("explicit values are kept", func(t *testing.T) {
+		c := AuthConfig{AppName: "My App", BasePath: "/auth", Secret: "x", BaseURL: "https://explicit.com", Advanced: Advanced{CookiePrefix: "my"}}
+		c.SetDefaults()
+		if c.AppName != "My App" || c.BasePath != "/auth" || c.Secret != "x" || c.BaseURL != "https://explicit.com" || c.Advanced.CookiePrefix != "my" {
 			t.Errorf("explicit values overwritten: %+v", c)
 		}
 	})
@@ -57,25 +73,19 @@ func TestSetDefaults(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	t.Setenv(SecretEnvVar, "")
+	t.Setenv(BaseURLEnvVar, "")
+	t.Setenv(NextBaseURLEnvVar, "")
 	longSecret := strings.Repeat("s", 32)
-	compat := GoAuthConfig{Mode: ModeCompat}
 
 	cases := []struct {
 		name    string
 		cfg     AuthConfig
 		wantErr string
 	}{
-		{"legacy ok", AuthConfig{Secret: "secret"}, ""},
-		{"legacy missing secret", AuthConfig{}, "Secret"},
-		{"compat ok", AuthConfig{GoAuth: compat, Secret: longSecret, BaseURL: "https://example.com"}, ""},
-		{"compat missing secret", AuthConfig{GoAuth: compat, BaseURL: "https://example.com"}, "Secret"},
-		{"compat missing base url", AuthConfig{GoAuth: compat, Secret: longSecret}, "BaseURL"},
-		{"relative base url", AuthConfig{GoAuth: compat, Secret: longSecret, BaseURL: "example.com"}, "absolute"},
-		{"unknown mode", AuthConfig{GoAuth: GoAuthConfig{Mode: "nope"}, Secret: "secret"}, "unknown Mode"},
-		{"cross subdomain without domain", AuthConfig{
-			Secret:   "secret",
-			Advanced: Advanced{CrossSubDomainCookies: CrossSubDomainCookies{Enabled: true}},
-		}, "CrossSubDomainCookies"},
+		{"valid config", AuthConfig{Secret: longSecret, BaseURL: "https://example.com"}, ""},
+		{"missing secret", AuthConfig{BaseURL: "https://example.com"}, "Secret"},
+		{"missing base url", AuthConfig{Secret: longSecret}, "BaseURL"},
+		{"relative base url", AuthConfig{Secret: longSecret, BaseURL: "example.com"}, "absolute"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

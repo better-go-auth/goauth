@@ -35,7 +35,7 @@ func (h *handler) SignUpEmail(ctx context.Context, in *signUpInput) (*signUpOutp
 	out := &signUpOutput{}
 	out.Body.Token, out.Body.User = res.Token, res.User
 	if res.Session != nil {
-		out.SetCookie = h.Cookies.SessionCookies(res.Session.Session.Token, res.DontRemember)
+		out.SetCookie = h.Cookies.SessionCookiesWithData(res.Session, res.DontRemember)
 	}
 	return out, nil
 }
@@ -66,7 +66,7 @@ func (h *handler) SignInEmail(ctx context.Context, in *signInInput) (*signInOutp
 	if err != nil {
 		return nil, err
 	}
-	out := &signInOutput{SetCookie: h.Cookies.SessionCookies(res.Token, res.DontRemember)}
+	out := &signInOutput{SetCookie: h.Cookies.SessionCookiesWithData(res.Session, res.DontRemember)}
 	if res.Redirect {
 		// better-auth answers 200 with a Location header; the client follows `url`
 		out.Location = *res.URL

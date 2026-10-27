@@ -50,6 +50,7 @@ func TestSetupGoAuth_CustomRepositoriesWithoutGorm(t *testing.T) {
 		TxManager:    txMgr,
 		Plugins:      []plugin.Plugin{accesstoken.New(accesstokenconfig.DefaultAccessTokenConfig())},
 	}
+	opts.BaseURL = "http://127.0.0.1:8080"
 	opts.Secret = "super-secret-access-key-32-chars-long"
 
 	app, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
@@ -76,6 +77,7 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 		Migrator:     migrator,
 		TxManager:    txMgr,
 	}
+	opts.BaseURL = "http://127.0.0.1:8080"
 	opts.Secret = "super-secret-access-key-32-chars-long"
 	opts.EmailVerification.GoAuth.CodeSender = mockEmail
 	opts.SetDefaults()

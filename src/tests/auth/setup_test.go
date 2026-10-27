@@ -34,9 +34,26 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 	t.Run("Fails when Conn is nil", func(t *testing.T) {
 		opts := bettergoauth.GoAuthOptions{}
 		opts.Secret = "secret"
+		opts.BaseURL = "http://localhost:3000"
 		_, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
 		if err == nil {
 			t.Fatalf("Expected error when Conn is nil, got nil")
+		}
+	})
+
+	t.Run("Fails when no BaseURL is configured", func(t *testing.T) {
+		t.Setenv(config.BaseURLEnvVar, "")
+		t.Setenv(config.NextBaseURLEnvVar, "")
+		env := helpers.SetupTestEnv(t, true)
+		opts := bettergoauth.GoAuthOptions{
+			Conn: env.DB,
+			AuthConfig: config.AuthConfig{
+				Secret: "secret-12345678901234567890123456789012",
+			},
+		}
+		_, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
+		if err == nil {
+			t.Fatalf("Expected error when no BaseURL is configured, got nil")
 		}
 	})
 
@@ -45,6 +62,9 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 		env := helpers.SetupTestEnv(t, true)
 		opts := bettergoauth.GoAuthOptions{
 			Conn: env.DB,
+			AuthConfig: config.AuthConfig{
+				BaseURL: "http://localhost:3000",
+			},
 		}
 		_, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
 		if err == nil {

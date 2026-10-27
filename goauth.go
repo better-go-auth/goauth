@@ -162,14 +162,9 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	//=======================  Middlewares ==============================================|
 	//                                                                                   |
 	//===================================================================================|
-	// Core JWT fallback secret (from access-token plugin or derived from AuthConfig.Secret)
-
-	verifier := middleware.NewJWTTokenVerifier(config.DeriveKey(opts.Secret, "goauth-access"))
+	// 4. Initialize Core Middleware (unaware of access tokens, session/cookie-only)
 	memRevocation := middleware.NewKeyValRevocationStore(opts.SecondaryStorage)
-	mdlWare,err := middleware.NewAuthMiddleware(verifier, memRevocation, nil)
-	if err != nil {
-		return nil, err
-	}
+	mdlWare := middleware.NewAuthMiddleware(memRevocation, nil)
 
 	//====================       ! End of middleware ! ===============================|
 	//                                                                                |
@@ -195,7 +190,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager, Hooks: hooks})
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
-	authenticate := authenticator.NewDefaultAuthenticator(config.DeriveKey(opts.Secret, "goauth-access"), repos)
+	authenticate := authenticator.NewDefaultAuthenticator(opts.Secret, repos)
 	initCtx := &plugin.InitContext{
 		Ctx:            ctx,
 		Api:            api,
@@ -213,18 +208,41 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		GenerateID:       opts.Advanced.Database.GenerateID,
 	}
 
-	// Phase 1: Initialize plugins (repos, services, and migrators configured via initCtx)
-	for _, p := range opts.Plugins {
+	// Phase 1: Initialize plugins (transport/middleware plugins first so global middlewares wrap all plugin routes)
+	isTransportPlugin := func(id string) bool {
+		return id == "bearer" || id == "access-token" || id == "jwt"
+	}
+	initPlugin := func(p plugin.Plugin) error {
 		if p == nil {
-			continue
+			return nil
+		}
+		if _, already := pluginMap[p.ID()]; already {
+			return nil
 		}
 		if err := p.Init(initCtx); err != nil {
-			return nil, fmt.Errorf("goauth: plugin initialization failed for %s: %w", p.ID(), err)
+			return fmt.Errorf("goauth: plugin initialization failed for %s: %w", p.ID(), err)
 		}
 		if hp, ok := p.(plugin.HookProvider); ok && hp.Hooks() != nil {
 			hooks.Register(hp.Hooks())
 		}
 		pluginMap[p.ID()] = p
+		return nil
+	}
+	// 1a. Init transport/middleware plugins
+	for _, p := range opts.Plugins {
+		if p != nil && isTransportPlugin(p.ID()) {
+			if err := initPlugin(p); err != nil {
+				return nil, err
+			}
+		}
+	}
+	// 1b. Init all remaining plugins
+	for _, p := range opts.Plugins {
+		if p != nil && !isTransportPlugin(p.ID()) {
+			if err := initPlugin(p); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	// Phase 2: Run migrations for all plugins (now fully configured with DB)

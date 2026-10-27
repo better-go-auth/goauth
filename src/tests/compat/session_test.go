@@ -15,14 +15,12 @@ import (
 )
 
 func compatMode(c *config.AuthConfig) {
-	c.GoAuth.Mode = config.ModeCompat
 	c.BaseURL = "http://localhost:3000"
 }
 
 func createUser(t *testing.T, s *Server, email, passwordHash string) *models.User {
 	t.Helper()
-	active := true
-	u := &models.User{UserDto: models.UserDto{Name: "Grace Hopper", Email: email, EmailVerified: true, Active: &active, Role: "user"}}
+	u := &models.User{UserDto: models.UserDto{Name: "Grace Hopper", Email: email, EmailVerified: true, Role: "user"}}
 	if err := s.DB.Create(u).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -213,3 +211,69 @@ func TestPasswordRehashOnLegacyLogin(t *testing.T) {
 		t.Fatalf("login with upgraded hash: %d %s", r.Status, r.Body)
 	}
 }
+
+func TestCookieCache_EndToEnd(t *testing.T) {
+	enabled := true
+	s := NewServer(t, WithConfig(func(c *config.AuthConfig) {
+		compatMode(c)
+		c.Session.CookieCache = &config.CookieCache{
+			Enabled:  &enabled,
+			MaxAge:   5 * time.Minute,
+			Strategy: config.CookieCacheStrategyCompact,
+			Version:  "1",
+		}
+	}), WithoutSecondaryStorage())
+
+	u := createUser(t, s, "cache@example.com", "")
+	sw, err := s.Auth.Sessions().Create(context.Background(), u, sessionsvc.Meta{IPAddress: "127.0.0.1", UserAgent: "compattest"}, sessionsvc.CreateOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Issue session cookies with session_data cache cookie
+	cookies := s.Auth.Cookies().SessionCookiesWithData(sw, false)
+	ptrs := make([]*http.Cookie, len(cookies))
+	for i := range cookies {
+		ptrs[i] = &cookies[i]
+	}
+	target, _ := url.Parse(s.URL)
+	s.Jar.SetCookies(target, ptrs)
+
+	// 2. Normal get-session succeeds
+	r := s.Get(t, "/api/auth/get-session")
+	if r.Status != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", r.Status, r.Body)
+	}
+	var body struct {
+		Session struct{ Token string }
+		User    struct{ Email string }
+	}
+	r.JSON(t, &body)
+	if body.User.Email != "cache@example.com" {
+		t.Fatalf("expected email cache@example.com, got %s", body.User.Email)
+	}
+
+	// 3. Delete session from database directly to test zero-DB-hit fast path
+	s.DB.Where("token = ?", sw.Session.Token).Delete(&models.Session{})
+
+	// 4. get-session still returns session and user from session_data cookie cache!
+	r2 := s.Get(t, "/api/auth/get-session")
+	if r2.Status != http.StatusOK {
+		t.Fatalf("expected 200 from cookie cache, got %d", r2.Status)
+	}
+	var body2 struct {
+		Session struct{ Token string }
+		User    struct{ Email string }
+	}
+	r2.JSON(t, &body2)
+	if body2.User.Email != "cache@example.com" {
+		t.Fatalf("expected email from cookie cache, got %s", body2.User.Email)
+	}
+
+	// 5. disableCookieCache query parameter bypasses cookie cache and checks DB (which is deleted)
+	r3 := s.Get(t, "/api/auth/get-session?disableCookieCache=true")
+	if r3.Status != http.StatusOK || strings.TrimSpace(string(r3.Body)) != "null" {
+		t.Fatalf("disableCookieCache must bypass cache and return null for deleted session: %d %s", r3.Status, r3.Body)
+	}
+}
+

@@ -110,6 +110,7 @@ type SessionService struct {
 	Users       repo_interfaces.IUserRepo
 	Mgr         serv_interfaces.ISessionManager
 	SConf       accesstokenconfig.SessionGoAuth
+	Secret      string // Core application secret used for cookie signing/verification (never AccessSecret)
 	SStore      sec_storage.SecondaryStorage
 	Hooks       plugins.HookRegistry
 }
@@ -165,11 +166,17 @@ func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*models.Aut
 // FindByRefreshToken returns the live session behind a refresh token (the session.token itself),
 // or nil (unknown, expired or revoked). Accepts both raw opaque tokens and signed session tokens (<token>.<signature>).
 func (aus *SessionService) FindByRefreshToken(ctx context.Context, refreshToken string) (*models.Session, error) {
-	// 1. extract raw session token if a signed token was provided
+	// 1. A 3-segment token is an access token JWT, which is strictly prohibited as a refresh token
+	if strings.Count(refreshToken, ".") == 2 {
+		return nil, autherr.ErrInvalidToken
+	}
+
+	// 2. extract raw session token if a signed token (<token>.<signature>) was provided
 	tok := refreshToken
 	if strings.Contains(tok, ".") {
-		if aus.SConf.JWT.AccessSecret != "" {
-			if verified, ok := cookies.VerifyCookieValue(tok, aus.SConf.JWT.AccessSecret); ok {
+		// Use core application secret for cookie verification; AccessSecret is ONLY for access JWTs
+		if aus.Secret != "" {
+			if verified, ok := cookies.VerifyCookieValue(tok, aus.Secret); ok {
 				tok = verified
 			}
 		}
@@ -178,13 +185,13 @@ func (aus *SessionService) FindByRefreshToken(ctx context.Context, refreshToken 
 		}
 	}
 
-	// 2. lookup live session in session manager
+	// 3. lookup live session in session manager
 	sw, err := aus.Mgr.Get(ctx, tok)
 	if err != nil || sw == nil {
 		return nil, err
 	}
 
-	// 3. fetch full session model from repository
+	// 4. fetch full session model from repository
 	return aus.SessionRepo.FindSessionByID(ctx, sw.Session.ID)
 }
 

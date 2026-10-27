@@ -7,34 +7,33 @@ import (
 )
 
 func TestPasswordsDefaults(t *testing.T) {
-	legacy := NewPasswords(config.AuthConfig{})
-	h, _ := legacy.Hash("pw-12345678")
-	if HashFormat(h) != FormatBcrypt {
-		t.Fatalf("legacy mode must hash with bcrypt, got %q", h)
+	// Better Auth default must hash with scrypt
+	p := NewPasswords(config.AuthConfig{})
+	h, err := p.Hash("pw-12345678")
+	if err != nil {
+		t.Fatalf("unexpected hash error: %v", err)
 	}
-
-	compat := NewPasswords(config.AuthConfig{GoAuth: config.GoAuthConfig{Mode: config.ModeCompat}})
-	h, _ = compat.Hash("pw-12345678")
 	if HashFormat(h) != FormatScrypt {
-		t.Fatalf("compat mode must hash with scrypt, got %q", h)
+		t.Fatalf("default mode must hash with scrypt, got %q", h)
 	}
 
+	// nil *Passwords must behave like default (scrypt)
 	var nilP *Passwords
 	h, _ = nilP.Hash("pw-12345678")
-	if ok, _, _ := nilP.Verify(h, "pw-12345678"); !ok || HashFormat(h) != FormatBcrypt {
-		t.Fatal("nil Passwords must behave like legacy")
+	if ok, _, _ := nilP.Verify(h, "pw-12345678"); !ok || HashFormat(h) != FormatScrypt {
+		t.Fatal("nil Passwords must behave like default scrypt")
 	}
 }
 
 func TestPasswordsRehash(t *testing.T) {
 	bcryptHash, _ := HashPasswordBcrypt("pw-12345678")
 
-	noRehash := NewPasswords(config.AuthConfig{GoAuth: config.GoAuthConfig{Mode: config.ModeCompat}})
+	noRehash := NewPasswords(config.AuthConfig{})
 	if ok, up, _ := noRehash.Verify(bcryptHash, "pw-12345678"); !ok || up != "" {
 		t.Fatalf("rehash must be opt-in: ok=%v up=%q", ok, up)
 	}
 
-	p := NewPasswords(config.AuthConfig{GoAuth: config.GoAuthConfig{Mode: config.ModeCompat},
+	p := NewPasswords(config.AuthConfig{
 		EmailAndPassword: config.EmailAndPassword{RehashPasswords: true}})
 	ok, up, err := p.Verify(bcryptHash, "pw-12345678")
 	if !ok || err != nil || HashFormat(up) != FormatScrypt {

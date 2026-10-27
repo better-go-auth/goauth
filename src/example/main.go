@@ -113,12 +113,6 @@ func main() {
 
 	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
 		Session: accesstokenconfig.SessionGoAuth{JWT: jwt},
-		Verification: loc_conf.EmailVerification{
-			GoAuth: loc_conf.EmailVerificationGoAuth{
-				CodeExpiresIn: 15 * time.Minute,
-				CodeSender:    emailSender,
-			},
-		},
 	})
 
 	emailOtpPlugin := emailotp.New(emailotpconfig.EmailOTPConfig{
@@ -131,7 +125,8 @@ func main() {
 	auth, err := bettergoauth.SetupGoAuth(context.Background(), api, bettergoauth.GoAuthOptions{
 		Conn: db,
 		AuthConfig: loc_conf.AuthConfig{
-			Secret: accessSecret,
+			BaseURL: "http://localhost:8080",
+			Secret:  accessSecret,
 			EmailVerification: loc_conf.EmailVerification{
 				GoAuth: loc_conf.EmailVerificationGoAuth{
 					CodeExpiresIn: 15 * time.Minute,

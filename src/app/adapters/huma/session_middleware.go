@@ -49,9 +49,12 @@ func NewResolver(mgr *sessionsvc.Manager, cm *cookies.Manager) *Resolver {
 
 // Resolve returns the session for a Cookie header or bearer context, or nil when there is none.
 func (r *Resolver) Resolve(ctx context.Context, cookieHeader string) (*dtos.SessionWithUser, error) {
+	// 1. Return session if already attached to context
 	if sw, ok := FromContext(ctx); ok && sw != nil {
 		return sw, nil
 	}
+
+	// 2. Extract verified session token from cookie or bearer context
 	tok, ok := r.cookies.SessionToken(cookieHeader)
 	if !ok {
 		if btok, bok := FromBearerContext(ctx); bok {
@@ -61,6 +64,18 @@ func (r *Resolver) Resolve(ctx context.Context, cookieHeader string) (*dtos.Sess
 	if !ok {
 		return nil, nil
 	}
+
+	// 3. Fast-path: check CookieCache for session_data (zero DB hit)
+	if r.cookies.CookieCacheEnabled() && cookieHeader != "" {
+		if cached, err := r.cookies.ReadSessionData(cookieHeader); err == nil && cached != nil {
+			// Integrity check: cached session's token must match verified token
+			if cached.Session.Token == tok {
+				return cached, nil
+			}
+		}
+	}
+
+	// 4. Fallback to database/session manager lookup
 	return r.mgr.Get(ctx, tok)
 }
 

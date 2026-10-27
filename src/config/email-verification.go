@@ -54,6 +54,8 @@ type (
 )
 
 // EmailVerificationGoAuth configures goauth's 6-digit code flow.
+// TODO: remove this and substitute with the decault configs verification sender
+// this is only used in the access tokens plugin, may be move it there
 type EmailVerificationGoAuth struct {
 	CodeSender    VerificationSender
 	CodeGenerator GenerateCode

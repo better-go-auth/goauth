@@ -23,18 +23,18 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	gormlogger "gorm.io/gorm/logger"
 )
 
 func setupTeamsEnv(t *testing.T, cfg orgconfig.OrgConfig) (*helpers.TestEnv, *org.OrgPlugin) {
+	return setupTeamsEnvWithDB(t, nil, cfg)
+}
+
+func setupTeamsEnvWithDB(t *testing.T, db *gorm.DB, cfg orgconfig.OrgConfig) (*helpers.TestEnv, *org.OrgPlugin) {
 	t.Helper()
-	dbName := "file:memdb_teams_" + uuid.New().String() + "?mode=memory&cache=shared"
-	db, err := gorm.Open(sqlite.Open(dbName), &gorm.Config{
-		Logger: gormlogger.Default.LogMode(gormlogger.Silent),
-	})
-	require.NoError(t, err)
+	if db == nil {
+		db = helpers.SetupTestDB(t, helpers.DBTypeSQLite)
+	}
 
 	orgPlugin, err := org.NewWithGorm(db, cfg)
 	require.NoError(t, err)
@@ -47,7 +47,8 @@ func setupTeamsEnv(t *testing.T, cfg orgconfig.OrgConfig) (*helpers.TestEnv, *or
 		Conn:             db,
 		SecondaryStorage: store,
 		AuthConfig: loc_conf.AuthConfig{
-			Secret: "secret-key-32-chars-long-for-test!",
+			BaseURL:        "http://localhost:3000",
+			Secret:         "secret-key-32-chars-long-for-test!",
 			TrustedOrigins: []string{"http://127.0.0.1:*", "http://localhost:*"},
 		},
 		Plugins: []plugin.Plugin{orgPlugin},
@@ -255,69 +256,71 @@ func TestOrgTeams_FullLifecycle(t *testing.T) {
 }
 
 func TestOrgDynamicAccessControl(t *testing.T) {
-	env, _ := setupTeamsEnv(t, orgconfig.OrgConfig{
-		DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{Enabled: true},
+	helpers.RunForEachDB(t, func(t *testing.T, db *gorm.DB, dbType helpers.DatabaseType) {
+		env, _ := setupTeamsEnvWithDB(t, db, orgconfig.OrgConfig{
+			DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{Enabled: true},
+		})
+
+		ctx := context.Background()
+		ownerID, _ := setupOrgUser(t, env, "dac-owner-"+string(dbType)+"@example.com", "", "")
+
+		createdOrg, err := env.OrgService.CreateOrganization(ctx, ownerID, orgdtos.CreateOrgInput{
+			Name: "Security Corp " + string(dbType),
+			Slug: "security-corp-" + string(dbType) + "-" + uuid.New().String()[:8],
+		})
+		require.NoError(t, err)
+
+		// 1. Create custom dynamic role
+		perm := orgmodels.Permission{"project": []string{"create", "read"}, "billing": []string{"read"}}
+		role, err := env.OrgService.CreateRole(ctx, createdOrg.ID, "project-manager", perm, ownerID)
+		require.NoError(t, err)
+		require.Equal(t, "project-manager", role.Role)
+
+		// 2. Evaluate permissions
+		// Allowed: project create
+		ok, err := env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "project", "create")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		// Allowed: billing read
+		ok, err = env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "billing", "read")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		// Denied: billing delete
+		ok, err = env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "billing", "delete")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		// Denied: unknown resource
+		ok, err = env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "servers", "read")
+		require.NoError(t, err)
+		require.False(t, ok)
+
+		// 3. Update role
+		newPerm := orgmodels.Permission{"project": []string{"*"}, "billing": []string{"read", "update"}}
+		updatedRole, err := env.OrgService.UpdateRole(ctx, createdOrg.ID, "project-manager", newPerm, ownerID)
+		require.NoError(t, err)
+		require.Equal(t, newPerm, updatedRole.Permission)
+
+		// Now project delete should be allowed via wildcard
+		ok, err = env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "project", "delete")
+		require.NoError(t, err)
+		require.True(t, ok)
+
+		// 4. List roles
+		roles, err := env.OrgService.ListRoles(ctx, createdOrg.ID, ownerID)
+		require.NoError(t, err)
+		require.Len(t, roles, 1)
+
+		// 5. Delete role
+		err = env.OrgService.DeleteRole(ctx, createdOrg.ID, "project-manager", ownerID)
+		require.NoError(t, err)
+
+		roles, err = env.OrgService.ListRoles(ctx, createdOrg.ID, ownerID)
+		require.NoError(t, err)
+		require.Empty(t, roles)
 	})
-
-	ctx := context.Background()
-	ownerID, _ := setupOrgUser(t, env, "dac-owner@example.com", "", "")
-
-	createdOrg, err := env.OrgService.CreateOrganization(ctx, ownerID, orgdtos.CreateOrgInput{
-		Name: "Security Corp",
-		Slug: "security-corp",
-	})
-	require.NoError(t, err)
-
-	// 1. Create custom dynamic role
-	permJSON := `{"project": ["create", "read"], "billing": ["read"]}`
-	role, err := env.OrgService.CreateRole(ctx, createdOrg.ID, "project-manager", permJSON, ownerID)
-	require.NoError(t, err)
-	require.Equal(t, "project-manager", role.Role)
-
-	// 2. Evaluate permissions
-	// Allowed: project create
-	ok, err := env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "project", "create")
-	require.NoError(t, err)
-	require.True(t, ok)
-
-	// Allowed: billing read
-	ok, err = env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "billing", "read")
-	require.NoError(t, err)
-	require.True(t, ok)
-
-	// Denied: billing delete
-	ok, err = env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "billing", "delete")
-	require.NoError(t, err)
-	require.False(t, ok)
-
-	// Denied: unknown resource
-	ok, err = env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "servers", "read")
-	require.NoError(t, err)
-	require.False(t, ok)
-
-	// 3. Update role
-	newPermJSON := `{"project": ["*"], "billing": ["read", "update"]}`
-	updatedRole, err := env.OrgService.UpdateRole(ctx, createdOrg.ID, "project-manager", newPermJSON, ownerID)
-	require.NoError(t, err)
-	require.Equal(t, newPermJSON, updatedRole.Permission)
-
-	// Now project delete should be allowed via wildcard
-	ok, err = env.OrgService.HasPermission(ctx, createdOrg.ID, "project-manager", "project", "delete")
-	require.NoError(t, err)
-	require.True(t, ok)
-
-	// 4. List roles
-	roles, err := env.OrgService.ListRoles(ctx, createdOrg.ID, ownerID)
-	require.NoError(t, err)
-	require.Len(t, roles, 1)
-
-	// 5. Delete role
-	err = env.OrgService.DeleteRole(ctx, createdOrg.ID, "project-manager", ownerID)
-	require.NoError(t, err)
-
-	roles, err = env.OrgService.ListRoles(ctx, createdOrg.ID, ownerID)
-	require.NoError(t, err)
-	require.Empty(t, roles)
 }
 
 func TestOrgTeams_HandlerFlow(t *testing.T) {

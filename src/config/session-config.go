@@ -4,6 +4,86 @@ import (
 	"time"
 )
 
+type CookieCacheStrategy string
+
+const (
+	CookieCacheStrategyCompact CookieCacheStrategy = "compact"
+	CookieCacheStrategyJwt     CookieCacheStrategy = "jwt"
+	CookieCacheStrategyJwe     CookieCacheStrategy = "jwe"
+)
+
+// CookieCacheRefresh controls automatic stateless refresh before expiry.
+type CookieCacheRefresh struct {
+	// Enabled controls whether automatic stateless refresh is enabled.
+	Enabled bool `json:"enabled,omitempty"`
+	// UpdateAge is the time window before expiry when the cache should refresh.
+	// For example, if MaxAge is 5m and UpdateAge is 1m, the cache will refresh
+	// when it has 1m left before expiry. Defaults to 20% of MaxAge.
+	UpdateAge time.Duration `json:"updateAge,omitempty"`
+}
+
+// CookieCache configures caching session data in the session_data cookie.
+type CookieCache struct {
+	// Enabled enables session caching in the session_data cookie (default false).
+	Enabled *bool `json:"enabled,omitempty"`
+	// MaxAge is the lifetime of the session_data cookie (default 5 minutes).
+	MaxAge time.Duration `json:"maxAge,omitempty"`
+	// Strategy controls encoding/crypto: "compact" (HMAC), "jwt" (JWT), "jwe" (encrypted). Default: "compact".
+	Strategy CookieCacheStrategy `json:"strategy,omitempty"`
+	// RefreshCache controls stateless refresh behavior before cache expiry.
+	RefreshCache *CookieCacheRefresh `json:"refreshCache,omitempty"`
+	// Version of the cookie cache; invalidates older cookie caches when changed (default "1").
+	Version string `json:"version,omitempty"`
+}
+
+// IsEnabled reports whether cookie caching is enabled.
+func (c *CookieCache) IsEnabled() bool {
+	return c != nil && c.Enabled != nil && *c.Enabled
+}
+
+// EffectiveMaxAge returns the configured MaxAge, or default 5 minutes.
+func (c *CookieCache) EffectiveMaxAge() time.Duration {
+	if c != nil && c.MaxAge > 0 {
+		return c.MaxAge
+	}
+	return 5 * time.Minute
+}
+
+// EffectiveStrategy returns the configured strategy, or default compact.
+func (c *CookieCache) EffectiveStrategy() CookieCacheStrategy {
+	if c != nil && c.Strategy != "" {
+		return c.Strategy
+	}
+	return CookieCacheStrategyCompact
+}
+
+// EffectiveVersion returns the configured cache version, or default "1".
+func (c *CookieCache) EffectiveVersion() string {
+	if c != nil && c.Version != "" {
+		return c.Version
+	}
+	return "1"
+}
+
+// IsRefreshEnabled reports whether stateless refresh is configured.
+func (c *CookieCache) IsRefreshEnabled() bool {
+	if c == nil || c.RefreshCache == nil {
+		return false
+	}
+	return c.RefreshCache.Enabled || c.RefreshCache.UpdateAge > 0
+}
+
+// RefreshUpdateAge returns the threshold duration before expiry to trigger refresh.
+func (c *CookieCache) RefreshUpdateAge() time.Duration {
+	if c == nil || c.RefreshCache == nil {
+		return 0
+	}
+	if c.RefreshCache.UpdateAge > 0 {
+		return c.RefreshCache.UpdateAge
+	}
+	return c.EffectiveMaxAge() / 5 // Default 20% of MaxAge
+}
+
 // Session mirrors better-auth's `session` options; goauth-only options live in GoAuth.
 type Session struct {
 	// ExpiresIn is the session lifetime (default 7 days).
@@ -22,9 +102,25 @@ type Session struct {
 	FreshAge time.Duration
 	// DeferSessionRefresh makes GET /get-session read-only; clients POST to refresh.
 	DeferSessionRefresh bool
+
+	// CookieCache configures stateless session caching in the session_data cookie.
+	CookieCache *CookieCache
+
+	// ModelName overrides the session table/model name.
+	// not supported: use plugin additionalFields or TableNames
+	ModelName string
+	// Fields maps session field names.
+	// not supported: use plugin additionalFields
+	Fields map[string]string
+	// AdditionalFields defines extra session schema attributes.
+	// not supported: use plugin additionalFields
+	AdditionalFields map[string]any
+
+	// GoAuth holds goauth-only session extensions (SingleSession, UpdatableFields).
+	GoAuth SessionGoAuth
 }
 
-// SessionGoAuth holds session options for GoAuth (AuthConfig.GoAuth.Session).
+// SessionGoAuth holds session options for GoAuth (Session.GoAuth).
 type SessionGoAuth struct {
 	// SingleSession revokes a user's other sessions on every login.
 	SingleSession bool
@@ -63,11 +159,3 @@ func (sp SessionPatch) ToMap() map[string]any {
 	if sp.DeviceType != nil { m["DeviceType"] = sp.DeviceType }
 	return m
 }
-
-type CookieCacheStrategy string
-
-const (
-	CookieCacheStrategyCompact CookieCacheStrategy = "compact"
-	CookieCacheStrategyJwt     CookieCacheStrategy = "jwt"
-	CookieCacheStrategyJwe     CookieCacheStrategy = "jwe"
-)

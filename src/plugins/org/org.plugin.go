@@ -2,19 +2,23 @@ package org
 
 import (
 	"fmt"
+	"net/http"
 
 	"gorm.io/gorm"
 
-	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	authconf "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	humaorg "github.com/better-go-auth/goauth/src/plugins/org/adapters/huma"
 	"github.com/better-go-auth/goauth/src/plugins/org/config"
+	orgmiddleware "github.com/better-go-auth/goauth/src/plugins/org/middleware"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
 	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 const PluginID = "org"
@@ -30,9 +34,17 @@ type OrgPlugin struct {
 	hookService   *orgsvc.OrgHookService
 	handler       *humaorg.OrgHandler
 	authenticator authenticator.AuthenticateFunc
+	secStorage    sec_storage.SecondaryStorage
+	middleware    *orgmiddleware.OrgAuthMiddleware
 }
 
 type Option func(*OrgPlugin)
+
+func WithSecondaryStorage(storage sec_storage.SecondaryStorage) Option {
+	return func(p *OrgPlugin) {
+		p.secStorage = storage
+	}
+}
 
 // NewWithGorm creates a new Org plugin directly backed by GORM.
 func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) (*OrgPlugin, error) {
@@ -94,8 +106,14 @@ func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
 	)
 	svc.Config = p.Config
 	svc.SetRepositories(p.orgRepos.ITeamRepo, p.orgRepos.ITeamMemberRepo, p.orgRepos.IOrganizationRoleRepo)
+	if p.secStorage != nil {
+		svc.SetSecondaryStorage(p.secStorage)
+	} else if ictx != nil && ictx.SecondaryStorage != nil {
+		svc.SetSecondaryStorage(ictx.SecondaryStorage)
+	}
 
 	p.service = svc
+	p.middleware = orgmiddleware.New(p.service)
 
 	p.hookService = orgsvc.NewOrgHookService(p.orgRepos.IOrgRepo, p.orgRepos.IMemberRepo)
 
@@ -144,4 +162,42 @@ func (p *OrgPlugin) Service() orgsvc.IOrgService {
 // Handler returns the initialized OrgHandler.
 func (p *OrgPlugin) Handler() *humaorg.OrgHandler {
 	return p.handler
+}
+
+// Middleware returns the initialized OrgAuthMiddleware for dynamic RBAC authorization.
+func (p *OrgPlugin) Middleware() *orgmiddleware.OrgAuthMiddleware {
+	if p.middleware == nil && p.service != nil {
+		p.middleware = orgmiddleware.New(p.service)
+	}
+	return p.middleware
+}
+
+// Authorize returns a Huma middleware verifying authorization based on AuthOptions.
+func (p *OrgPlugin) Authorize(opts orgmiddleware.AuthOptions) func(huma.Context, func(huma.Context)) {
+	return p.Middleware().Authorize(opts)
+}
+
+// RequirePermission returns a Huma middleware checking resource and action permissions (e.g. "project", "read").
+func (p *OrgPlugin) RequirePermission(resource, action string) func(huma.Context, func(huma.Context)) {
+	return p.Middleware().RequirePermission(resource, action)
+}
+
+// RequireOperation returns a Huma middleware checking if the operation ID exists in the role's Ops array.
+func (p *OrgPlugin) RequireOperation(operationID string) func(huma.Context, func(huma.Context)) {
+	return p.Middleware().RequireOperation(operationID)
+}
+
+// HTTPAuthorize returns a standard net/http middleware verifying authorization based on AuthOptions.
+func (p *OrgPlugin) HTTPAuthorize(opts orgmiddleware.AuthOptions) func(http.Handler) http.Handler {
+	return p.Middleware().HTTPAuthorize(opts)
+}
+
+// HTTPRequirePermission returns a standard net/http middleware checking resource and action permissions.
+func (p *OrgPlugin) HTTPRequirePermission(resource, action string) func(http.Handler) http.Handler {
+	return p.Middleware().HTTPRequirePermission(resource, action)
+}
+
+// HTTPRequireOperation returns a standard net/http middleware checking operation ID.
+func (p *OrgPlugin) HTTPRequireOperation(operationID string) func(http.Handler) http.Handler {
+	return p.Middleware().HTTPRequireOperation(operationID)
 }

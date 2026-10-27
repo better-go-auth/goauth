@@ -7,6 +7,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/token"
 )
@@ -24,14 +25,21 @@ func NewSessionClaims(mgr *sessionsvc.Manager, cm *cookies.Manager, repos repo_i
 }
 
 func (r *SessionClaims) ClaimsFromSession(ctx context.Context, bearer, cookieHeader string) (*token.CustomClaims, error) {
-	tok := bearer
-	if tok == "" {
-		tok, _ = r.cookies.SessionToken(cookieHeader)
+	var sw *dtos.SessionWithUser
+	var err error
+
+	// 1. Try resolving session from Bearer token
+	if bearer != "" {
+		sw, err = r.mgr.Get(ctx, bearer)
 	}
-	if tok == "" {
-		return nil, autherr.ErrUnauthorized
+
+	// 2. If Bearer token did not resolve a session (e.g. it was an access JWT and cookie was injected), try session cookie
+	if (sw == nil || err != nil) && cookieHeader != "" {
+		if cookieTok, ok := r.cookies.SessionToken(cookieHeader); ok && cookieTok != "" {
+			sw, err = r.mgr.Get(ctx, cookieTok)
+		}
 	}
-	sw, err := r.mgr.Get(ctx, tok)
+
 	if err != nil || sw == nil {
 		return nil, autherr.ErrUnauthorized
 	}

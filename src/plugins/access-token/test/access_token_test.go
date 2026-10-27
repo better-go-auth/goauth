@@ -20,9 +20,11 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"net/http"
+	"net/http/httptest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 )
 
 type mockEmailSender struct {
@@ -74,8 +76,7 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	api := humago.New(mux, huma.DefaultConfig("Access Token Test API", "1.0.0"))
 
 	plugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
-		Session:      sConf,
-		Verification: vConf,
+		Session: sConf,
 	})
 
 	authCfg := config.AuthConfig{
@@ -136,7 +137,6 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	// 2. Verify account
 	_, err = repos.UpdateUser(ctx, regResp.User.ID, map[string]interface{}{
 		"EmailVerified": true,
-		"Active":        true,
 	})
 	if err != nil {
 		t.Fatalf("failed to update user email verified: %v", err)
@@ -191,11 +191,285 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 
 func TestAccessTokenConfigDefaults(t *testing.T) {
 	cfg := accesstokenconfig.DefaultAccessTokenConfig()
-	if cfg.BasePath != "/api/auth" {
-		t.Errorf("expected BasePath '/api/auth', got %q", cfg.BasePath)
-	}
 	if cfg.Session.JWT.AccessExpiresIn != 15*time.Minute {
 		t.Errorf("expected AccessExpiresIn 15m, got %v", cfg.Session.JWT.AccessExpiresIn)
 	}
+	if len(cfg.Session.UpdatableFields) == 0 {
+		t.Errorf("expected default updatable fields to be set")
+	}
+	if cfg.AutoRegisterMiddleware {
+		t.Errorf("expected AutoRegisterMiddleware to be false by default")
+	}
+}
+
+func TestRefreshToken_RejectsAccessTokenJWT(t *testing.T) {
+	db := setupTestDB(t)
+	repos := gormauth.NewAuthRepos(db)
+	txMgr := gormutil.NewGormTxManager(db)
+	store := sec_storage.New()
+	hooks := plugins.NewHookRegistry()
+	sessionMgr := sessionsvc.NewManager(config.Session{ExpiresIn: 24 * time.Hour}, repos, repos, store, hooks)
+
+	sConf := accesstokenconfig.SessionGoAuth{
+		JWT: accesstokenconfig.SessionJWT{
+			AccessSecret:    "jwt-access-secret-32-chars-long!",
+			AccessExpiresIn: 15 * time.Minute,
+		},
+	}
+
+	authCfg := config.AuthConfig{
+		Secret:  "core-app-secret-32-chars-long!!",
+		Session: config.Session{ExpiresIn: 24 * time.Hour},
+		EmailVerification: config.EmailVerification{
+			GoAuth: config.EmailVerificationGoAuth{
+				CodeExpiresIn: 15 * time.Minute,
+				CodeSender:    &mockEmailSender{},
+			},
+		},
+	}
+	authCfg.SetDefaults()
+
+	authService := authsvc.New(authsvc.Deps{
+		Config:   authCfg,
+		Repos:    repos,
+		Sessions: sessionMgr,
+		Tx:       txMgr,
+		Hooks:    hooks,
+	})
+
+	plugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
+		Session: sConf,
+	})
+
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("Access Token Test API", "1.0.0"))
+
+	initCtx := &plugins.InitContext{
+		Ctx:              context.Background(),
+		Api:              api,
+		IAuthRepos:       repos,
+		TxManager:        txMgr,
+		SessionManager:   sessionMgr,
+		Hooks:            hooks,
+		IAuthSvc:         authService,
+		Config:           authCfg,
+		DB:               db,
+		SecondaryStorage: store,
+	}
+
+	if err := plugin.Init(initCtx); err != nil {
+		t.Fatalf("plugin.Init failed: %v", err)
+	}
+
+	ctx := context.Background()
+
+	// 1. Create a user and log in to get access token JWT and session refresh token
+	regResp, err := plugin.AuthService().RegisterWithEmail(ctx, models.RegisterClientInput{
+		FirstName: "Token",
+		LastName:  "Test",
+		Email:     "tokentest@example.com",
+		Password:  "SecurePassword123!",
+	})
+	if err != nil {
+		t.Fatalf("RegisterWithEmail failed: %v", err)
+	}
+	_, _ = repos.UpdateUser(ctx, regResp.User.ID, map[string]interface{}{"EmailVerified": true})
+
+	loginResp, err := plugin.AuthService().Login(ctx, accesstokendtos.LoginData{
+		LoginInfo: "tokentest@example.com",
+		Password:  "SecurePassword123!",
+	})
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+	accessJWT := loginResp.Body.AuthTokens.AccessToken
+	refreshToken := loginResp.Body.AuthTokens.RefreshToken
+
+	// 2. Passing the access token JWT to ResetToken MUST be rejected as an invalid token!
+	_, err = plugin.AuthService().ResetToken(ctx, accessJWT)
+	if err == nil {
+		t.Fatalf("expected ResetToken to reject 3-segment access token JWT, but it succeeded")
+	}
+
+	// 3. Passing the access token JWT to FindByRefreshToken MUST be rejected!
+	_, err = plugin.SessionService().FindByRefreshToken(ctx, accessJWT)
+	if err == nil {
+		t.Fatalf("expected FindByRefreshToken to reject 3-segment access token JWT, but it succeeded")
+	}
+
+	// 4. Passing the access token JWT to Logout MUST be rejected!
+	_, err = plugin.AuthService().Logout(ctx, accessJWT)
+	if err == nil {
+		t.Fatalf("expected Logout to reject 3-segment access token JWT, but it succeeded")
+	}
+
+	// 5. Passing the genuine refresh token to ResetToken MUST succeed!
+	resetResp, err := plugin.AuthService().ResetToken(ctx, refreshToken)
+	if err != nil {
+		t.Fatalf("ResetToken failed with valid refresh token: %v", err)
+	}
+	if resetResp.Body.AuthTokens == nil || resetResp.Body.AuthTokens.AccessToken == "" {
+		t.Fatalf("expected new tokens after refresh")
+	}
+}
+
+func TestSecretSeparation_CookiesUseCoreSecret(t *testing.T) {
+	db := setupTestDB(t)
+	repos := gormauth.NewAuthRepos(db)
+	txMgr := gormutil.NewGormTxManager(db)
+	store := sec_storage.New()
+	hooks := plugins.NewHookRegistry()
+	sessionMgr := sessionsvc.NewManager(config.Session{ExpiresIn: 24 * time.Hour}, repos, repos, store, hooks)
+
+	coreSecret := "core-app-secret-32-chars-long!!"
+	accessSecret := "jwt-access-secret-32-chars-diff!"
+
+	sConf := accesstokenconfig.SessionGoAuth{
+		JWT: accesstokenconfig.SessionJWT{
+			AccessSecret:    accessSecret,
+			AccessExpiresIn: 15 * time.Minute,
+		},
+	}
+
+	authCfg := config.AuthConfig{
+		Secret:  coreSecret,
+		Session: config.Session{ExpiresIn: 24 * time.Hour},
+		EmailVerification: config.EmailVerification{
+			GoAuth: config.EmailVerificationGoAuth{
+				CodeExpiresIn: 15 * time.Minute,
+				CodeSender:    &mockEmailSender{},
+			},
+		},
+	}
+	authCfg.SetDefaults()
+
+	authService := authsvc.New(authsvc.Deps{
+		Config:   authCfg,
+		Repos:    repos,
+		Sessions: sessionMgr,
+		Tx:       txMgr,
+		Hooks:    hooks,
+	})
+
+	plugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
+		Session: sConf,
+	})
+
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("Access Token Test API", "1.0.0"))
+
+	initCtx := &plugins.InitContext{
+		Ctx:              context.Background(),
+		Api:              api,
+		IAuthRepos:       repos,
+		TxManager:        txMgr,
+		SessionManager:   sessionMgr,
+		Hooks:            hooks,
+		IAuthSvc:         authService,
+		Config:           authCfg,
+		DB:               db,
+		SecondaryStorage: store,
+	}
+
+	if err := plugin.Init(initCtx); err != nil {
+		t.Fatalf("plugin.Init failed: %v", err)
+	}
+
+	// Assert that sessionSvc has the core secret, NOT the access secret
+	if plugin.SessionService().Secret != coreSecret {
+		t.Fatalf("expected session service to use core secret %q, got %q", coreSecret, plugin.SessionService().Secret)
+	}
+
+	ctx := context.Background()
+
+	// 1. Register and login
+	regResp, err := plugin.AuthService().RegisterWithEmail(ctx, models.RegisterClientInput{
+		FirstName: "Cookie",
+		LastName:  "Test",
+		Email:     "cookietest@example.com",
+		Password:  "SecurePassword123!",
+	})
+	if err != nil {
+		t.Fatalf("RegisterWithEmail failed: %v", err)
+	}
+	_, _ = repos.UpdateUser(ctx, regResp.User.ID, map[string]interface{}{"EmailVerified": true})
+
+	loginResp, err := plugin.AuthService().Login(ctx, accesstokendtos.LoginData{
+		LoginInfo: "cookietest@example.com",
+		Password:  "SecurePassword123!",
+	})
+	if err != nil {
+		t.Fatalf("Login failed: %v", err)
+	}
+	refreshToken := loginResp.Body.AuthTokens.RefreshToken
+
+	// 2. Sign cookie using CORE secret -> FindByRefreshToken must succeed!
+	signedWithCoreSecret := cookies.SignCookieValue(refreshToken, coreSecret)
+	sess, err := plugin.SessionService().FindByRefreshToken(ctx, signedWithCoreSecret)
+	if err != nil || sess == nil {
+		t.Fatalf("expected FindByRefreshToken to verify cookie signed with core secret: %v", err)
+	}
+
+	// 3. Sign cookie using ACCESS secret -> FindByRefreshToken MUST NOT verify it as a valid core cookie!
+	signedWithAccessSecret := cookies.SignCookieValue(refreshToken, accessSecret)
+	// Because VerifyCookieValue checks with core secret, it returns false for the accessSecret signature,
+	// and strips only if valid. If it treated AccessSecret as cookie secret, it would have verified it.
+	// We verify that cookies.VerifyCookieValue with sessionSvc.Secret rejects the access-signed cookie:
+	if _, ok := cookies.VerifyCookieValue(signedWithAccessSecret, plugin.SessionService().Secret); ok {
+		t.Fatalf("cookie signed with access secret should NOT verify against core secret")
+	}
+}
+
+func TestScopedProtection_RequireRefreshToken(t *testing.T) {
+	mux := http.NewServeMux()
+	api := humago.New(mux, huma.DefaultConfig("Guard Test API", "1.0.0"))
+
+	plugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{})
+
+	type GuardInput struct {
+		Authorization string `header:"Authorization"`
+	}
+	type GuardOutput struct {
+		Body struct {
+			Success bool `json:"success"`
+		}
+	}
+
+	huma.Register(api, huma.Operation{
+		Method:      http.MethodPost,
+		Path:        "/api/custom/refresh-only",
+		Middlewares: huma.Middlewares{plugin.RequireRefreshToken()},
+	}, func(ctx context.Context, input *GuardInput) (*GuardOutput, error) {
+		out := &GuardOutput{}
+		out.Body.Success = true
+		return out, nil
+	})
+
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	// 1. Sending 3-segment JWT access token to refresh-only endpoint must return 401 Unauthorized
+	req, _ := http.NewRequest(http.MethodPost, server.URL+"/api/custom/refresh-only", nil)
+	req.Header.Set("Authorization", "Bearer header.payload.signature")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("expected status 401 for access JWT on refresh-only endpoint, got %d", resp.StatusCode)
+	}
+	_ = resp.Body.Close()
+
+	// 2. Sending opaque session token must pass guard
+	req2, _ := http.NewRequest(http.MethodPost, server.URL+"/api/custom/refresh-only", nil)
+	req2.Header.Set("Authorization", "Bearer some-opaque-session-token-without-two-dots")
+	resp2, err := http.DefaultClient.Do(req2)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	if resp2.StatusCode != http.StatusOK {
+		t.Fatalf("expected status 200 for opaque refresh token, got %d", resp2.StatusCode)
+	}
+	_ = resp2.Body.Close()
 }
 

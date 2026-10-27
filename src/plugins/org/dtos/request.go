@@ -118,16 +118,18 @@ type SetActiveTeamInput struct {
 
 // CreateOrgRoleInput represents the payload to create a dynamic organization role.
 type CreateOrgRoleInput struct {
-	OrganizationID string `json:"organizationId" validate:"required"`
-	Role           string `json:"role"           validate:"required,min=1"`
-	Permission     string `json:"permission"     validate:"required"` // JSON document
+	OrganizationID string            `json:"organizationId" validate:"required"`
+	Role           string            `json:"role"           validate:"required,min=1"`
+	Permission     models.Permission `json:"permission,omitempty"` // JSON map: e.g. {"project": ["read"]}
+	Ops            models.Operations `json:"ops,omitempty"`        // List of allowed operation IDs
 }
 
 // UpdateOrgRoleInput represents the payload to update a dynamic organization role.
 type UpdateOrgRoleInput struct {
-	OrganizationID string `json:"organizationId" validate:"required"`
-	Role           string `json:"role"           validate:"required,min=1"`
-	Permission     string `json:"permission"     validate:"required"` // JSON document
+	OrganizationID string            `json:"organizationId" validate:"required"`
+	Role           string            `json:"role"           validate:"required,min=1"`
+	Permission     models.Permission `json:"permission,omitempty"` // JSON map: e.g. {"project": ["read"]}
+	Ops            models.Operations `json:"ops,omitempty"`        // List of allowed operation IDs
 }
 
 // DeleteOrgRoleInput represents the payload to delete a dynamic organization role.

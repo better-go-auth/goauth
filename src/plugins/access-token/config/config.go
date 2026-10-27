@@ -26,51 +26,33 @@ func (j SessionJWT) RotatesRefreshToken() bool {
 	return j.RotateSessionToken != nil && *j.RotateSessionToken
 }
 
-// DefaultUpdatableSessionFields defines the default allowed session patch fields.
-var DefaultUpdatableSessionFields = []string{"deviceToken", "deviceId", "deviceName", "deviceType"}
-
 // SessionGoAuth holds session and JWT options for the access-token plugin.
+// It embeds core config.SessionGoAuth (SingleSession, UpdatableFields) and adds access token JWT settings.
 type SessionGoAuth struct {
-	// SingleSession revokes a user's other sessions on every login.
-	SingleSession bool
+	config.SessionGoAuth
 	// JWT configures the access/refresh token flow of the access-token plugin.
 	JWT SessionJWT
-	// UpdatableFields are the session fields (JSON names) clients may set with POST /update-session.
-	// nil means DefaultUpdatableSessionFields; an empty slice allows none.
-	UpdatableFields []string
 }
 
 // AccessTokenConfig holds configuration for the access-token / JWT transport plugin.
 type AccessTokenConfig struct {
 	// Session carries JWT expiration, secrets, and session settings.
 	Session SessionGoAuth
-
-	// Verification carries email verification settings (code sender, generator, expiry).
-	Verification config.EmailVerification
-
-	// BasePath is the route prefix (e.g. "/api/auth"). Default: "/api/auth".
-	BasePath string
-
-	// CookieSecure sets the Secure attribute on cookies.
-	CookieSecure bool
-
-	// CookieDomain sets the Domain attribute on cookies.
-	CookieDomain string
+	// AutoRegisterMiddleware controls whether the access token middleware is automatically registered
+	// as a global middleware on the Huma API. When false (default), the middleware is only applied to routes
+	// that explicitly include it via Plugin.AuthMiddleware(), keeping core Better Auth endpoints isolated.
+	AutoRegisterMiddleware bool
 }
 
 // DefaultAccessTokenConfig returns sensible defaults for the access-token plugin.
 func DefaultAccessTokenConfig() AccessTokenConfig {
 	return AccessTokenConfig{
-		BasePath: "/api/auth",
 		Session: SessionGoAuth{
+			SessionGoAuth: config.SessionGoAuth{
+				UpdatableFields: config.DefaultUpdatableSessionFields,
+			},
 			JWT: SessionJWT{
 				AccessExpiresIn: 15 * time.Minute,
-			},
-			UpdatableFields: DefaultUpdatableSessionFields,
-		},
-		Verification: config.EmailVerification{
-			GoAuth: config.EmailVerificationGoAuth{
-				CodeExpiresIn: 15 * time.Minute,
 			},
 		},
 	}

@@ -69,7 +69,7 @@ func (s *Service) RevokeSession(ctx context.Context, current *dtos.SessionWithUs
 	return s.sessionMgr.Delete(ctx, token)
 }
 
-// UpdateSession mirrors better-auth's POST /update-session for the fields in GoAuth.Session.UpdatableFields
+// UpdateSession mirrors better-auth's POST /update-session for the fields in Session.GoAuth.UpdatableFields
 // (default: the device fields deviceToken, deviceId, deviceName, deviceType).
 // Unknown keys are ignored like better-auth does; protected session fields get FIELD_NOT_ALLOWED;
 // a body with nothing writable gets "No fields to update".

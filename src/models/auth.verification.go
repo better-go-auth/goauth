@@ -29,7 +29,7 @@ type Verification struct {
 	// ===== better-auth fields =====
 	Base `mapstructure:",squash" ` // id, createdAt, updatedAt
 	// Identifier is "<purpose>:<subject>", e.g. "email-verification:user@example.com"., "password-reset:user@example.com"
-	Identifier string    `json:"identifier" gorm:"index:idx_verification_identifier;not null" bun:"identifier,notnull"`
+	Identifier string    `json:"identifier" gorm:"index:idx_verification_identifier;not null;size:255" bun:"identifier,notnull"`
 	Value      string    `json:"value"      gorm:"not null"                         bun:"value,notnull"` // hashed token/code
 	ExpiresAt  time.Time `json:"expiresAt"  gorm:"not null"                                   bun:"expires_at,notnull"`
 

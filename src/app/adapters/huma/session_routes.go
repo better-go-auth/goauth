@@ -43,10 +43,8 @@ func (h *handler) PostSession(ctx context.Context, in *getSessionInput) (*getSes
 // session mirrors better-auth's getSession endpoint; when deferRefresh is set it reports needsRefresh instead of writing.
 func (h *handler) session(ctx context.Context, in *getSessionInput, deferRefresh bool) (*getSessionOutput, error) {
 	out := &getSessionOutput{CacheControl: "no-store", Pragma: "no-cache"}
-	if sw, ok := FromContext(ctx); ok && sw != nil {
-		out.Body = &getSessionBody{SessionWithUser: *sw}
-		return out, nil
-	}
+
+	// 1. Resolve token from cookie or bearer context
 	tok, ok := h.Cookies.SessionToken(in.Cookie)
 	if !ok {
 		if btok, bok := FromBearerContext(ctx); bok {
@@ -56,7 +54,27 @@ func (h *handler) session(ctx context.Context, in *getSessionInput, deferRefresh
 	if !ok {
 		return out, nil
 	}
+
 	dontRemember := h.Cookies.DontRemember(in.Cookie)
+
+	// 2. CookieCache fast-path: serve directly from session_data cookie if enabled and not bypassed
+	if !in.DisableCookieCache && h.Cookies.CookieCacheEnabled() && in.Cookie != "" {
+		if cached, err := h.Cookies.ReadSessionData(in.Cookie); err == nil && cached != nil {
+			// Ensure cached session matches the verified token
+			if cached.Session.Token == tok {
+				// Stateless refresh check
+				if h.Cookies.ShouldRefreshCookieCache(in.Cookie) {
+					if refreshedCk, err := h.Cookies.CreateSessionDataCookie(cached, dontRemember); err == nil && refreshedCk != nil {
+						out.SetCookie = append(out.SetCookie, *refreshedCk)
+					}
+				}
+				out.Body = &getSessionBody{SessionWithUser: *cached}
+				return out, nil
+			}
+		}
+	}
+
+	// 3. Database / Storage resolution via auth service
 	res, err := h.Auth.GetSession(ctx, tok, svcint.GetSessionOptions{
 		DisableRefresh: in.DisableRefresh,
 		DeferRefresh:   deferRefresh,
@@ -74,7 +92,12 @@ func (h *handler) session(ctx context.Context, in *getSessionInput, deferRefresh
 		body.NeedsRefresh = &res.NeedsRefresh
 	}
 	if res.Refreshed {
-		out.SetCookie = h.Cookies.SessionCookies(tok, false)
+		out.SetCookie = h.Cookies.SessionCookiesWithData(res.Session, false)
+	} else if h.Cookies.CookieCacheEnabled() && !in.DisableCookieCache {
+		// Populate cookie cache on getSession cache miss or update
+		if cacheCk, err := h.Cookies.CreateSessionDataCookie(res.Session, dontRemember); err == nil && cacheCk != nil {
+			out.SetCookie = append(out.SetCookie, *cacheCk)
+		}
 	}
 	out.Body = body
 	return out, nil
@@ -149,5 +172,5 @@ func (h *handler) sessionCookies(ctx context.Context, sw *dtos.SessionWithUser) 
 	if req := requestOf(ctx); req != nil {
 		dontRemember = h.Cookies.DontRemember(req.Header.Get("Cookie"))
 	}
-	return h.Cookies.SessionCookies(sw.Session.Token, dontRemember)
+	return h.Cookies.SessionCookiesWithData(sw, dontRemember)
 }

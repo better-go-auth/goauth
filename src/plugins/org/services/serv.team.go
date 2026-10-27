@@ -3,14 +3,14 @@ package orgsvc
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
+	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	authdtos "github.com/better-go-auth/goauth/src/models/dtos"
-	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
@@ -33,12 +33,24 @@ type ITeamService interface {
 	SetActiveTeam(ctx context.Context, sessionID string, teamID *string, userID string) (*authdtos.SessionWithUser, error)
 
 	// Dynamic Access Control
-	CreateRole(ctx context.Context, orgID, role, permission, requestingUserID string) (*models.OrganizationRole, error)
+	CreateRole(ctx context.Context, orgID, role string, permission models.Permission, requestingUserID string) (*models.OrganizationRole, error)
+	CreateRoleWithOps(ctx context.Context, orgID, role string, permission models.Permission, ops models.Operations, requestingUserID string) (*models.OrganizationRole, error)
 	GetRole(ctx context.Context, orgID, role, requestingUserID string) (*models.OrganizationRole, error)
-	UpdateRole(ctx context.Context, orgID, role, permission, requestingUserID string) (*models.OrganizationRole, error)
+	UpdateRole(ctx context.Context, orgID, role string, permission models.Permission, requestingUserID string) (*models.OrganizationRole, error)
+	UpdateRoleWithOps(ctx context.Context, orgID, role string, permission models.Permission, ops models.Operations, requestingUserID string) (*models.OrganizationRole, error)
 	DeleteRole(ctx context.Context, orgID, role, requestingUserID string) error
 	ListRoles(ctx context.Context, orgID, requestingUserID string) ([]models.OrganizationRole, error)
 	HasPermission(ctx context.Context, orgID, role, resource, action string) (bool, error)
+	HasOperation(ctx context.Context, orgID, role, operationID string) (bool, error)
+	AuthorizeRole(ctx context.Context, orgID, role string, check AuthCheck) (bool, error)
+}
+
+// AuthCheck specifies parameters for dynamic role authorization.
+type AuthCheck struct {
+	Resource    string
+	Action      string
+	OperationID string
+	Method      orgconfig.AuthMethod
 }
 
 func (s *OrgService) TeamsEnabled() bool {
@@ -255,22 +267,49 @@ func (s *OrgService) SetActiveTeam(ctx context.Context, sessionID string, teamID
 
 // ─── Dynamic Access Control Operations ─────────────────────────────────────────
 
-func (s *OrgService) CreateRole(ctx context.Context, orgID, role, permission, requestingUserID string) (*models.OrganizationRole, error) {
+func (s *OrgService) CreateRole(ctx context.Context, orgID, role string, permission models.Permission, requestingUserID string) (*models.OrganizationRole, error) {
+	return s.CreateRoleWithOps(ctx, orgID, role, permission, nil, requestingUserID)
+}
+
+func (s *OrgService) CreateRoleWithOps(ctx context.Context, orgID, role string, permission models.Permission, ops models.Operations, requestingUserID string) (*models.OrganizationRole, error) {
+	// Step 1: Verify dynamic access control is enabled in org config
 	if !s.DynamicAccessControlEnabled() {
 		return nil, autherr.ErrForbidden
 	}
+	// Step 2: Validate requester is organization owner
 	requester, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
 	if err != nil || requester == nil || requester.Role != models.OrgRoleOwner {
 		return nil, autherr.ErrForbidden
 	}
+	// Step 3: Ensure non-nil permission map to prevent nil map panics
+	if permission == nil {
+		permission = make(models.Permission)
+	}
+
+	// Step 4: Ensure non-nil operations slice
+	if ops == nil {
+		ops = make(models.Operations, 0)
+	}
+
+	// Step 5: Construct OrganizationRole model
 	now := coremodels.TimeNow()
 	r := &models.OrganizationRole{
 		Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 		OrganizationID: orgID,
 		Role:           role,
 		Permission:     permission,
+		Ops:            ops,
 	}
-	return s.orgRoleRepo.CreateRole(ctx, r)
+
+	// Step 6: Persist role to repository
+	created, err := s.orgRoleRepo.CreateRole(ctx, r)
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 7: Invalidate cached roles for this organization
+	s.invalidateRoleCache(ctx, orgID)
+	return created, nil
 }
 
 func (s *OrgService) GetRole(ctx context.Context, orgID, role, requestingUserID string) (*models.OrganizationRole, error) {
@@ -285,15 +324,39 @@ func (s *OrgService) GetRole(ctx context.Context, orgID, role, requestingUserID 
 	return r, nil
 }
 
-func (s *OrgService) UpdateRole(ctx context.Context, orgID, role, permission, requestingUserID string) (*models.OrganizationRole, error) {
+func (s *OrgService) UpdateRole(ctx context.Context, orgID, role string, permission models.Permission, requestingUserID string) (*models.OrganizationRole, error) {
+	return s.UpdateRoleWithOps(ctx, orgID, role, permission, nil, requestingUserID)
+}
+
+func (s *OrgService) UpdateRoleWithOps(ctx context.Context, orgID, role string, permission models.Permission, ops models.Operations, requestingUserID string) (*models.OrganizationRole, error) {
+	// Step 1: Verify dynamic access control is enabled in org config
 	if !s.DynamicAccessControlEnabled() {
 		return nil, autherr.ErrForbidden
 	}
+	// Step 2: Validate requester is organization owner
 	requester, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
 	if err != nil || requester == nil || requester.Role != models.OrgRoleOwner {
 		return nil, autherr.ErrForbidden
 	}
-	return s.orgRoleRepo.UpdateRole(ctx, orgID, role, permission)
+	// Step 3: Ensure non-nil permission map
+	if permission == nil {
+		permission = make(models.Permission)
+	}
+
+	// Step 4: Persist updated role in repository
+	var updated *models.OrganizationRole
+	if ops != nil {
+		updated, err = s.orgRoleRepo.UpdateRoleWithOps(ctx, orgID, role, permission, ops)
+	} else {
+		updated, err = s.orgRoleRepo.UpdateRole(ctx, orgID, role, permission)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 5: Invalidate cached roles for this organization
+	s.invalidateRoleCache(ctx, orgID)
+	return updated, nil
 }
 
 func (s *OrgService) DeleteRole(ctx context.Context, orgID, role, requestingUserID string) error {
@@ -304,7 +367,12 @@ func (s *OrgService) DeleteRole(ctx context.Context, orgID, role, requestingUser
 	if err != nil || requester == nil || requester.Role != models.OrgRoleOwner {
 		return autherr.ErrForbidden
 	}
-	return s.orgRoleRepo.DeleteRole(ctx, orgID, role)
+	if err := s.orgRoleRepo.DeleteRole(ctx, orgID, role); err != nil {
+		return err
+	}
+	// Invalidate cached roles for this organization
+	s.invalidateRoleCache(ctx, orgID)
+	return nil
 }
 
 func (s *OrgService) ListRoles(ctx context.Context, orgID, requestingUserID string) ([]models.OrganizationRole, error) {
@@ -316,53 +384,132 @@ func (s *OrgService) ListRoles(ctx context.Context, orgID, requestingUserID stri
 }
 
 func (s *OrgService) HasPermission(ctx context.Context, orgID, role, resource, action string) (bool, error) {
+	// Step 1: Owner always bypasses and has full access
+	if role == string(models.OrgRoleOwner) {
+		return true, nil
+	}
+
+	// Step 2: If dynamic access control is disabled, check built-in static roles
 	if !s.DynamicAccessControlEnabled() {
-		if role == string(models.OrgRoleOwner) {
-			return true, nil
-		}
 		if role == string(models.OrgRoleAdmin) {
 			if resource == "organization" && (action == "delete" || action == "update-role") {
 				return false, nil
 			}
 			return true, nil
 		}
-		if role == string(models.OrgRoleMember) {
+		if role == models.OrgRoleMember.Str() {
 			return action == "read" || action == "list" || action == "get", nil
 		}
 		return false, nil
 	}
 
-	if s.orgRoleRepo == nil {
-		return false, nil
-	}
-	r, err := s.orgRoleRepo.GetRole(ctx, orgID, role)
-	if err != nil || r == nil {
-		if role == string(models.OrgRoleOwner) {
-			return true, nil
-		}
-		return false, nil
-	}
-
-	var permDoc map[string][]string
-	if err := json.Unmarshal([]byte(r.Permission), &permDoc); err != nil {
-		return false, fmt.Errorf("orgsvc: invalid permission json: %w", err)
-	}
-
-	if wildcardActions, ok := permDoc["*"]; ok {
-		for _, a := range wildcardActions {
-			if a == "*" || a == action {
-				return true, nil
+	// Step 3: Fetch cached role definitions for the organization (L1/L2)
+	rolesMap, err := s.getOrgRolesCached(ctx, orgID)
+	if err != nil {
+		// Fallback to direct DB lookup on cache failure
+		if s.orgRoleRepo != nil {
+			r, dbErr := s.orgRoleRepo.GetRole(ctx, orgID, role)
+			if dbErr == nil && r != nil {
+				return r.Permission.HasAction(resource, action), nil
 			}
 		}
+		return false, err
 	}
 
-	if actions, ok := permDoc[resource]; ok {
-		for _, a := range actions {
-			if a == "*" || a == action {
-				return true, nil
+	// Step 4: Check permission directly on matched role
+	r, exists := rolesMap[role]
+	if !exists || r == nil {
+		return false, nil
+	}
+	return r.Permission.HasAction(resource, action), nil
+}
+
+func (s *OrgService) HasOperation(ctx context.Context, orgID, role, operationID string) (bool, error) {
+	// Step 1: Owner always bypasses and has full operation access
+	if role == string(models.OrgRoleOwner) {
+		return true, nil
+	}
+
+	// Step 2: If dynamic access control is disabled, evaluate built-in admin/member fallback
+	if !s.DynamicAccessControlEnabled() {
+		if role == string(models.OrgRoleAdmin) {
+			return operationID != "deleteOrganization", nil
+		}
+		return false, nil
+	}
+
+	// Step 3: Fetch cached role definitions for the organization (L1/L2)
+	rolesMap, err := s.getOrgRolesCached(ctx, orgID)
+	if err != nil {
+		// Fallback to direct DB lookup on cache failure
+		if s.orgRoleRepo != nil {
+			r, dbErr := s.orgRoleRepo.GetRole(ctx, orgID, role)
+			if dbErr == nil && r != nil {
+				return r.Ops.HasOp(operationID), nil
 			}
 		}
+		return false, err
 	}
 
-	return false, nil
+	// Step 4: Check operation directly on matched role's Ops
+	r, exists := rolesMap[role]
+	if !exists || r == nil {
+		return false, nil
+	}
+	return r.Ops.HasOp(operationID), nil
+}
+
+func (s *OrgService) AuthorizeRole(ctx context.Context, orgID, role string, check AuthCheck) (bool, error) {
+	// Step 1: Owner always has full access
+	if role == string(models.OrgRoleOwner) {
+		return true, nil
+	}
+
+	// Step 2: Determine effective auth method
+	var method orgconfig.AuthMethod
+	if s.Config.DynamicAccessControl != nil {
+		method = s.Config.DynamicAccessControl.AuthMethod
+	}
+	if check.Method != "" {
+		method = check.Method
+	}
+	if method == "" {
+		method = orgconfig.AuthMethodPermission
+	}
+
+	// Step 3: Evaluate based on configured method
+	switch method {
+	case orgconfig.AuthMethodOperations:
+		if check.OperationID == "" {
+			return false, fmt.Errorf("orgsvc: operationId is required for AuthMethodOperations")
+		}
+		return s.HasOperation(ctx, orgID, role, check.OperationID)
+
+	case orgconfig.AuthMethodBoth:
+		var hasOp, hasPerm bool
+		if check.OperationID != "" {
+			allowed, err := s.HasOperation(ctx, orgID, role, check.OperationID)
+			if err != nil {
+				return false, err
+			}
+			hasOp = allowed
+		}
+		if check.Resource != "" && check.Action != "" {
+			allowed, err := s.HasPermission(ctx, orgID, role, check.Resource, check.Action)
+			if err != nil {
+				return false, err
+			}
+			hasPerm = allowed
+		}
+		return hasOp || hasPerm, nil
+
+	default: // AuthMethodPermission
+		if check.Resource == "" || check.Action == "" {
+			if check.OperationID != "" {
+				return s.HasOperation(ctx, orgID, role, check.OperationID)
+			}
+			return false, fmt.Errorf("orgsvc: resource and action are required for AuthMethodPermission")
+		}
+		return s.HasPermission(ctx, orgID, role, check.Resource, check.Action)
+	}
 }

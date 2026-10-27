@@ -5,13 +5,14 @@ package services
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	"github.com/better-go-auth/goauth/src/common/dtos"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	errors "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
 	model_dtos "github.com/better-go-auth/goauth/src/models/dtos"
 	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
@@ -122,29 +123,30 @@ func (aus *AuthService) Login(ctx context.Context, input accesstokendtos.LoginDa
 
 // ResetToken (acc-04) exchanges a refresh token (the session token) for new tokens.
 func (aus *AuthService) ResetToken(ctx context.Context, refreshToken string) (dtos.GResp[accesstokendtos.TokenResponse], error) {
-	// 1. the refresh token must name a live session
+	// 1. check that the refresh token is not an access token JWT (3 segments)
+	if strings.Count(refreshToken, ".") == 2 {
+		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.InvalidToken), errors.InvalidTokenError
+	}
+
+	// 2. the refresh token must name a live session
 	session, err := aus.SesSvc.FindByRefreshToken(ctx, refreshToken)
 	if err != nil || session == nil {
 		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.InvalidToken), errors.InvalidTokenError
 	}
 
-	// 2. get the user
+	// 3. get the user
 	usr, err := aus.UserRepo.FindUserByID(ctx, session.UserID)
 	if err != nil || usr == nil {
 		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.DataNotFound), errors.UserNotFoundError
 	}
 
-	// 3. the user must still be allowed to sign in
-	if usr.Active != nil && !*usr.Active {
-		_ = aus.SesSvc.DeleteSession(ctx, session.ID)
-		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.Unauthorized), errors.ErrUnauthorized
-	}
+	// 4. the user must still be allowed to sign in
 	if usr.Banned && (usr.BanExpires == nil || usr.BanExpires.After(time.Now())) {
 		_ = aus.SesSvc.DeleteSession(ctx, session.ID)
 		return dtos.BadReqM[accesstokendtos.TokenResponse](errors.ErrUserBanned.Message), errors.ErrUserBanned
 	}
 
-	// 4. slide the session, rotate the refresh token (if configured) and sign a new access token
+	// 5. slide the session, rotate the refresh token (if configured) and sign a new access token
 	tokens, err := aus.SesSvc.RefreshTokens(ctx, session, usr.Role.S())
 	if err != nil {
 		return dtos.BadReqC[accesstokendtos.TokenResponse](errors.InvalidToken), errors.InvalidTokenError
@@ -158,10 +160,18 @@ func (aus *AuthService) ResetToken(ctx context.Context, refreshToken string) (dt
 
 // Logout revokes the session behind the refresh token.
 func (aus *AuthService) Logout(ctx context.Context, refreshToken string) (dtos.GResp[bool], error) {
+	// 1. check that the refresh token is not an access token JWT (3 segments)
+	if strings.Count(refreshToken, ".") == 2 {
+		return dtos.BadReqC[bool](errors.InvalidToken), errors.InvalidTokenError
+	}
+
+	// 2. lookup live session by refresh token
 	session, err := aus.SesSvc.FindByRefreshToken(ctx, refreshToken)
 	if err != nil || session == nil {
 		return dtos.BadReqC[bool](errors.InvalidToken), errors.InvalidTokenError
 	}
+
+	// 3. delete session from storage and database
 	if err := aus.SesSvc.DeleteSession(ctx, session.ID); err != nil {
 		return dtos.InternalErrMS[bool](err.Error()), err
 	}

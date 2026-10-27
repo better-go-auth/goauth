@@ -107,6 +107,7 @@ func setupTestServer(t *testing.T, bearerCfg bearerconfig.BearerConfig) (*httpte
 		SecondaryStorage: secStore,
 		Plugins:          []plugins.Plugin{bPlugin},
 		AuthConfig: config.AuthConfig{
+			BaseURL:        "http://localhost:3000",
 			Secret:         testSecret,
 			TrustedOrigins: []string{"http://127.0.0.1:*", "http://localhost:*"},
 		},

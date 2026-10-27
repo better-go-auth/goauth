@@ -19,11 +19,11 @@ type Session struct {
 	IPAddress *string   `json:"ipAddress"                             bun:"ip_address"`
 	UserAgent *string   `json:"userAgent"                             bun:"user_agent"`
 	// admin plugin
-	ImpersonatedBy *string `json:"impersonatedBy,omitempty" bun:"impersonated_by"`
+	ImpersonatedBy *string `json:"impersonatedBy,omitempty" gorm:"size:255" bun:"impersonated_by"`
 	Impersonator   *User   `json:"-" gorm:"foreignKey:ImpersonatedBy;constraint:OnDelete:CASCADE"`
 	// organization plugin
-	ActiveOrganizationID *string `json:"activeOrganizationId,omitempty" bun:"active_organization_id"`
-	ActiveTeamID         *string `json:"activeTeamId,omitempty"         bun:"active_team_id"`
+	ActiveOrganizationID *string `json:"activeOrganizationId,omitempty" gorm:"size:255" bun:"active_organization_id"`
+	ActiveTeamID         *string `json:"activeTeamId,omitempty"         gorm:"size:255" bun:"active_team_id"`
 
 	// ===== goauth fields (not in better-auth) =====
 	// ActiveOrganizationRole caches the member role of ActiveOrganizationID for JWT claims.

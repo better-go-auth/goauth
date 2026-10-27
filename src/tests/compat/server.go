@@ -104,12 +104,15 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 		}
 	}
 
+	compatAtCfg := accesstokenconfig.DefaultAccessTokenConfig()
+	compatAtCfg.AutoRegisterMiddleware = true
 	o := goauth.GoAuthOptions{
 		Conn:             db,
 		SecondaryStorage: store,
-		Plugins:          []plugin.Plugin{accesstoken.New(accesstokenconfig.DefaultAccessTokenConfig())},
+		Plugins:          []plugin.Plugin{accesstoken.New(compatAtCfg)},
 		AuthConfig: config.AuthConfig{
-			Secret: TestSecret,
+			BaseURL: "http://127.0.0.1:8080",
+			Secret:  TestSecret,
 		},
 	}
 	for _, opt := range opts {

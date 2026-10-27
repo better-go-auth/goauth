@@ -66,7 +66,8 @@ type IOrganizationRoleRepo interface {
 	CreateRole(ctx context.Context, r *models.OrganizationRole) (*models.OrganizationRole, error)
 	GetRole(ctx context.Context, orgID, role string) (*models.OrganizationRole, error)
 	ListRolesByOrgID(ctx context.Context, orgID string) ([]models.OrganizationRole, error)
-	UpdateRole(ctx context.Context, orgID, role string, permission string) (*models.OrganizationRole, error)
+	UpdateRole(ctx context.Context, orgID, role string, permission models.Permission) (*models.OrganizationRole, error)
+	UpdateRoleWithOps(ctx context.Context, orgID, role string, permission models.Permission, ops models.Operations) (*models.OrganizationRole, error)
 	DeleteRole(ctx context.Context, orgID, role string) error
 }
 

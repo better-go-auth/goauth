@@ -2,6 +2,7 @@ package accesstoken
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
@@ -54,6 +55,8 @@ type Plugin struct {
 	IAuthSvc   authint.IAuthService
 	secStorage sec_storage.SecondaryStorage
 	txMgr      interfaces.ITransactionManager
+	authConfig config.AuthConfig
+	middleware func(ctx huma.Context, next func(huma.Context))
 }
 
 var _ plugins.Plugin = (*Plugin)(nil)
@@ -66,7 +69,6 @@ func WithConfig(conf accesstokenconfig.AccessTokenConfig) Option {
 	return func(p *Plugin) {
 		p.config = conf
 		p.sessionConf = conf.Session
-		p.vConf = conf.Verification
 	}
 }
 
@@ -89,7 +91,6 @@ func WithSessionConfig(conf accesstokenconfig.SessionGoAuth) Option {
 func WithVerificationConfig(conf config.EmailVerification) Option {
 	return func(p *Plugin) {
 		p.vConf = conf
-		p.config.Verification = conf
 	}
 }
 
@@ -100,25 +101,25 @@ func WithPasswords(passwords *authcrypto.Passwords) Option {
 	}
 }
 
+// WithAutoRegisterMiddleware configures whether the plugin automatically registers its middleware globally on the Huma API.
+func WithAutoRegisterMiddleware(auto bool) Option {
+	return func(p *Plugin) {
+		p.config.AutoRegisterMiddleware = auto
+	}
+}
+
 // New creates a new access-token Plugin.
 // Directly accepts the config struct so users can configure it directly (mimicking Better Auth's plugin pattern),
 // with functional options supported as additional optional overrides.
 func New(cfg accesstokenconfig.AccessTokenConfig, opts ...Option) *Plugin {
 	defaultCfg := accesstokenconfig.DefaultAccessTokenConfig()
-	if cfg.BasePath == "" {
-		cfg.BasePath = defaultCfg.BasePath
-	}
 	if cfg.Session.JWT.AccessExpiresIn <= 0 {
 		cfg.Session.JWT.AccessExpiresIn = defaultCfg.Session.JWT.AccessExpiresIn
-	}
-	if cfg.Verification.GoAuth.CodeExpiresIn <= 0 {
-		cfg.Verification.GoAuth.CodeExpiresIn = defaultCfg.Verification.GoAuth.CodeExpiresIn
 	}
 
 	p := &Plugin{
 		config:      cfg,
 		sessionConf: cfg.Session,
-		vConf:       cfg.Verification,
 	}
 	for _, opt := range opts {
 		opt(p)
@@ -169,6 +170,13 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	if sConf.JWT.AccessExpiresIn <= 0 {
 		sConf.JWT.AccessExpiresIn = 15 * time.Minute
 	}
+	// Fallback to core Session.GoAuth if not explicitly customized
+	if sConf.UpdatableFields == nil {
+		sConf.UpdatableFields = ictx.Config.Session.GoAuth.UpdatableFields
+	}
+	if !sConf.SingleSession {
+		sConf.SingleSession = ictx.Config.Session.GoAuth.SingleSession
+	}
 	p.sessionConf = sConf
 
 	vConf := p.vConf
@@ -198,6 +206,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	// initialize the legacy services
 	p.vSvc = services.NewVerificationService(repos, vConf)
 	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
+	p.sessionSvc.Secret = ictx.Config.Secret
 	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
 
 	// Register lifecycle hook to blacklist session and clean up sid index upon revocation
@@ -243,18 +252,110 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	p.handler = humaaccesstoken.NewAccessTokenHandler(p.authSvc, p.sessionSvc, &sConf, cookieAttrs)
 
+	p.authConfig = ictx.Config
+	p.middleware = p.buildMiddleware(ictx.Config)
+
 	if ictx.Api != nil {
-		ictx.Api.UseMiddleware(p.Middleware(ictx.Config))
+		if p.config.AutoRegisterMiddleware {
+			ictx.Api.UseMiddleware(p.middleware)
+		}
 		p.SetupHumaRoutes(ictx.Api, ictx.MiddleWare)
 	}
 
 	return nil
 }
 
-// Middleware creates Huma middleware that authenticates incoming Authorization: Bearer <access_token_jwt> headers.
-// It verifies the access token, resolves the user and session, populates them into the request context,
-// and injects the session cookie so that all standard Better Auth endpoints work seamlessly without custom profile endpoints.
-func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
+// RequireRefreshToken returns a Huma middleware that requires a valid session.token (Refresh Token)
+// and explicitly rejects Access Token JWTs (3-segment tokens).
+func (p *Plugin) RequireRefreshToken() func(ctx huma.Context, next func(huma.Context)) {
+	return func(ctx huma.Context, next func(huma.Context)) {
+		// 1. Check Authorization header for access token JWT
+		authHeader := ctx.Header("Authorization")
+		if authHeader == "" {
+			authHeader = ctx.Header("authorization")
+		}
+		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+			raw := strings.TrimSpace(authHeader[7:])
+			// A 3-segment token is an access token JWT, which is forbidden on refresh-token-only routes
+			if strings.Count(raw, ".") == 2 {
+				ctx.SetStatus(http.StatusUnauthorized)
+				ctx.SetHeader("Content-Type", "application/json")
+				_ = json.NewEncoder(ctx.BodyWriter()).Encode(map[string]any{
+					"message": "access token not allowed on refresh-token-only route",
+				})
+				return
+			}
+		}
+		// 2. Proceed to downstream handler
+		next(ctx)
+	}
+}
+
+// Middleware returns the exported Huma middleware for access-token authentication.
+// When called with no arguments, it returns the middleware initialized during plugin Init.
+// When called with an explicit AuthConfig, it builds and returns a new middleware instance.
+func (p *Plugin) Middleware(authCfg ...config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
+	if len(authCfg) > 0 {
+		return p.buildMiddleware(authCfg[0])
+	}
+	if p.middleware != nil {
+		return p.middleware
+	}
+	return p.buildMiddleware(p.authConfig)
+}
+
+// AuthMiddleware returns the exported access-token Huma middleware for client applications to use on protected routes.
+func (p *Plugin) AuthMiddleware() func(ctx huma.Context, next func(huma.Context)) {
+	return p.Middleware()
+}
+
+// InitMiddleware explicitly initializes and returns an access-token middleware that client applications can use.
+func (p *Plugin) InitMiddleware(authCfg ...config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
+	if len(authCfg) > 0 {
+		p.authConfig = authCfg[0]
+	}
+	p.middleware = p.buildMiddleware(p.authConfig)
+	return p.middleware
+}
+
+// HTTPMiddleware exports a standard net/http middleware (func(http.Handler) http.Handler) for client applications.
+func (p *Plugin) HTTPMiddleware(authCfg ...config.AuthConfig) func(http.Handler) http.Handler {
+	cfg := p.authConfig
+	if len(authCfg) > 0 {
+		cfg = authCfg[0]
+	}
+	accessSecret := p.sessionConf.JWT.AccessSecret
+	if accessSecret == "" && cfg.Secret != "" {
+		accessSecret = config.DeriveKey(cfg.Secret, "goauth-access")
+	}
+	if accessSecret == "" {
+		accessSecret = cfg.Secret
+	}
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+				raw := strings.TrimSpace(authHeader[7:])
+				if raw != "" && strings.Count(raw, ".") == 2 {
+					claims, err := jwttoken.ValidateAccessToken(raw, accessSecret)
+					if err == nil && claims != nil && claims.SessionID != "" {
+						ctx := r.Context()
+						ctx = context.WithValue(ctx, constant.CtxClaims.Str(), *claims)
+						ctx = context.WithValue(ctx, constant.CTXUser_ID.Str(), claims.UserID)
+						if claims.ActiveOrgId != "" {
+							ctx = context.WithValue(ctx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
+						}
+						r = r.WithContext(ctx)
+					}
+				}
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
 	cm := cookies.New(authCfg)
 	cookieName := cm.Name(cookies.CookieSessionToken)
 	accessSecret := p.sessionConf.JWT.AccessSecret
@@ -334,13 +435,15 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 							tok = sessWithUsr.Session.Token
 						}
 						// Attach to context
-						ctx = huma.WithContext(ctx, humaadapter.WithSession(ctx.Context(), sessWithUsr))
-						ctx = huma.WithContext(ctx, humaadapter.WithBearerToken(ctx.Context(), tok))
-						ctx = huma.WithValue(ctx, constant.CtxClaims.Str(), *claims)
-						ctx = huma.WithValue(ctx, constant.CTXUser_ID.Str(), claims.UserID)
+						stdCtx := ctx.Context()
+						stdCtx = humaadapter.WithSession(stdCtx, sessWithUsr)
+						stdCtx = humaadapter.WithBearerToken(stdCtx, tok)
+						stdCtx = context.WithValue(stdCtx, constant.CtxClaims.Str(), *claims)
+						stdCtx = context.WithValue(stdCtx, constant.CTXUser_ID.Str(), claims.UserID)
 						if claims.ActiveOrgId != "" {
-							ctx = huma.WithValue(ctx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
+							stdCtx = context.WithValue(stdCtx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
 						}
+						ctx = huma.WithContext(ctx, stdCtx)
 
 						if !idgen.IsToken(tok) {
 							tok = ""
@@ -450,6 +553,7 @@ func (p *Plugin) Services() map[string]any {
 		"access_token_auth":         p.authSvc,
 		"access_token_session":      p.sessionSvc,
 		"access_token_verification": p.vSvc,
+		"access_token_middleware":   p.Middleware(),
 	}
 }
 

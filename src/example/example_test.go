@@ -64,12 +64,6 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 
 	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
 		Session: accesstokenconfig.SessionGoAuth{JWT: jwt},
-		Verification: loc_conf.EmailVerification{
-			GoAuth: loc_conf.EmailVerificationGoAuth{
-				CodeExpiresIn: 15 * time.Minute,
-				CodeSender:    emailSender,
-			},
-		},
 	})
 
 	emailOtpPlugin := emailotp.New(emailotpconfig.EmailOTPConfig{
@@ -82,7 +76,8 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 	_, err = bettergoauth.SetupGoAuth(context.Background(), api, bettergoauth.GoAuthOptions{
 		Conn: db,
 		AuthConfig: loc_conf.AuthConfig{
-			Secret: "test-secret-must-be-32-chars-long!",
+			BaseURL: "http://localhost:8080",
+			Secret:  "test-secret-must-be-32-chars-long!",
 			EmailVerification: loc_conf.EmailVerification{
 				GoAuth: loc_conf.EmailVerificationGoAuth{
 					CodeExpiresIn: 15 * time.Minute,

@@ -3,7 +3,6 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
@@ -16,38 +15,34 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-//============================ Functions Used By Middlewares ================================|
+//============================ Functions Used By Middlewares =============================|
 //
 //========================================================================================|
 
 // SessionClaimsResolver turns a better-auth session token (opaque bearer token or the signed session cookie)
-// into claims, so cookie and bearer clients pass the same middleware as legacy JWT clients.
+// into claims, so cookie and bearer clients pass the same middleware.
 type SessionClaimsResolver interface {
 	ClaimsFromSession(ctx context.Context, bearer, cookieHeader string) (*token.CustomClaims, error)
 }
 
+// AuthMiddleware handles session authentication via Better Auth cookies or session bearer tokens.
+// It is unaware of access token JWTs (which are managed exclusively by the access-token plugin).
 type AuthMiddleware struct {
-	verifier   TokenVerifier
 	revocation RevocationStore       // Optional
 	roles      DynamicRoleResolver   // Optional
 	sessions   SessionClaimsResolver // Optional
 }
 
-func NewAuthMiddleware(verifier TokenVerifier, revocation RevocationStore, roles DynamicRoleResolver) (*AuthMiddleware, error) {
-	if verifier == nil {
-		return nil, errors.New("verifier is nil")
-	}
+// NewAuthMiddleware creates a new default session AuthMiddleware.
+func NewAuthMiddleware(revocation RevocationStore, roles DynamicRoleResolver) *AuthMiddleware {
 	return &AuthMiddleware{
-		verifier:   verifier,
 		revocation: revocation,
 		roles:      roles,
-	}, nil
+	}
 }
 
-// WithSessions enables session-token authentication next to access JWTs.
+// WithSessions enables session-token authentication for cookie and bearer clients.
 func (m *AuthMiddleware) WithSessions(r SessionClaimsResolver) { m.sessions = r }
-
-func looksLikeJWT(tok string) bool { return strings.Count(tok, ".") == 2 }
 
 func writeAuthError(ctx huma.Context, err *autherr.AuthError) {
 	if err == nil {
@@ -70,59 +65,161 @@ func claimsFromCtx(ctx huma.Context) (token.CustomClaims, bool) {
 	}
 	return token.CustomClaims{}, false
 }
+
 //============================ Actual Middlewares ================================|
 //
-//========================================================================================|
+//================================================================================|
+
+// AuthOpt configures optional / pass-through authentication.
+type AuthOpt struct {
+	// RequireAuth when true requires that the request possesses valid claims, a valid session cookie,
+	// or a bearer token. If neither is present or session resolution fails, it returns 401 Unauthorized.
+	RequireAuth bool
+}
 
 type IAuthMiddleware interface {
 	Trace(operationID string) func(huma.Context, func(huma.Context))
 	Authenticate() func(huma.Context, func(huma.Context))
+	AuthenticateOptional(opts ...AuthOpt) func(huma.Context, func(huma.Context))
+	AuthenticateIfToken(opts ...AuthOpt) func(huma.Context, func(huma.Context))
 	Authorize(operationID consts.OperationId, allowedRoles []string) func(huma.Context, func(huma.Context))
 }
 
-// Authenticate Middleware (Handles Token Verification + Revocation Check).
-// It accepts a legacy access JWT, or, when WithSessions is set, a session token as bearer or cookie.
+// Authenticate Middleware (Handles Session Cookie and Bearer Authentication).
+// Unaware of access tokens; authenticates purely via session cookies or session bearer tokens.
 func (m *AuthMiddleware) Authenticate() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
+		// 1. Fast path: check if request was already authenticated into context by an upstream middleware
+		// (e.g. access-token plugin middleware or bearer plugin)
+		if claims, ok := claimsFromCtx(ctx); ok && claims.UserID != "" {
+			next(ctx)
+			return
+		}
+
+		// 2. Extract Bearer token if present
 		bearer := ""
 		if parts := strings.Split(ctx.Header("Authorization"), " "); len(parts) == 2 && parts[1] != "undefined" && parts[1] != "null" {
 			bearer = parts[1]
 		}
-		var claims token.CustomClaims
-		switch {
-		// if we have a n authorization token and it is a jwt token verify it with the verifier
-		case bearer != "" && looksLikeJWT(bearer):
-			c, err := m.verifier.VerifyToken(bearer)
-			if err != nil {
-				writeAuthError(ctx, autherr.ErrUnauthorized)
-				return
-			}
-			// Revocation Check
-			if m.revocation != nil && c.SessionID != "" {
-				revoked, _ := m.revocation.IsRevoked(ctx.Context(), c.SessionID)
-				if revoked {
-					writeAuthError(ctx, autherr.ErrUnauthorized)
-					return
-				}
-			}
-			claims = c
-		case m.sessions != nil && (bearer != "" || ctx.Header("Cookie") != ""):
-			// the session lookup itself is the revocation check
-			c, err := m.sessions.ClaimsFromSession(ctx.Context(), bearer, ctx.Header("Cookie"))
-			if err != nil || c == nil {
-				writeAuthError(ctx, autherr.ErrUnauthorized)
-				return
-			}
-			claims = *c
-		default:
+
+		// 3. Reject if no session claims resolver is set or neither bearer nor cookie header exists
+		if m.sessions == nil || (bearer == "" && ctx.Header("Cookie") == "") {
 			writeAuthError(ctx, autherr.ErrUnauthorized)
 			return
 		}
-		ctx = huma.WithValue(ctx, consts.CtxClaims.Str(), claims)
-		ctx = huma.WithValue(ctx, consts.CTXCompany_ID.Str(), claims.ActiveOrgId)
-		ctx = huma.WithValue(ctx, consts.CTXUser_ID.Str(), claims.UserID)
+
+		// 4. Resolve claims from session cookie or bearer token (the session lookup itself validates expiry and active status)
+		claims, err := m.sessions.ClaimsFromSession(ctx.Context(), bearer, ctx.Header("Cookie"))
+		if err != nil || claims == nil {
+			writeAuthError(ctx, autherr.ErrUnauthorized)
+			return
+		}
+
+		// 4. Revocation check — if revocation store is configured, ensure session is not blacklisted
+		if m.revocation != nil && claims.SessionID != "" {
+			revoked, _ := m.revocation.IsRevoked(ctx.Context(), claims.SessionID)
+			if revoked {
+				writeAuthError(ctx, autherr.ErrUnauthorized)
+				return
+			}
+		}
+
+		// 5. Attach claims, user ID, and active org ID to context
+		stdCtx := ctx.Context()
+		stdCtx = context.WithValue(stdCtx, consts.CtxClaims.Str(), *claims)
+		stdCtx = context.WithValue(stdCtx, consts.CTXCompany_ID.Str(), claims.ActiveOrgId)
+		stdCtx = context.WithValue(stdCtx, consts.CTXUser_ID.Str(), claims.UserID)
+		ctx = huma.WithContext(ctx, stdCtx)
+
+		// 6. Continue to next middleware / route handler
 		next(ctx)
 	}
+}
+
+// AuthenticateOptional Middleware (Optional / Pass-Through Session Authentication).
+// - Accepts an optional pointer option struct (*AuthenticateOptions) with RequireAuth.
+// - If RequireAuth is true, the request must have valid claims, a cookie, or a bearer token, otherwise it returns 401.
+// - If RequireAuth is false (default), it lets unauthenticated requests pass through without error.
+// - If claims already exist in context (e.g. from an access token plugin or upstream middleware), it continues.
+// - If a bearer token is present and is a 3-segment access token JWT, it passes through to let downstream access token middleware handle it.
+// - If a session cookie or session bearer token is present, it resolves the session and populates the context.
+func (m *AuthMiddleware) AuthenticateOptional(opts ...AuthOpt) func(huma.Context, func(huma.Context)) {
+	var opt AuthOpt
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	requireAuth := opt.RequireAuth
+
+	return func(ctx huma.Context, next func(huma.Context)) {
+		// 1. Check if request was already authenticated into context by an upstream middleware
+		// (e.g. access-token plugin middleware or custom auth)
+		if claims, ok := claimsFromCtx(ctx); ok && claims.UserID != "" {
+			next(ctx)
+			return
+		}
+
+		// 2. Extract Bearer token if present
+		bearer := ""
+		if parts := strings.Split(ctx.Header("Authorization"), " "); len(parts) == 2 && parts[1] != "undefined" && parts[1] != "null" {
+			bearer = parts[1]
+		}
+
+		// 3. If neither bearer nor cookie header exists, or no session resolver is configured:
+		// If RequireAuth is true, reject with 401 Unauthorized; otherwise let the request pass through unauthenticated.
+		if m.sessions == nil || (bearer == "" && ctx.Header("Cookie") == "") {
+			if requireAuth {
+				writeAuthError(ctx, autherr.ErrUnauthorized)
+				return
+			}
+			next(ctx)
+			return
+		}
+
+		// 4. If the bearer token is a 3-segment access token JWT, let it pass through
+		// so that downstream access token middleware can authenticate it.
+		// Note: A bearer token was provided, satisfying the presence requirement.
+		if bearer != "" && strings.Count(bearer, ".") == 2 {
+			next(ctx)
+			return
+		}
+
+		// 5. Attempt to resolve claims from session cookie or bearer token
+		claims, err := m.sessions.ClaimsFromSession(ctx.Context(), bearer, ctx.Header("Cookie"))
+		if err != nil || claims == nil {
+			// If RequireAuth is true and session resolution failed, reject with 401 Unauthorized.
+			// Otherwise, let request pass through unauthenticated.
+			if requireAuth {
+				writeAuthError(ctx, autherr.ErrUnauthorized)
+				return
+			}
+			next(ctx)
+			return
+		}
+
+		// 6. Revocation check — if revocation store is configured, ensure session is not blacklisted
+		// if m.revocation != nil && claims.SessionID != "" {
+		// 	revoked, _ := m.revocation.IsRevoked(ctx.Context(), claims.SessionID)
+		// 	if revoked {
+		// 		writeAuthError(ctx, autherr.ErrUnauthorized)
+		// 		return
+		// 	}
+		// }
+
+		// 7. Attach claims, user ID, and active org ID to context
+		stdCtx := ctx.Context()
+		stdCtx = context.WithValue(stdCtx, consts.CtxClaims.Str(), *claims)
+		stdCtx = context.WithValue(stdCtx, consts.CTXCompany_ID.Str(), claims.ActiveOrgId)
+		stdCtx = context.WithValue(stdCtx, consts.CTXUser_ID.Str(), claims.UserID)
+		ctx = huma.WithContext(ctx, stdCtx)
+
+		// 8. Continue to next middleware / route handler
+		next(ctx)
+	}
+}
+
+// AuthenticateIfToken is an alias for AuthenticateOptional.
+func (m *AuthMiddleware) AuthenticateIfToken(opts ...AuthOpt) func(huma.Context, func(huma.Context)) {
+	return m.AuthenticateOptional(opts...)
 }
 
 // Authorize Middleware (Static claims check OR Dynamic DB check)

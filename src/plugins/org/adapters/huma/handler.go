@@ -13,6 +13,7 @@ import (
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
@@ -118,6 +119,9 @@ func defaultPagi() models.Pagination {
 // It first checks if the request was already authenticated into context by middleware.
 func (h *OrgHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error) {
 	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
+		return sess, nil
+	}
+	if sess, ok := humaadapter.FromContext(ctx); ok && sess != nil {
 		return sess, nil
 	}
 	if h.authFn != nil {

@@ -42,9 +42,10 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("Verify Email", func(t *testing.T) {
-		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(map[string]any{
-			"email_verified": true,
-			"active":         true,
+		if err := env.DB.Model(&models.User{}).Where("email = ?", email).Updates(&models.User{
+			UserDto: models.UserDto{
+				EmailVerified: true,
+			},
 		}).Error; err != nil {
 			t.Fatalf("Failed to verify user: %v", err)
 		}

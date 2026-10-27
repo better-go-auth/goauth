@@ -35,6 +35,7 @@ func (s *Server) bare(t *testing.T, method, path, bearer string) int {
 
 func TestLegacyJWTOnSharedSessions(t *testing.T) {
 	atCfg := accesstokenconfig.DefaultAccessTokenConfig()
+	atCfg.AutoRegisterMiddleware = true
 	s := NewServer(t, WithAccessTokenConfig(atCfg), WithConfig(compatMode))
 	expectStatus(t, s.Post(t, "/api/auth/sign-up/email", signUpBody("legacy@example.com")), http.StatusOK)
 

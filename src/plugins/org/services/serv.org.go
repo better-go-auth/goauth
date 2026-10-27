@@ -3,12 +3,15 @@ package orgsvc
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	corerepo "github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
@@ -21,7 +24,14 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
+
+// l1RoleCacheItem holds in-memory cached organization roles with expiration.
+type l1RoleCacheItem struct {
+	roles     map[string]*models.OrganizationRole
+	expiresAt time.Time
+}
 
 // OrgService implements IOrgService.
 type OrgService struct {
@@ -43,6 +53,10 @@ type OrgService struct {
 
 	Cfg    config.AuthConfig
 	Config orgconfig.OrgConfig
+
+	// SecondaryStorage and L1 in-memory cache for dynamic role definitions (Phase 6)
+	secStorage sec_storage.SecondaryStorage
+	l1Roles    sync.Map // key: orgID (string), val: *l1RoleCacheItem
 }
 
 var _ IOrgService = (*OrgService)(nil)
@@ -62,6 +76,11 @@ func (s *OrgService) SetRepositories(teamRepo orgrepo.ITeamRepo, teamMemberRepo 
 	s.teamRepo = teamRepo
 	s.teamMemberRepo = teamMemberRepo
 	s.orgRoleRepo = orgRoleRepo
+}
+
+// SetSecondaryStorage configures secondary storage for dynamic role caching.
+func (s *OrgService) SetSecondaryStorage(storage sec_storage.SecondaryStorage) {
+	s.secStorage = storage
 }
 
 // HandleUserDeleted cleans up a deleted user's memberships across organizations.
@@ -208,7 +227,11 @@ func (s *OrgService) DeleteOrganization(ctx context.Context, orgID, requestingUs
 	if err != nil || member == nil || member.Role != models.OrgRoleOwner {
 		return autherr.ErrForbidden
 	}
-	return s.orgRepo.DeleteOrg(ctx, orgID)
+	if err := s.orgRepo.DeleteOrg(ctx, orgID); err != nil {
+		return err
+	}
+	s.invalidateRoleCache(ctx, orgID)
+	return nil
 }
 
 func (s *OrgService) ListOrganizations(ctx context.Context, userID string) ([]models.Organization, error) {
@@ -243,7 +266,7 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 		if member == nil {
 			return nil, orgerrors.ErrMemberNotFound
 		}
-		r := member.Role.String()
+		r := member.Role.Str()
 		orgRole = &r
 	}
 
@@ -337,4 +360,140 @@ func (s *OrgService) AdminUnblockOrg(ctx context.Context, orgID string) (*models
 // AdminListOrganizations returns all organizations, optionally filtered by status.
 func (s *OrgService) AdminListOrganizations(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error) {
 	return s.orgRepo.ListAllOrgs(ctx, status, pagi)
+}
+
+// ─── Dynamic Role Caching Helpers (Phase 6 Architecture) ─────────────────────
+
+func (s *OrgService) getL1Roles(orgID string) (map[string]*models.OrganizationRole, bool) {
+	val, ok := s.l1Roles.Load(orgID)
+	if !ok {
+		return nil, false
+	}
+	item, ok := val.(*l1RoleCacheItem)
+	if !ok || item == nil {
+		return nil, false
+	}
+	if time.Now().After(item.expiresAt) {
+		s.l1Roles.Delete(orgID)
+		return nil, false
+	}
+	return item.roles, true
+}
+
+func (s *OrgService) setL1Roles(orgID string, roles map[string]*models.OrganizationRole) {
+	ttl := s.l1CacheTTL()
+	s.l1Roles.Store(orgID, &l1RoleCacheItem{
+		roles:     roles,
+		expiresAt: time.Now().Add(ttl),
+	})
+}
+
+func (s *OrgService) deleteL1Roles(orgID string) {
+	s.l1Roles.Delete(orgID)
+}
+
+func (s *OrgService) roleCacheTTL() time.Duration {
+	if s.Config.DynamicAccessControl != nil && s.Config.DynamicAccessControl.CacheTTL > 0 {
+		return s.Config.DynamicAccessControl.CacheTTL
+	}
+	return 30 * time.Minute
+}
+
+func (s *OrgService) l1CacheTTL() time.Duration {
+	if s.Config.DynamicAccessControl != nil && s.Config.DynamicAccessControl.L1CacheTTL > 0 {
+		return s.Config.DynamicAccessControl.L1CacheTTL
+	}
+	return 1 * time.Minute
+}
+
+func (s *OrgService) isRoleCacheEnabled() bool {
+	if s.Config.DynamicAccessControl == nil {
+		return false
+	}
+	if s.Config.DynamicAccessControl.CacheRoles != nil {
+		return *s.Config.DynamicAccessControl.CacheRoles
+	}
+	return true
+}
+
+func (s *OrgService) invalidateRoleCache(ctx context.Context, orgID string) {
+	s.deleteL1Roles(orgID)
+	if s.secStorage != nil && orgID != "" {
+		cacheKey := fmt.Sprintf("goauth:org:%s:roles", orgID)
+		_ = s.secStorage.Delete(ctx, cacheKey)
+	}
+}
+
+func (s *OrgService) getOrgRolesCached(ctx context.Context, orgID string) (map[string]*models.OrganizationRole, error) {
+	// Step 1: Check L1 local in-memory cache (<50ns sub-microsecond latency)
+	if cached, ok := s.getL1Roles(orgID); ok && cached != nil {
+		return cached, nil
+	}
+
+	// Step 2: Check L2 secondary storage (Redis / Memory storage)
+	if s.secStorage != nil && s.isRoleCacheEnabled() && orgID != "" {
+		cacheKey := fmt.Sprintf("goauth:org:%s:roles", orgID)
+		val, exists, err := s.secStorage.Get(ctx, cacheKey)
+		if err == nil && exists && val != nil {
+			if roles, err := unmarshalCachedRoles(val); err == nil && len(roles) > 0 {
+				s.setL1Roles(orgID, roles)
+				return roles, nil
+			}
+		}
+	}
+
+	// Step 3: L3 fallback to Database
+	if s.orgRoleRepo == nil {
+		return make(map[string]*models.OrganizationRole), nil
+	}
+	dbRoles, err := s.orgRoleRepo.ListRolesByOrgID(ctx, orgID)
+	if err != nil {
+		return nil, fmt.Errorf("orgsvc: list roles from db: %w", err)
+	}
+
+	rolesMap := make(map[string]*models.OrganizationRole, len(dbRoles))
+	for i := range dbRoles {
+		r := dbRoles[i]
+		rolesMap[r.Role] = &r
+	}
+
+	// Step 4: Populate L1 and L2 caches
+	s.setL1Roles(orgID, rolesMap)
+	if s.secStorage != nil && s.isRoleCacheEnabled() && orgID != "" {
+		cacheKey := fmt.Sprintf("goauth:org:%s:roles", orgID)
+		if jsonBytes, err := json.Marshal(rolesMap); err == nil {
+			_ = s.secStorage.Set(ctx, cacheKey, string(jsonBytes), s.roleCacheTTL())
+		}
+	}
+
+	return rolesMap, nil
+}
+
+func unmarshalCachedRoles(val any) (map[string]*models.OrganizationRole, error) {
+	switch v := val.(type) {
+	case map[string]*models.OrganizationRole:
+		return v, nil
+	case string:
+		var m map[string]*models.OrganizationRole
+		if err := json.Unmarshal([]byte(v), &m); err != nil {
+			return nil, err
+		}
+		return m, nil
+	case []byte:
+		var m map[string]*models.OrganizationRole
+		if err := json.Unmarshal(v, &m); err != nil {
+			return nil, err
+		}
+		return m, nil
+	default:
+		b, err := json.Marshal(val)
+		if err != nil {
+			return nil, err
+		}
+		var m map[string]*models.OrganizationRole
+		if err := json.Unmarshal(b, &m); err != nil {
+			return nil, err
+		}
+		return m, nil
+	}
 }

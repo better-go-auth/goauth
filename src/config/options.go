@@ -5,21 +5,13 @@ import (
 	"strings"
 )
 
-// Mode selects which API surface goauth exposes.
-type Mode string
-
-const (
-	// ModeLegacy keeps the original goauth routes and JWT access/refresh flow.
-	ModeLegacy Mode = "legacy"
-	// ModeCompat targets wire compatibility with better-auth (see _docs/README.md).
-	ModeCompat Mode = "compat"
-)
-
 const (
 	DefaultAppName      = "Better Auth"
 	DefaultCookiePrefix = "better-auth"
 	DefaultIPv6Subnet   = 64
 	SecretEnvVar        = "BETTER_AUTH_SECRET"
+	BaseURLEnvVar       = "BETTER_AUTH_URL"
+	NextBaseURLEnvVar   = "NEXT_PUBLIC_BETTER_AUTH_URL"
 	MinSecretLength     = 32
 )
 

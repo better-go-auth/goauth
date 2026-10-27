@@ -40,22 +40,22 @@ func sessionStringFields() map[string]string {
 	return out
 }
 
-// updatableSessionFields resolves GoAuth.Session.UpdatableFields to Go field names.
+// updatableSessionFields resolves Session.GoAuth.UpdatableFields to Go field names.
 // A field must be a non-protected string field of models.Session that the cached session shape also carries.
 func updatableSessionFields(cfg config.AuthConfig) (map[string]string, error) {
 	known := sessionStringFields()
 	cached := reflect.TypeOf(dtos.SessionData{})
 	out := map[string]string{}
-	for _, name := range cfg.GoAuth.Session.UpdatableFields {
+	for _, name := range cfg.Session.GoAuth.UpdatableFields {
 		if protectedSessionFields[name] {
 			return nil, fmt.Errorf("goauth: session field %q cannot be client-updatable", name)
 		}
 		goName, ok := known[name]
 		if !ok {
-			return nil, fmt.Errorf("goauth: GoAuth.Session.UpdatableFields: %q is not a string field of the session model", name)
+			return nil, fmt.Errorf("goauth: Session.GoAuth.UpdatableFields: %q is not a string field of the session model", name)
 		}
 		if _, ok := cached.FieldByName(goName); !ok {
-			return nil, fmt.Errorf("goauth: GoAuth.Session.UpdatableFields: %q is missing from dtos.SessionData", name)
+			return nil, fmt.Errorf("goauth: Session.GoAuth.UpdatableFields: %q is missing from dtos.SessionData", name)
 		}
 		out[name] = goName
 	}

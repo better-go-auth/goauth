@@ -25,6 +25,7 @@ type Manager struct {
 	domain        string
 	secret        string
 	sessionMaxAge time.Duration
+	cookieCache   *config.CookieCache
 }
 
 // New derives cookie names and attributes from conf (call conf.SetDefaults first).
@@ -35,6 +36,7 @@ func New(conf config.AuthConfig) *Manager {
 		domain:        conf.CookieDomain(),
 		secret:        conf.Secret,
 		sessionMaxAge: conf.Session.ExpiresIn,
+		cookieCache:   conf.Session.CookieCache,
 	}
 }
 

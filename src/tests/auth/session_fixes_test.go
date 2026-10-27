@@ -20,10 +20,9 @@ import (
 func createActiveUser(t *testing.T, env *helpers.TestEnv, email, password string) *models.User {
 	t.Helper()
 	ctx := context.Background()
-	active := true
 	usr := &models.User{UserDto: models.UserDto{
 		FirstName: "Fix", LastName: "User", Email: email,
-		EmailVerified: true, Active: &active, Role: enums.User,
+		EmailVerified: true, Role: enums.User,
 	}}
 	if err := env.DB.Create(usr).Error; err != nil {
 		t.Fatalf("create user: %v", err)
@@ -147,16 +146,6 @@ func TestRefreshRejectsBlockedUsersAndExpiredSessions(t *testing.T) {
 		env.DB.Model(usr).Update("banned", true)
 		if _, err := env.AuthService.ResetToken(ctx, tokens.RefreshToken); err == nil {
 			t.Fatal("banned user must not refresh")
-		}
-	})
-
-	t.Run("inactive user", func(t *testing.T) {
-		email, pwd := "inactive_refresh@example.com", "password123!"
-		usr := createActiveUser(t, env, email, pwd)
-		tokens := login(t, env, email, pwd)
-		env.DB.Model(usr).Update("active", false)
-		if _, err := env.AuthService.ResetToken(ctx, tokens.RefreshToken); err == nil {
-			t.Fatal("inactive user must not refresh")
 		}
 	})
 

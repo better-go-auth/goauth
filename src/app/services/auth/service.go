@@ -47,7 +47,7 @@ type Service struct {
 	sessionMgr *sessionsvc.Manager
 	passwords  *authcrypto.Passwords
 	tx         interfaces.ITransactionManager
-	// sessionFields maps client-writable session JSON names to Go field names (GoAuth.Session.UpdatableFields)
+	// sessionFields maps client-writable session JSON names to Go field names (Session.GoAuth.UpdatableFields)
 	sessionFields map[string]string
 	Hooks         plugins.HookRegistry
 }

@@ -52,32 +52,32 @@ var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	// Org
 	OrCreateOrg:    {AllowedRoles: []string{}, Description: "Creating An Organization"},
 	OrGetOrg:       {AllowedRoles: []string{}, Description: "Get Organization Details"},
-	OrUpdateOrg:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Update Organization"},
-	OrDeleteOrg:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.String()}, Description: "Delete Organization"},
+	OrUpdateOrg:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Update Organization"},
+	OrDeleteOrg:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str()}, Description: "Delete Organization"},
 	OrListOrgs:     {AllowedRoles: []string{}, Description: "List User Organizations"},
 	OrSetActiveOrg: {AllowedRoles: []string{}, Description: "Set Active Organization"},
 
 	// Invitation
-	OrInviteMember:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Invite Member"},
+	OrInviteMember:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Invite Member"},
 	OrGetInvitation:    {AllowedRoles: []string{}, Description: "Get Invitation Details"},
 	OrAcceptInvitation: {AllowedRoles: []string{}, Description: "Accept Invitation"},
 	OrRejectInvitation: {AllowedRoles: []string{}, Description: "Reject Invitation"},
-	OrCancelInvitation: {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Cancel Invitation"},
-	OrListInvitations:  {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "List Organization Invitations"},
+	OrCancelInvitation: {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Cancel Invitation"},
+	OrListInvitations:  {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "List Organization Invitations"},
 
 	// Member
 	OrGetMember:        {AllowedRoles: []string{}, Description: "Get Member Details"},
-	OrListMembers:      {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "List Organization Members"},
-	OrUpdateMemberRole: {AllowedRoles: []string{orgmodels.OrgRoleOwner.String()}, Description: "Update Member Role"},
-	OrRemoveMember:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Remove Member"},
+	OrListMembers:      {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "List Organization Members"},
+	OrUpdateMemberRole: {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str()}, Description: "Update Member Role"},
+	OrRemoveMember:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Remove Member"},
 
 	// Teams
-	OrCreateTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Create Team"},
-	OrUpdateTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Update Team"},
-	OrDeleteTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Delete Team"},
+	OrCreateTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Create Team"},
+	OrUpdateTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Update Team"},
+	OrDeleteTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Delete Team"},
 	OrListTeams:        {AllowedRoles: []string{}, Description: "List Teams"},
-	OrAddTeamMember:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Add Team Member"},
-	OrRemoveTeamMember: {AllowedRoles: []string{orgmodels.OrgRoleOwner.String(), orgmodels.OrgRoleAdmin.String()}, Description: "Remove Team Member"},
+	OrAddTeamMember:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Add Team Member"},
+	OrRemoveTeamMember: {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Remove Team Member"},
 	OrSetActiveTeam:    {AllowedRoles: []string{}, Description: "Set Active Team"},
 
 	// Admin (system-level Admin role required — enforced in handler, not middleware)

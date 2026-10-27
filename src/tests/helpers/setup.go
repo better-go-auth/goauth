@@ -6,20 +6,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	bettergoauth "github.com/better-go-auth/goauth"
-	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
-	accesstokensvc "github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/common/consts"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
+	accesstokensvc "github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
@@ -33,15 +32,10 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/token"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
-	"github.com/google/uuid"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/modules/postgres"
 	test_redis "github.com/testcontainers/testcontainers-go/modules/redis"
 	"github.com/testcontainers/testcontainers-go/wait"
-	gormpostgres "gorm.io/driver/postgres"
-	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 )
 
 const (
@@ -77,47 +71,28 @@ type TestEnv struct {
 
 var containersToCleanup []testcontainers.Container
 
+// SetupTestEnv initializes a TestEnv using either PostgreSQL container (useContainers=true) or SQLite (useContainers=false).
 func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
+	if useContainers {
+		return SetupTestEnvWithDB(t, DBTypePostgres)
+	}
+	return SetupTestEnvWithDB(t, DBTypeSQLite)
+}
+
+// SetupTestEnvWithDB initializes a TestEnv using the specified database engine (SQLite, PostgreSQL, or MySQL).
+func SetupTestEnvWithDB(t *testing.T, dbType DatabaseType) *TestEnv {
 	t.Helper()
-	ctx := context.Background()
-	var gormDB *gorm.DB
+	gormDB := SetupTestDB(t, dbType)
+	if gormDB == nil {
+		return nil
+	}
+
 	var secStorage sec_storage.SecondaryStorage
 	teardown := func() {}
 
-	if useContainers {
-		slog.Info("========== Using testcontainers")
-		pgContainer, err := postgres.Run(
-			ctx,
-			"postgres:15-alpine",
-			postgres.WithDatabase("testdb"),
-			postgres.WithUsername("testuser"),
-			postgres.WithPassword("testpass"),
-			testcontainers.WithWaitStrategy(
-				wait.ForLog("database system is ready to accept connections").
-					WithOccurrence(2).
-					WithStartupTimeout(30*time.Second),
-			),
-		)
-		if err != nil {
-			t.Fatalf("failed to start postgres container: %v", err)
-		}
-
-		connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
-		if err != nil {
-			t.Fatalf("failed to get connection string: %v", err)
-		}
-		gormDB, err = gorm.Open(gormpostgres.Open(connStr), &gorm.Config{
-			Logger: logger.Discard,
-		})
-		if err != nil {
-			t.Fatalf("failed to connect to postgres db: %v", err)
-		}
-		containersToCleanup = append(containersToCleanup, pgContainer)
-
-		//=============================   SECONDARY STORAGE SETUP ==========================|
-		//
-		//==================================================================================|
-
+	// Step 1: For container-based DBs, pair with Redis if available
+	if dbType != DBTypeSQLite {
+		ctx := context.Background()
 		redisContainer, err := test_redis.Run(
 			ctx,
 			"redis:7-alpine",
@@ -125,45 +100,29 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 				wait.ForListeningPort("6379/tcp"),
 			),
 		)
-		if err != nil {
-			t.Fatalf("failed to start redis container: %v", err)
+		if err == nil {
+			redisHost, err := redisContainer.Host(ctx)
+			if err == nil {
+				redisPort, err := redisContainer.MappedPort(ctx, "6379")
+				if err == nil {
+					redisClient, err := redis_storage.NewRedisStorage(&redis_storage.Config{
+						Host: redisHost,
+						Port: redisPort.Port(),
+					})
+					if err == nil {
+						secStorage = redisClient
+						teardown = func() {
+							_ = redisContainer.Terminate(context.Background())
+						}
+					}
+				}
+			}
 		}
-		containersToCleanup = append(containersToCleanup, redisContainer)
+	}
 
-		redisHost, err := redisContainer.Host(ctx)
-		if err != nil {
-			t.Fatalf("failed to get redis host: %v", err)
-		}
-		redisPort, err := redisContainer.MappedPort(ctx, "6379")
-		if err != nil {
-			t.Fatalf("failed to get redis mapped port: %v", err)
-		}
-
-		// Establish Redis Connection to Redis Container
-		redisClient, err := redis_storage.NewRedisStorage(&redis_storage.Config{
-			Host: redisHost,
-			Port: redisPort.Port(),
-		})
-		if err != nil {
-			t.Fatalf("failed to connect to redis test container: %v", err)
-		}
-		secStorage = redisClient
-
-		teardown = func() {
-			_ = pgContainer.Terminate(context.Background())
-			_ = redisContainer.Terminate(context.Background())
-		}
-	} else {
-		slog.Info("========== Not using testcontainers")
-		dbName := fmt.Sprintf("file:memdb_%s?mode=memory&cache=shared", uuid.New().String())
+	// Step 2: Fall back to memory secondary storage if Redis is not used or unavailable
+	if secStorage == nil {
 		var err error
-		gormDB, err = gorm.Open(sqlite.Open(dbName), &gorm.Config{
-			Logger: logger.Discard,
-		})
-		if err != nil {
-			t.Fatalf("failed to connect to sqlite db: %v", err)
-		}
-		//===========   Setup secondary Storage =========================
 		secStorage, err = memory.NewSecondaryStorage()
 		if err != nil {
 			t.Fatalf("failed to create in-memory secondary storage: %v", err)
@@ -190,20 +149,16 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	}
 
 	accessTokenPlugin := accesstoken.New(accesstokenconfig.AccessTokenConfig{
-		Session: accesstokenconfig.SessionGoAuth{JWT: jwt},
-		Verification: loc_conf.EmailVerification{
-			GoAuth: loc_conf.EmailVerificationGoAuth{
-				CodeExpiresIn: 15 * time.Minute,
-				CodeSender:    mockEmail,
-			},
-		},
+		Session:                accesstokenconfig.SessionGoAuth{JWT: jwt},
+		AutoRegisterMiddleware: true,
 	})
 
 	auth, err := bettergoauth.SetupGoAuth(context.Background(), api, bettergoauth.GoAuthOptions{
 		Conn:             gormDB,
 		SecondaryStorage: secStorage,
 		AuthConfig: loc_conf.AuthConfig{
-			Secret: TestAccessSecret,
+			BaseURL: "http://127.0.0.1:3000",
+			Secret:  TestAccessSecret,
 			EmailVerification: loc_conf.EmailVerification{
 				GoAuth: loc_conf.EmailVerificationGoAuth{
 					CodeExpiresIn: 15 * time.Minute,
@@ -292,6 +247,21 @@ func SetupTestEnv(t *testing.T, useContainers bool) *TestEnv {
 	}
 
 	return env
+}
+
+// RunForEachDBEnv executes a test suite against all supported database environments (SQLite, PostgreSQL, MySQL).
+func RunForEachDBEnv(t *testing.T, fn func(t *testing.T, env *TestEnv, dbType DatabaseType)) {
+	t.Helper()
+
+	for _, dbType := range AllDatabaseTypes {
+		t.Run(string(dbType), func(t *testing.T) {
+			env := SetupTestEnvWithDB(t, dbType)
+			if env == nil {
+				return
+			}
+			fn(t, env, dbType)
+		})
+	}
 }
 
 // Request helpers
