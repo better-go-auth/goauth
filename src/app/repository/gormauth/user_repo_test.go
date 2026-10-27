@@ -77,7 +77,7 @@ func TestUserRepo_DeleteUser_AnonymizesEmail(t *testing.T) {
 	var rawUser models.User
 	err = db.Unscoped().Where("id = ?", created.ID).Take(&rawUser).Error
 	require.NoError(t, err)
-	require.True(t, rawUser.DeletedAt.Valid)
+	require.NotNil(t, rawUser.DeletedAt)
 	require.NotEmpty(t, rawUser.Email)
 	require.True(t, strings.HasPrefix(rawUser.Email, fmt.Sprintf("deleted_%s_", created.ID)))
 	require.True(t, strings.HasSuffix(rawUser.Email, "@deleted.local"))

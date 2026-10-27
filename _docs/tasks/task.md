@@ -47,6 +47,16 @@ it is doing a redundant logic.
 - [x] Designed universal schema DDL and contract test verification framework across SQLite, PostgreSQL, and MySQL in `_docs/phase7/04-schema-migrations-and-testing-strategy.md`.
 - [x] Created index and navigation guide in `_docs/phase7/README.md`.
 
+## Phase 7: Multi-ORM & Database Abstraction Implementation
+- [x] **Step 1: Domain Model Neutralization**:
+  - Replaced `gorm.DeletedAt` with pure Go `*time.Time` (`gorm:"index" bun:"deleted_at,soft_delete" json:"deletedAt,omitempty"`) across all domain models (`User`, `SDBase`).
+  - Purged all `gorm.io/gorm` and `gorm.io/gorm/schema` imports from core domain models (`src/models/common.go`, `auth.user.go`, `auth.session.go`, `auth.account.go`, `auth.verification.go`, `tables.go`).
+  - Relocated GORM-specific `NamingStrategy` to `src/common/gormutil/naming.go` with multi-tenant prefix/override support and struct name resolution, verified by dedicated unit tests.
+  - Replaced model lifecycle hooks (`BeforeSave(*gorm.DB)`, `BeforeCreate(*gorm.DB)`) with pure domain helpers (`EnsureID()`, `PrepareSave()`, `EnsureUTC()`).
+  - Created `src/common/gormutil/callbacks.go` registering GORM lifecycle callbacks (`goauth:lifecycle`) on `db.Callback().Create().Before("gorm:create")` to preserve automatic ID initialization and UTC timestamp normalization for raw GORM operations without domain model coupling.
+  - Updated GORM repositories (`user_repo.go`, `session_repo.go`, `verification_repo.go`, `auth_repos.go`, `admin_repo.go`) and `memory.go` to handle soft-delete filters (`deleted_at IS NULL`) and lifecycle helpers.
+  - Verified 100% pass across all unit tests and integration tests across SQLite, PostgreSQL, and MySQL testcontainers.
+
 ## Phase 8: Custom Columns & Additional Fields Architecture Plan
 - [x] Evaluated Go architectural patterns (Dynamic SQL columns, JSONB metadata document, Go generics, and struct embedding) in `_docs/phase8/01-custom-fields-design-patterns.md`, establishing flattened JSON wire format for 100% Better-Auth client compatibility.
 - [x] Formulated configuration schema, security controls (mass-assignment and privilege escalation protection via `Input: false`), type coercion, and OpenAPI 3.1 schema enhancement in `_docs/phase8/02-configuration-and-validation-spec.md`.

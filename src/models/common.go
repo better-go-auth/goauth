@@ -7,42 +7,39 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"gorm.io/gorm"
 )
 
-// func Ptr[T any](value T) *T {
-// 	return &value
-// }
-
+// Base defines standard primary key and timestamp fields across domain entities.
 type Base struct {
-	ID        string    `gorm:"primarykey" json:"id,omitempty"`
-	CreatedAt time.Time `gorm:"not null" json:"createdAt"`
-	UpdatedAt time.Time `gorm:"not null" json:"updatedAt"`
+	ID        string    `gorm:"primarykey" bun:"id,pk" json:"id,omitempty"`
+	CreatedAt time.Time `gorm:"not null" bun:"created_at,notnull" json:"createdAt"`
+	UpdatedAt time.Time `gorm:"not null" bun:"updated_at,notnull" json:"updatedAt"`
 }
 
-func (m *Base) BeforeCreate(tx *gorm.DB) (err error) {
+// EnsureID assigns an ID if not already populated.
+func (m *Base) EnsureID() {
 	if m.ID == "" {
 		m.ID = NewID()
 	}
-	return nil
 }
 
 func (b Base) GetID() string {
 	return b.ID
 }
 
+// SDBase defines soft-deletable base entity fields with pure Go types (*time.Time).
 type SDBase struct {
-	ID        string         `gorm:"primarykey" json:"id,omitempty"`
-	CreatedAt time.Time      `gorm:"not null" json:"createdAt"`
-	UpdatedAt time.Time      `gorm:"not null" json:"updatedAt"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	ID        string     `gorm:"primarykey" bun:"id,pk" json:"id,omitempty"`
+	CreatedAt time.Time  `gorm:"not null" bun:"created_at,notnull" json:"createdAt"`
+	UpdatedAt time.Time  `gorm:"not null" bun:"updated_at,notnull" json:"updatedAt"`
+	DeletedAt *time.Time `gorm:"index" bun:"deleted_at,soft_delete" json:"deletedAt,omitempty"`
 }
 
-func (m *SDBase) BeforeCreate(tx *gorm.DB) (err error) {
+// EnsureID assigns an ID if not already populated.
+func (m *SDBase) EnsureID() {
 	if m.ID == "" {
 		m.ID = NewID()
 	}
-	return nil
 }
 
 func (b SDBase) GetID() string {
@@ -50,11 +47,11 @@ func (b SDBase) GetID() string {
 }
 
 type OperationAccessDto struct {
-	OperationId  consts.OperationId `gorm:"primaryKey" json:"operation_id"`
-	AllowedRoles pq.StringArray     `gorm:"type:text[]" json:"allowedRoles,omitempty"`
-	GroupName    string
-	Description  string
-	OrgID        *string
+	OperationId  consts.OperationId `gorm:"primaryKey" bun:"operation_id,pk" json:"operation_id"`
+	AllowedRoles pq.StringArray     `gorm:"type:text[]" bun:"allowed_roles" json:"allowedRoles,omitempty"`
+	GroupName    string             `bun:"group_name"`
+	Description  string             `bun:"description"`
+	OrgID        *string            `bun:"org_id"`
 	// CompanyID    *string // Deprecated: use OrgID instead
 }
 

@@ -40,9 +40,13 @@ func (r *SessionRepo) newID() string {
 }
 
 func (r *SessionRepo) CreateSession(ctx context.Context, session *models.Session) (*models.Session, error) {
+	// Step 1: Generate ID if not already provided
 	if session.ID == "" {
 		session.ID = r.newID()
 	}
+	// Step 2: Ensure timestamps are UTC
+	session.EnsureUTC()
+	// Step 3: Insert session record
 	if err := gormutil.GetDB(ctx, r.db).Create(session).Error; err != nil {
 		return nil, fmt.Errorf("gorm/session: create: %w", err)
 	}
@@ -50,9 +54,13 @@ func (r *SessionRepo) CreateSession(ctx context.Context, session *models.Session
 }
 
 func (r *SessionRepo) UpsertSession(ctx context.Context, session *models.Session) (*models.Session, error) {
+	// Step 1: Generate ID if not already provided
 	if session.ID == "" {
 		session.ID = r.newID()
 	}
+	// Step 2: Ensure timestamps are UTC
+	session.EnsureUTC()
+	// Step 3: Upsert record with OnConflict clause
 	s := &models.Session{}
 	err := gormutil.GetDB(ctx, r.db).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{gormutil.Col(r.db, s, "ID")},

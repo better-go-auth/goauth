@@ -8,8 +8,6 @@ import (
 	Imdl "github.com/better-go-auth/goauth/src/common/dtos"
 
 	"github.com/better-go-auth/goauth/src/models/enums"
-	"gorm.io/gorm"
-	"gorm.io/gorm/schema"
 )
 
 type User struct {
@@ -17,8 +15,8 @@ type User struct {
 	UserDto `mapstructure:",squash" `
 
 	// ===== goauth fields (not in better-auth) =====
-	LastSeen  *time.Time     `json:"last_seen,omitempty" doc:"last time user is seen"`
-	DeletedAt gorm.DeletedAt `gorm:"index" json:"-"`
+	LastSeen  *time.Time `json:"last_seen,omitempty" doc:"last time user is seen"`
+	DeletedAt *time.Time `json:"deletedAt,omitempty" gorm:"index" bun:"deleted_at,soft_delete"`
 
 	Sessions []Session `json:"sessions,omitempty" gorm:"foreignKey:UserID"`
 	Tokens   []string  `json:"tokens,omitempty" gorm:"-"`
@@ -64,14 +62,13 @@ func (u *UserDto) DisplayNameOrFull() string {
 	return strings.TrimSpace(u.FirstName + " " + u.LastName)
 }
 
-// BeforeSave keeps Name populated for rows created through legacy first/last name APIs
+// PrepareSave keeps Name populated for rows created through legacy first/last name APIs
 // and stores emails lowercased, as better-auth does.
-func (u *User) BeforeSave(tx *gorm.DB) error {
+func (u *User) PrepareSave() {
 	if u.Name == "" {
 		u.Name = u.DisplayNameOrFull()
 	}
 	u.Email = strings.ToLower(strings.TrimSpace(u.Email))
-	return nil
 }
 
 func (u *User) GetEmail() string {
@@ -81,16 +78,6 @@ func (u *User) GetEmail() string {
 // AnonymizeEmail generates a unique, non-colliding placeholder email for soft-deleted users.
 func AnonymizeEmail(userID string, t time.Time) string {
 	return fmt.Sprintf("deleted_%s_%d@deleted.local", userID, t.Unix())
-}
-
-// BeforeDelete hook ensures the user's email is anonymized on deletion to prevent unique index conflicts.
-func (u *User) BeforeDelete(tx *gorm.DB) error {
-	if u.ID != "" {
-		now := time.Now().UTC()
-		tombstone := AnonymizeEmail(u.ID, now)
-		tx.Statement.SetColumn("email", tombstone)
-	}
-	return nil
 }
 
 type UserFilter struct {
@@ -126,7 +113,7 @@ type UserQuery struct {
 // 	return q.UserFilter, q.PaginationInput, &generic.Opt{Preloads: []string{"CompanyRole"}}
 // }
 
-func (User) TableName(namer schema.Namer) string { return ResolveTableName(namer, ModelUser) }
+
 
 // type IntUsr interface {
 // 	GetID() string

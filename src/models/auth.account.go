@@ -2,8 +2,6 @@ package models
 
 import (
 	"time"
-
-	"gorm.io/gorm/schema"
 )
 
 // Account is better-auth's `account` model: one row per sign-in method of a user
@@ -41,7 +39,7 @@ const (
 func (p Providers) S() string {
 	return string(p)
 }
-func (Account) TableName(namer schema.Namer) string { return ResolveTableName(namer, ModelAccount) }
+
 
 func TimeNow() time.Time {
 	return time.Now().UTC()

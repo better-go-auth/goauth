@@ -2,9 +2,6 @@ package models
 
 import (
 	"time"
-
-	"github.com/better-go-auth/goauth/src/models"
-	"gorm.io/gorm/schema"
 )
 
 // JWK represents the database model for stored cryptographic keys.
@@ -17,11 +14,6 @@ type JWK struct {
 	ExpiresAt  *time.Time `gorm:"column:expires_at" json:"expiresAt,omitempty"`
 	Alg        string     `gorm:"size:50;column:alg" json:"alg,omitempty"`
 	Crv        string     `gorm:"size:50;column:crv" json:"crv,omitempty"`
-}
-
-// TableName returns the table name using GoAuth's centralized TableName resolver.
-func (JWK) TableName(namer schema.Namer) string {
-	return models.ResolveTableName(namer, models.ModelJWKS)
 }
 
 // JWKKey represents a single public key entry in the JWKS set.

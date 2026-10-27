@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"gorm.io/gorm"
@@ -17,6 +18,7 @@ type GORMMigrator struct {
 
 // NewGORMAdminMigrator creates a new GORM migrator for admin plugin models.
 func NewGORMAdminMigrator(db *gorm.DB) migration.IMigrator {
+	gormutil.RegisterCallbacks(db)
 	return &GORMMigrator{db: db}
 }
 

@@ -125,7 +125,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 
 	models.SetTableNames(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
 	if opts.Conn != nil {
-		opts.Conn.Config.NamingStrategy = models.NewNamingStrategy(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
+		opts.Conn.Config.NamingStrategy = gormutil.NewNamingStrategy(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
+		gormutil.RegisterCallbacks(opts.Conn)
 	}
 
 	if opts.Conn == nil && opts.Repositories == nil {

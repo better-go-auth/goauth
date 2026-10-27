@@ -38,9 +38,13 @@ func (r *UserRepo) newID() string {
 }
 
 func (r *UserRepo) CreateUser(ctx context.Context, user *models.User) (*models.User, error) {
+	// Step 1: Generate ID if not already provided
 	if user.ID == "" {
 		user.ID = r.newID()
 	}
+	// Step 2: Prepare save (normalize email and set display name)
+	user.PrepareSave()
+	// Step 3: Insert user record
 	if err := gormutil.GetDB(ctx, r.db).Create(user).Error; err != nil {
 		return nil, fmt.Errorf("gorm/user: create: %w", err)
 	}
@@ -49,7 +53,11 @@ func (r *UserRepo) CreateUser(ctx context.Context, user *models.User) (*models.U
 
 func (r *UserRepo) FindUserByID(ctx context.Context, id string) (*models.User, error) {
 	var user models.User
-	err := gormutil.GetDB(ctx, r.db).Where(userByID(id), "ID").Take(&user).Error
+	// Step 1: Query user by primary key and exclude soft-deleted records
+	err := gormutil.GetDB(ctx, r.db).
+		Where(userByID(id), "ID").
+		Where("deleted_at IS NULL").
+		Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, loc_errors.NotFoundErr("gorm/user: not found")
@@ -61,8 +69,10 @@ func (r *UserRepo) FindUserByID(ctx context.Context, id string) (*models.User, e
 
 func (r *UserRepo) FindUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	var user models.User
+	// Step 1: Query user by case-insensitive email and exclude soft-deleted records
 	err := gormutil.GetDB(ctx, r.db).
 		Where(gormutil.IEq(r.db, &models.User{}, "Email", email)).
+		Where("deleted_at IS NULL").
 		Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -107,7 +117,8 @@ func (r *UserRepo) DeleteUser(ctx context.Context, id string) error {
 
 func (r *UserRepo) ListUsers(ctx context.Context, filter repo_interfaces.UserFilter, pagi dtos.PaginationInput) ([]models.User, int64, error) {
 	user := &models.User{}
-	query := gormutil.GetDB(ctx, r.db).Model(user)
+	// Step 1: Build base query excluding soft-deleted records
+	query := gormutil.GetDB(ctx, r.db).Model(user).Where("deleted_at IS NULL")
 
 	if filter.Email != nil {
 		query = query.Where(gormutil.ILike(r.db, user, "Email", "%"+*filter.Email+"%"))

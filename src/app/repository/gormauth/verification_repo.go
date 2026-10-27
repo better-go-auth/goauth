@@ -40,10 +40,13 @@ func (r *VerificationRepo) newID() string {
 }
 
 func (r *VerificationRepo) UpsertVerificationValue(ctx context.Context, verification *models.Verification) (*models.Verification, error) {
+	// Step 1: Generate ID if not already provided
 	if verification.ID == "" {
 		verification.ID = r.newID()
 	}
-	// identifier is not unique in better-auth's schema, so replace instead of ON CONFLICT
+	// Step 2: Ensure timestamps are stored in UTC
+	verification.EnsureUTC()
+	// Step 3: Identifier is not unique in better-auth's schema, so replace instead of ON CONFLICT
 	db := gormutil.GetDB(ctx, r.db)
 	err := db.Transaction(func(tx *gorm.DB) error {
 		tx = tx.WithContext(ctx)

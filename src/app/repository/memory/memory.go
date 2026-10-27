@@ -76,7 +76,7 @@ func (r *Repos) CreateUser(_ context.Context, user *models.User) (*models.User, 
 
 func (r *Repos) liveUser(id string) (*models.User, bool) {
 	u, ok := r.users[id]
-	if !ok || u.DeletedAt.Valid {
+	if !ok || u.DeletedAt != nil {
 		return nil, false
 	}
 	return u, true
@@ -96,7 +96,7 @@ func (r *Repos) FindUserByEmail(_ context.Context, email string) (*models.User, 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, u := range r.users {
-		if !u.DeletedAt.Valid && email != "" && strings.EqualFold(u.Email, email) {
+		if u.DeletedAt == nil && email != "" && strings.EqualFold(u.Email, email) {
 			c := *u
 			return &c, nil
 		}
@@ -130,7 +130,7 @@ func (r *Repos) DeleteUser(_ context.Context, id string) error {
 		return nil
 	}
 	now := time.Now().UTC()
-	u.DeletedAt.Time, u.DeletedAt.Valid = now, true
+	u.DeletedAt = &now
 	u.Email = models.AnonymizeEmail(id, now)
 	return nil
 }
@@ -157,7 +157,7 @@ func (r *Repos) ListUsers(_ context.Context, filter repo_interfaces.UserFilter, 
 
 	var out []models.User
 	for _, u := range r.users {
-		if u.DeletedAt.Valid {
+		if u.DeletedAt != nil {
 			continue
 		}
 		if filter.Email != nil && !containsFold(u.Email, *filter.Email) {

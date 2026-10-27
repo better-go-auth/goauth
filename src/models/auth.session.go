@@ -4,8 +4,6 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/common/dtos"
-	"gorm.io/gorm"
-	"gorm.io/gorm/schema"
 )
 
 // Session is better-auth's `session` model plus goauth extras.
@@ -35,6 +33,7 @@ type Session struct {
 	LastUsedAt             *time.Time `json:"lastUsedAt,omitempty"   bun:"last_used_at"`
 	User                   *User      `json:"user,omitempty"         gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
 }
+
 type SessionFilter struct {
 	ID          string `query:"id"`
 	ActiveOrgID string `query:"-"`
@@ -43,14 +42,16 @@ type SessionFilter struct {
 	UserId string `query:"user_id"`
 	Token  string `query:"token"`
 }
+
 type SessionQuery struct {
 	dtos.PaginationInput
 }
 
-func (Session) TableName(namer schema.Namer) string { return ResolveTableName(namer, ModelSession) }
 
-// BeforeSave stores ExpiresAt in UTC; SQLite compares timestamps as text, so mixed zones misorder.
-func (s *Session) BeforeSave(*gorm.DB) error {
-	s.ExpiresAt = s.ExpiresAt.UTC()
-	return nil
+
+// EnsureUTC stores ExpiresAt in UTC; SQLite compares timestamps as text, so mixed zones misorder.
+func (s *Session) EnsureUTC() {
+	if !s.ExpiresAt.IsZero() {
+		s.ExpiresAt = s.ExpiresAt.UTC()
+	}
 }

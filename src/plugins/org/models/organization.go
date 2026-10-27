@@ -4,7 +4,6 @@ import (
 	"time"
 
 	coremodels "github.com/better-go-auth/goauth/src/models"
-	"gorm.io/gorm/schema"
 )
 
 type OrgStatus string
@@ -34,9 +33,7 @@ type Organization struct {
 	Sessions []coremodels.Session `json:"-" gorm:"foreignKey:ActiveOrganizationID;constraint:OnDelete:SET NULL"`
 }
 
-func (Organization) TableName(namer schema.Namer) string {
-	return coremodels.ResolveTableName(namer, coremodels.ModelOrganization)
-}
+
 
 // OrgMemberRole defines the roles available within an organization.
 type OrgMemberRole string
@@ -62,9 +59,7 @@ type Member struct {
 	User         *coremodels.User `json:"user,omitempty"         gorm:"foreignKey:UserID"                                    bun:"rel:belongs-to,join:user_id=id"`
 }
 
-func (Member) TableName(namer schema.Namer) string {
-	return coremodels.ResolveTableName(namer, coremodels.ModelMember)
-}
+
 
 // InvitationStatus tracks the state of an invitation.
 type InvitationStatus string
@@ -97,9 +92,7 @@ type Invitation struct {
 	Inviter      *coremodels.User `json:"inviter,omitempty"      gorm:"foreignKey:InviterID"                                 bun:"rel:belongs-to,join:inviter_id=id"`
 }
 
-func (Invitation) TableName(namer schema.Namer) string {
-	return coremodels.ResolveTableName(namer, coremodels.ModelInvitation)
-}
+
 
 // OrgPermission defines a fine-grained permission within an organization.
 // To be deleted: replaced by better-auth's `organizationRole` table (dynamic access control).
@@ -122,9 +115,7 @@ type Team struct {
 	Organization    *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
 }
 
-func (Team) TableName(namer schema.Namer) string {
-	return coremodels.ResolveTableName(namer, coremodels.ModelTeam)
-}
+
 
 // TeamMember is better-auth's `teamMember` model (opt-in via OrgConfig.Teams.Enabled).
 type TeamMember struct {
@@ -136,9 +127,7 @@ type TeamMember struct {
 	User            *coremodels.User `json:"user,omitempty" gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
 }
 
-func (TeamMember) TableName(namer schema.Namer) string {
-	return coremodels.ResolveTableName(namer, coremodels.ModelTeamMember)
-}
+
 
 
 
@@ -156,9 +145,7 @@ type OrganizationRole struct {
 	Ops Operations `json:"ops,omitempty" gorm:"serializer:json;type:text" bun:"ops"`
 }
 
-func (OrganizationRole) TableName(namer schema.Namer) string {
-	return coremodels.ResolveTableName(namer, coremodels.ModelOrganizationRole)
-}
+
 
 // Pagination controls offset-based paginated queries.
 type Pagination struct {
