@@ -27,20 +27,37 @@ const (
 	TeamMemberNotFound        = errors.RespCode("TEAM_MEMBER_NOT_FOUND")
 
 	// Dynamic Access Control Errors
-	OrgRoleNotFound = errors.RespCode("ORGANIZATION_ROLE_NOT_FOUND")
+	OrgRoleNotFound     = errors.RespCode("ORGANIZATION_ROLE_NOT_FOUND")
+	MaximumRolesReached = errors.RespCode("MAXIMUM_ROLES_REACHED")
+
+	// Limit & Validation Errors
+	UserCannotCreateOrg          = errors.RespCode("USER_CANNOT_CREATE_ORG")
+	OrganizationLimitReached     = errors.RespCode("ORGANIZATION_LIMIT_REACHED")
+	MembershipLimitReached       = errors.RespCode("MEMBERSHIP_LIMIT_REACHED")
+	InvitationLimitReached       = errors.RespCode("INVITATION_LIMIT_REACHED")
+	OrganizationDeletionDisabled = errors.RespCode("ORGANIZATION_DELETION_DISABLED")
+	EmailVerificationRequired    = errors.RespCode("EMAIL_NOT_VERIFIED")
+	PendingInvitationExists      = errors.RespCode("PENDING_INVITATION_EXISTS")
 )
 
 var (
 	// Org Errors
-	ErrOrgNotFound        = errors.New(OrgNotFound, "Organization not found", http.StatusNotFound)
-	ErrMemberNotFound     = errors.New(MemberNotFound, "Member not found in this organization", http.StatusNotFound)
-	ErrInvitationNotFound = errors.New(InvitationNotFound, "Invitation not found", http.StatusNotFound)
-	ErrAlreadyMember      = errors.New(AlreadyMember, "User is already a member of this organization", http.StatusBadRequest)
-	ErrInvitationExpired  = errors.New(InvitationExpired, "This invitation has expired", http.StatusBadRequest)
-	ErrSlugTaken          = errors.New(SlugTaken, "Organization slug is already taken", http.StatusUnprocessableEntity)
-	ErrOrgNotActive       = errors.New(OrgNotActive, "Organization is not active", http.StatusForbidden)
-	ErrOrgPending         = errors.New(OrgPending, "Organization is pending approval", http.StatusForbidden)
-	ErrOrgSuspended       = errors.New(OrgSuspended, "Organization is suspended", http.StatusForbidden)
+	ErrOrgNotFound               = errors.New(OrgNotFound, "Organization not found", http.StatusNotFound)
+	ErrMemberNotFound            = errors.New(MemberNotFound, "Member not found in this organization", http.StatusNotFound)
+	ErrInvitationNotFound        = errors.New(InvitationNotFound, "Invitation not found", http.StatusNotFound)
+	ErrAlreadyMember             = errors.New(AlreadyMember, "User is already a member of this organization", http.StatusBadRequest)
+	ErrInvitationExpired         = errors.New(InvitationExpired, "This invitation has expired", http.StatusBadRequest)
+	ErrSlugTaken                 = errors.New(SlugTaken, "Organization slug is already taken", http.StatusUnprocessableEntity)
+	ErrOrgNotActive              = errors.New(OrgNotActive, "Organization is not active", http.StatusForbidden)
+	ErrOrgPending                = errors.New(OrgPending, "Organization is pending approval", http.StatusForbidden)
+	ErrOrgSuspended              = errors.New(OrgSuspended, "Organization is suspended", http.StatusForbidden)
+	ErrUserCannotCreateOrg       = errors.New(UserCannotCreateOrg, "User is not allowed to create an organization", http.StatusForbidden)
+	ErrOrganizationLimitReached  = errors.New(OrganizationLimitReached, "You have reached the maximum number of organizations", http.StatusBadRequest)
+	ErrMembershipLimitReached    = errors.New(MembershipLimitReached, "Organization has reached its membership limit", http.StatusBadRequest)
+	ErrInvitationLimitReached    = errors.New(InvitationLimitReached, "Organization has reached its invitation limit", http.StatusBadRequest)
+	ErrOrganizationDeletionDisabled = errors.New(OrganizationDeletionDisabled, "Organization deletion is disabled", http.StatusBadRequest)
+	ErrEmailVerificationRequired = errors.New(EmailVerificationRequired, "Email verification is required for invitations", http.StatusForbidden)
+	ErrPendingInvitationExists   = errors.New(PendingInvitationExists, "A pending invitation already exists for this email", http.StatusBadRequest)
 
 	// Team Errors
 	ErrTeamNotFound              = errors.New(TeamNotFound, "Team not found", http.StatusNotFound)
@@ -52,5 +69,6 @@ var (
 	ErrTeamMemberNotFound        = errors.New(TeamMemberNotFound, "Team member not found", http.StatusNotFound)
 
 	// Dynamic Access Control Errors
-	ErrOrgRoleNotFound = errors.New(OrgRoleNotFound, "Organization role not found", http.StatusNotFound)
+	ErrOrgRoleNotFound     = errors.New(OrgRoleNotFound, "Organization role not found", http.StatusNotFound)
+	ErrMaximumRolesReached = errors.New(MaximumRolesReached, "Maximum number of roles reached for this organization", http.StatusBadRequest)
 )

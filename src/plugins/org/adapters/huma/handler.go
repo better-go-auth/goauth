@@ -49,6 +49,12 @@ func (h *OrgHandler) RequireOrgMember(ctx context.Context, auth humatypes.AuthHe
 	if orgID == "" {
 		return nil, "", humatypes.NewError(http.StatusBadRequest, "organizationId is required when no organization is active")
 	}
+
+	// Platform system administrators have global access to inspect and manage any organization
+	if isSystemAdmin(sessionResp.User.Role) {
+		return sessionResp, orgID, nil
+	}
+
 	member, err := h.Org.GetMember(ctx, orgID, sessionResp.User.ID)
 	if err != nil || member == nil {
 		return nil, "", autherr.ErrForbidden

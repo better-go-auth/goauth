@@ -3,13 +3,40 @@ package config
 import (
 	"context"
 	"time"
+
+	coremodels "github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/plugins/org/models"
 )
 
+// DefaultTeamConfig defines default team settings on organization creation.
+type DefaultTeamConfig struct {
+	// Enabled determines whether to create a default team when an organization is created (default: true).
+	Enabled *bool
+	// CustomCreateDefaultTeam allows custom creation of the default team.
+	CustomCreateDefaultTeam func(ctx context.Context, org *models.Organization) (*models.Team, error)
+}
+
+// TeamLimitData passes context to dynamic team limits.
+type TeamLimitData struct {
+	OrganizationID string
+	User           *coremodels.User
+}
+
+// TeamMemberLimitData passes context to dynamic team member limits.
+type TeamMemberLimitData struct {
+	TeamID         string
+	OrganizationID string
+	User           *coremodels.User
+}
+
+// TeamsConfig mirrors better-auth `organization.teams` options.
 type TeamsConfig struct {
 	Enabled               bool
-	DefaultTeam           *bool // nil means create default team on org creation (better-auth default: true)
-	MaximumTeams          *int  // nil = unlimited
-	MaximumMembersPerTeam *int  // nil = unlimited
+	DefaultTeam           *DefaultTeamConfig
+	MaximumTeams          *int
+	MaximumTeamsFn        func(ctx context.Context, data TeamLimitData) (int, error)
+	MaximumMembersPerTeam *int
+	MaximumMembersPerTeamFn func(ctx context.Context, data TeamMemberLimitData) (int, error)
 	AllowRemovingAllTeams bool
 }
 
@@ -25,6 +52,7 @@ const (
 	AuthMethodBoth AuthMethod = "both"
 )
 
+// DynamicAccessControlConfig mirrors better-auth `organization.dynamicAccessControl` options.
 type DynamicAccessControlConfig struct {
 	Enabled bool
 	// AuthMethod specifies whether to evaluate by Permission map, Ops array, or both (default: "permission").
@@ -36,11 +64,54 @@ type DynamicAccessControlConfig struct {
 	CacheTTL time.Duration
 	// L1CacheTTL defines the local in-memory cache expiration (default: 1 minute).
 	L1CacheTTL time.Duration
+	// MaximumRolesPerOrganization limits the maximum number of roles created per organization.
+	MaximumRolesPerOrganization *int
+	// MaximumRolesPerOrganizationFn dynamically computes the maximum roles allowed.
+	MaximumRolesPerOrganizationFn func(ctx context.Context, orgID string) (int, error)
 }
 
+// InvitationLimitData passes context to dynamic invitation limits.
+type InvitationLimitData struct {
+	User         *coremodels.User
+	Organization *models.Organization
+	Member       *models.Member
+}
+
+// OrgSchemaConfig mirrors better-auth `schema` option for model and field customization.
+type OrgSchemaConfig struct {
+	Session *struct {
+		Fields map[string]string
+	}
+	Organization *struct {
+		ModelName string
+		Fields    map[string]string
+	}
+	Member *struct {
+		ModelName string
+		Fields    map[string]string
+	}
+	Invitation *struct {
+		ModelName string
+		Fields    map[string]string
+	}
+	Team *struct {
+		ModelName string
+		Fields    map[string]string
+	}
+	TeamMember *struct {
+		ModelName string
+		Fields    map[string]string
+	}
+	OrganizationRole *struct {
+		ModelName string
+		Fields    map[string]string
+	}
+}
+
+// OrgConfig mirrors better-auth `OrganizationOptions` configuration.
 type OrgConfig struct {
 	InvitaionConfig
-	// Weither the org will be pending and needs to be approved by the admins after creation
+	// Whether the org will be pending and needs to be approved by the admins after creation
 	OrgNeedsApproval bool
 
 	// Teams mirrors better-auth `organization.teams` (opt-in). When nil/disabled, team tables
@@ -50,19 +121,73 @@ type OrgConfig struct {
 	// When enabled, permissions are read from the `organizationRole` table instead of static roles.
 	DynamicAccessControl *DynamicAccessControlConfig
 
-	// better-auth compat fields (stored but not yet enforced - see backlog):
-	AllowUserToCreateOrganization *bool // nil = true (better-auth default)
-	OrganizationLimit             *int  // nil = unlimited
-	CreatorRole                   string // default "owner"
-	MembershipLimit               int    // default 100
-	InvitationLimit               int    // default 100
+	// AllowUserToCreateOrganization configures whether users are allowed to create organizations.
+	// nil means true (better-auth default).
+	AllowUserToCreateOrganization *bool
+	// AllowUserToCreateOrganizationFn dynamic function determining if a user can create an organization.
+	AllowUserToCreateOrganizationFn func(ctx context.Context, user *coremodels.User) (bool, error)
+
+	// OrganizationLimit specifies the maximum number of organizations a user can create.
+	// nil means unlimited.
+	OrganizationLimit *int
+	// OrganizationLimitFn dynamic function returning true if limit is reached, false otherwise.
+	OrganizationLimitFn func(ctx context.Context, user *coremodels.User) (bool, error)
+
+	// CreatorRole assigned to the creator of the organization (default: "owner").
+	CreatorRole string
+
+	// MembershipLimit specifies maximum members allowed in an organization (default: 100).
+	MembershipLimit *int
+	// MembershipLimitFn dynamic function returning the membership limit for the organization.
+	MembershipLimitFn func(ctx context.Context, user *coremodels.User, org *models.Organization) (int, error)
+
+	// Roles defines custom static permissions for roles.
+	Roles map[string]models.Permission
+
+	// CancelPendingInvitationsOnReInvite cancels existing pending invitations when re-inviting (default: false).
+	CancelPendingInvitationsOnReInvite *bool
+
+	// RequireEmailVerificationOnInvitation requires verified email before accepting/rejecting invitations (default: false).
+	RequireEmailVerificationOnInvitation bool
+
+	// DisableOrganizationDeletion prevents deleting organizations (default: false).
+	DisableOrganizationDeletion bool
+
+	// InvitationLimit specifies maximum invitations an organization can have (default: 100).
+	InvitationLimit *int
+	// InvitationLimitFn dynamic function determining invitation limit.
+	InvitationLimitFn func(ctx context.Context, data InvitationLimitData) (int, error)
+
+	// OrganizationHooks contains lifecycle callbacks matching better-auth organizationHooks.
+	OrganizationHooks OrganizationHooks
+
+	// Schema contains model/field mapping configuration.
+	Schema *OrgSchemaConfig
 }
 
 type InvitaionConfig struct {
 	SendOrgInvitation       SendOrgInvitation
+	SendInvitationEmail     SendInvitationEmail
 	InvitationNeedsApproval bool
 	InvitationExpiresIn     time.Duration
 }
 
-// SendOrgInvitation sends an organization invite email.
+// SendOrgInvitation sends an organization invite email (legacy signature).
 type SendOrgInvitation func(ctx context.Context, to, inviterName, orgName, inviteURL string) error
+
+// SendInvitationInput passes data to SendInvitationEmail callback matching better-auth.
+type SendInvitationInput struct {
+	ID           string
+	Role         string
+	Email        string
+	Organization models.Organization
+	Invitation   models.Invitation
+	Inviter      models.Member
+	InviterUser  *coremodels.User
+}
+
+// SendInvitationData is an alias for SendInvitationInput.
+type SendInvitationData = SendInvitationInput
+
+// SendInvitationEmail sends an email with the invitation link matching better-auth.
+type SendInvitationEmail func(ctx context.Context, input SendInvitationInput) error

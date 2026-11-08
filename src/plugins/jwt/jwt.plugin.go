@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"net/http"
 	"context"
 	"crypto/tls"
 	"fmt"
@@ -25,6 +26,14 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"gorm.io/gorm"
 )
+
+
+func safeHumagoUnwrap(ctx huma.Context) (r *http.Request, w http.ResponseWriter) {
+	defer func() {
+		_ = recover()
+	}()
+	return humago.Unwrap(ctx)
+}
 
 const PluginID = "jwt"
 
@@ -252,7 +261,7 @@ func (p *Plugin) afterGetSessionMiddleware(authCfg config.AuthConfig) func(huma.
 						cur := ctx.Header("Access-Control-Expose-Headers")
 						ctx.SetHeader("Access-Control-Expose-Headers", appendExposed(cur, "set-auth-jwt"))
 
-						if _, hw := humago.Unwrap(ctx); hw != nil {
+						if _, hw := safeHumagoUnwrap(ctx); hw != nil {
 							hw.Header().Set("set-auth-jwt", jwtTok)
 							curExp := hw.Header().Get("Access-Control-Expose-Headers")
 							hw.Header().Set("Access-Control-Expose-Headers", appendExposed(curExp, "set-auth-jwt"))

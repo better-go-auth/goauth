@@ -91,7 +91,7 @@ func TestOrgTeams_FullLifecycle(t *testing.T) {
 	env, _ := setupTeamsEnv(t, orgconfig.OrgConfig{
 		Teams: &orgconfig.TeamsConfig{
 			Enabled:               true,
-			DefaultTeam:           &defaultTeam,
+			DefaultTeam:           &orgconfig.DefaultTeamConfig{Enabled: &defaultTeam},
 			MaximumTeams:          &maxTeams,
 			MaximumMembersPerTeam: &maxMembers,
 			AllowRemovingAllTeams: allowRemoveAll,
@@ -329,7 +329,7 @@ func TestOrgTeams_HandlerFlow(t *testing.T) {
 	env, _ := setupTeamsEnv(t, orgconfig.OrgConfig{
 		Teams: &orgconfig.TeamsConfig{
 			Enabled:               true,
-			DefaultTeam:           &defaultTeam,
+			DefaultTeam:           &orgconfig.DefaultTeamConfig{Enabled: &defaultTeam},
 			AllowRemovingAllTeams: allowRemoveAll,
 		},
 	})

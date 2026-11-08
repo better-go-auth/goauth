@@ -33,6 +33,14 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
+
+func safeHumagoUnwrap(ctx huma.Context) (r *http.Request, w http.ResponseWriter) {
+	defer func() {
+		_ = recover()
+	}()
+	return humago.Unwrap(ctx)
+}
+
 const PluginID = "access-token"
 
 // Plugin implements plugins.Plugin for legacy access-token / JWT authentication.
@@ -449,7 +457,7 @@ func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Contex
 							tok = ""
 						} else {
 							signedCookieVal := cm.Signed(tok)
-							if r, _ := humago.Unwrap(ctx); r != nil {
+							if r, _ := safeHumagoUnwrap(ctx); r != nil {
 								injectCookieHeader(r, cookieName, signedCookieVal)
 							}
 						}
@@ -467,7 +475,7 @@ func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Contex
 
 					if idgen.IsToken(raw) {
 						signedCookieVal := cm.Signed(raw)
-						if r, _ := humago.Unwrap(ctx); r != nil {
+						if r, _ := safeHumagoUnwrap(ctx); r != nil {
 							injectCookieHeader(r, cookieName, signedCookieVal)
 						}
 					}

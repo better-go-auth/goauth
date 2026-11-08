@@ -27,6 +27,14 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
+
+func safeHumagoUnwrap(ctx huma.Context) (r *http.Request, w http.ResponseWriter) {
+	defer func() {
+		_ = recover()
+	}()
+	return humago.Unwrap(ctx)
+}
+
 const PluginID = "bearer"
 
 // Plugin implements plugins.Plugin for Better Auth's Bearer token authentication.
@@ -149,7 +157,7 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 
 		// Also attach cookie to underlying http.Request if available
 		if hasBearer && signedCookieVal != "" {
-			if r, _ := humago.Unwrap(ctx); r != nil {
+			if r, _ := safeHumagoUnwrap(ctx); r != nil {
 				cookieStr := bearerCookieValue(cookieName, signedCookieVal)
 				existingCookie := r.Header.Get("Cookie")
 				if existingCookie == "" {
@@ -329,7 +337,7 @@ func (w *bearerContextWrapper) inspectSetCookie(cookieStr string) {
 		w.inner.SetHeader("set-auth-token", val)
 		w.addExposedHeader("set-auth-token")
 
-		if _, hw := humago.Unwrap(w.inner); hw != nil {
+		if _, hw := safeHumagoUnwrap(w.inner); hw != nil {
 			hw.Header().Set("set-auth-token", val)
 			cur := hw.Header().Get("Access-Control-Expose-Headers")
 			hw.Header().Set("Access-Control-Expose-Headers", appendExposed(cur, "set-auth-token"))
@@ -343,7 +351,7 @@ func (w *bearerContextWrapper) addExposedHeader(hdr string) {
 }
 
 func (w *bearerContextWrapper) finalizeHeaders() {
-	if _, hw := humago.Unwrap(w.inner); hw != nil {
+	if _, hw := safeHumagoUnwrap(w.inner); hw != nil {
 		for _, sc := range hw.Header()["Set-Cookie"] {
 			w.inspectSetCookie(sc)
 		}

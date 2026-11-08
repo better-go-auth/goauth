@@ -17,6 +17,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	authdtos "github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/plugins"
 
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
@@ -123,17 +124,77 @@ func New(
 // ─── Org CRUD ─────────────────────────────────────────────────────────────────
 
 func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID string, input dtos.CreateOrgInput) (*models.Organization, error) {
-	slug := strings.ToLower(strings.TrimSpace(input.Slug))
+	// Step 1: Fetch creator user details from repository if available
+	var creatorUser *coremodels.User
+	if s.userRepo != nil && creatorUserID != "" {
+		creatorUser, _ = s.userRepo.FindUserByID(ctx, creatorUserID)
+	}
 
-	// Check slug uniqueness
+	// Step 2: Check whether user is allowed to create organizations
+	if s.Config.AllowUserToCreateOrganization != nil && !*s.Config.AllowUserToCreateOrganization {
+		return nil, orgerrors.ErrUserCannotCreateOrg
+	}
+	if s.Config.AllowUserToCreateOrganizationFn != nil {
+		allowed, err := s.Config.AllowUserToCreateOrganizationFn(ctx, creatorUser)
+		if err != nil {
+			return nil, err
+		}
+		if !allowed {
+			return nil, orgerrors.ErrUserCannotCreateOrg
+		}
+	}
+
+	// Step 3: Check organization creation limits for user
+	if s.Config.OrganizationLimit != nil {
+		orgs, err := s.orgRepo.ListOrgsByUserID(ctx, creatorUserID)
+		if err == nil && len(orgs) >= *s.Config.OrganizationLimit {
+			return nil, orgerrors.ErrOrganizationLimitReached
+		}
+	}
+	if s.Config.OrganizationLimitFn != nil {
+		reached, err := s.Config.OrganizationLimitFn(ctx, creatorUser)
+		if err != nil {
+			return nil, err
+		}
+		if reached {
+			return nil, orgerrors.ErrOrganizationLimitReached
+		}
+	}
+
+	// Step 4: Execute beforeCreateOrganization lifecycle hook if configured
+	if s.Config.OrganizationHooks.BeforeCreateOrganization != nil {
+		hookData := orgconfig.BeforeCreateOrgData{
+			Organization: input,
+			User:         creatorUser,
+		}
+		override, err := s.Config.OrganizationHooks.BeforeCreateOrganization(ctx, hookData)
+		if err != nil {
+			return nil, err
+		}
+		if override != nil {
+			input = *override
+		}
+	}
+
+	// Step 5: Check slug uniqueness
+	slug := strings.ToLower(strings.TrimSpace(input.Slug))
 	if existing, err := s.orgRepo.GetOrgBySlug(ctx, slug); err == nil && existing != nil {
 		return nil, orgerrors.ErrSlugTaken
 	}
+
+	// Step 6: Determine initial organization approval status
 	orgStatus := models.OrgStatusActive
 	if s.Config.OrgNeedsApproval {
 		orgStatus = models.OrgStatusPending
 	}
 
+	// Step 7: Resolve creator role (default "owner")
+	creatorRole := models.OrgRoleOwner
+	if s.Config.CreatorRole != "" {
+		creatorRole = models.OrgMemberRole(s.Config.CreatorRole)
+	}
+
+	// Step 8: Construct and persist organization and owner member in database within transaction
 	now := coremodels.TimeNow()
 	org := &models.Organization{
 		Base:      coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
@@ -144,7 +205,9 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		CreatedBy: creatorUserID,
 		Status:    orgStatus,
 	}
+
 	var created *models.Organization
+	var creatorMember *models.Member
 	err := s.txManager.Transaction(ctx, func(txCtx context.Context) error {
 		var err error
 		created, err = s.orgRepo.CreateOrg(txCtx, org)
@@ -152,26 +215,39 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 			return fmt.Errorf("orgsvc: create org: %w", err)
 		}
 
-		// Add creator as owner
-		member := &models.Member{
+		// Add creator with resolved role
+		creatorMember = &models.Member{
 			Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 			OrganizationID: created.ID,
 			UserID:         creatorUserID,
-			Role:           models.OrgRoleOwner,
+			Role:           creatorRole,
 		}
-		if _, err := s.memberRepo.CreateMember(txCtx, member); err != nil {
+		if _, err := s.memberRepo.CreateMember(txCtx, creatorMember); err != nil {
 			return fmt.Errorf("orgsvc: add owner member: %w", err)
 		}
 
-		// If teams are enabled and default team is configured, create default team
+		// Step 9: If teams are enabled, handle default team creation
 		if s.TeamsEnabled() && s.teamRepo != nil {
-			if s.Config.Teams.DefaultTeam == nil || *s.Config.Teams.DefaultTeam {
-				defaultTeam := &models.Team{
-					Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
-					Name:           created.Name,
-					OrganizationID: created.ID,
+			defaultTeamEnabled := true
+			if s.Config.Teams.DefaultTeam != nil && s.Config.Teams.DefaultTeam.Enabled != nil {
+				defaultTeamEnabled = *s.Config.Teams.DefaultTeam.Enabled
+			}
+			if defaultTeamEnabled {
+				var createdTeam *models.Team
+				if s.Config.Teams.DefaultTeam != nil && s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam != nil {
+					createdTeam, err = s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam(txCtx, created)
+					if err != nil {
+						return fmt.Errorf("orgsvc: custom create default team: %w", err)
+					}
+				} else {
+					defaultTeam := &models.Team{
+						Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
+						Name:           created.Name,
+						OrganizationID: created.ID,
+					}
+					createdTeam, err = s.teamRepo.CreateTeam(txCtx, defaultTeam)
 				}
-				if createdTeam, err := s.teamRepo.CreateTeam(txCtx, defaultTeam); err == nil && s.teamMemberRepo != nil {
+				if err == nil && createdTeam != nil && s.teamMemberRepo != nil {
 					tm := &models.TeamMember{
 						Base:   coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 						TeamID: createdTeam.ID,
@@ -186,6 +262,16 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 	if err != nil {
 		return nil, err
 	}
+
+	// Step 10: Execute afterCreateOrganization lifecycle hook if configured
+	if s.Config.OrganizationHooks.AfterCreateOrganization != nil {
+		_ = s.Config.OrganizationHooks.AfterCreateOrganization(ctx, orgconfig.AfterCreateOrgData{
+			Organization: created,
+			Member:       creatorMember,
+			User:         creatorUser,
+		})
+	}
+
 	return created, nil
 }
 
@@ -197,11 +283,48 @@ func (s *OrgService) GetOrganization(ctx context.Context, orgID string) (*models
 	return org, nil
 }
 
-func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error) {
+func (s *OrgService) isSystemAdminOrOrgAdmin(ctx context.Context, orgID, requestingUserID string) bool {
+	if s.userRepo != nil && requestingUserID != "" {
+		if u, err := s.userRepo.FindUserByID(ctx, requestingUserID); err == nil && u != nil {
+			if enums.HasRole(string(u.Role), enums.Admin.S()) {
+				return true
+			}
+		}
+	}
 	requester, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
-	if err != nil || !isAdminOrOwner(requester) {
+	return err == nil && (requester.Role == models.OrgRoleOwner || requester.Role == models.OrgRoleAdmin)
+}
+
+func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error) {
+	// Step 1: Permission check - requester must be system admin or organization admin/owner
+	if !s.isSystemAdminOrOrgAdmin(ctx, orgID, requestingUserID) {
 		return nil, autherr.ErrForbidden
 	}
+
+	// Step 2: Fetch requesting user and member for hook context
+	var reqUser *coremodels.User
+	if s.userRepo != nil && requestingUserID != "" {
+		reqUser, _ = s.userRepo.FindUserByID(ctx, requestingUserID)
+	}
+	member, _ := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
+
+	// Step 3: Execute beforeUpdateOrganization lifecycle hook if configured
+	if s.Config.OrganizationHooks.BeforeUpdateOrganization != nil {
+		hookData := orgconfig.BeforeUpdateOrgData{
+			Organization: input,
+			User:         reqUser,
+			Member:       member,
+		}
+		override, err := s.Config.OrganizationHooks.BeforeUpdateOrganization(ctx, hookData)
+		if err != nil {
+			return nil, err
+		}
+		if override != nil {
+			input = *override
+		}
+	}
+
+	// Step 4: Build update data dictionary
 	data := map[string]interface{}{}
 	if input.Name != nil {
 		data["Name"] = *input.Name
@@ -222,22 +345,72 @@ func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input
 	if len(data) == 0 {
 		return s.orgRepo.GetOrgByID(ctx, orgID)
 	}
+
+	// Step 5: Perform update in repository
 	org, err := s.orgRepo.UpdateOrg(ctx, orgID, data)
 	if err != nil {
 		return nil, fmt.Errorf("orgsvc: update org: %w", err)
 	}
+
+	// Step 6: Execute afterUpdateOrganization lifecycle hook if configured
+	if s.Config.OrganizationHooks.AfterUpdateOrganization != nil {
+		_ = s.Config.OrganizationHooks.AfterUpdateOrganization(ctx, orgconfig.AfterUpdateOrgData{
+			Organization: org,
+			User:         reqUser,
+			Member:       member,
+		})
+	}
+
 	return org, nil
 }
 
 func (s *OrgService) DeleteOrganization(ctx context.Context, orgID, requestingUserID string) error {
-	member, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
-	if err != nil || member == nil || member.Role != models.OrgRoleOwner {
+	// Step 1: Check whether organization deletion is disabled in configuration
+	if s.Config.DisableOrganizationDeletion {
+		return orgerrors.ErrOrganizationDeletionDisabled
+	}
+
+	// Step 2: Permission check - requester must be system admin or organization admin/owner
+	if !s.isSystemAdminOrOrgAdmin(ctx, orgID, requestingUserID) {
 		return autherr.ErrForbidden
 	}
+
+	// Step 3: Fetch organization and user details for hook context
+	org, err := s.orgRepo.GetOrgByID(ctx, orgID)
+	if err != nil || org == nil {
+		return orgerrors.ErrOrgNotFound
+	}
+	var reqUser *coremodels.User
+	if s.userRepo != nil && requestingUserID != "" {
+		reqUser, _ = s.userRepo.FindUserByID(ctx, requestingUserID)
+	}
+
+	// Step 4: Execute beforeDeleteOrganization lifecycle hook if configured
+	if s.Config.OrganizationHooks.BeforeDeleteOrganization != nil {
+		if err := s.Config.OrganizationHooks.BeforeDeleteOrganization(ctx, orgconfig.BeforeDeleteOrgData{
+			Organization: org,
+			User:         reqUser,
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Step 5: Delete organization from repository
 	if err := s.orgRepo.DeleteOrg(ctx, orgID); err != nil {
 		return err
 	}
+
+	// Step 6: Invalidate cached dynamic roles
 	s.invalidateRoleCache(ctx, orgID)
+
+	// Step 7: Execute afterDeleteOrganization lifecycle hook if configured
+	if s.Config.OrganizationHooks.AfterDeleteOrganization != nil {
+		_ = s.Config.OrganizationHooks.AfterDeleteOrganization(ctx, orgconfig.AfterDeleteOrgData{
+			Organization: org,
+			User:         reqUser,
+		})
+	}
+
 	return nil
 }
 

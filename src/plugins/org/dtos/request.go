@@ -6,19 +6,19 @@ import "github.com/better-go-auth/goauth/src/plugins/org/models"
 
 // CreateOrgInput matches better-auth POST /organization/create body.
 type CreateOrgInput struct {
-	Name     string  `json:"name"   validate:"required,min=1"`
-	Slug     string  `json:"slug"   validate:"required,min=1,max=100"`
-	Logo     *string `json:"logo"`
-	Metadata *string `json:"metadata"`
+	Name     string  `json:"name"               validate:"required,min=1"`
+	Slug     string  `json:"slug"               validate:"required,min=1,max=100"`
+	Logo     *string `json:"logo,omitempty"`
+	Metadata *string `json:"metadata,omitempty"`
 }
 
 // UpdateOrgInput matches better-auth POST /organization/update body.
 type UpdateOrgInput struct {
-	OrganizationID string  `json:"organizationId" validate:"required"`
-	Name           *string `json:"name"`
-	Slug           *string `json:"slug"`
-	Logo           *string `json:"logo"`
-	Metadata       *string `json:"metadata"`
+	OrganizationID string  `json:"organizationId"     validate:"required"`
+	Name           *string `json:"name,omitempty"`
+	Slug           *string `json:"slug,omitempty"`
+	Logo           *string `json:"logo,omitempty"`
+	Metadata       *string `json:"metadata,omitempty"`
 }
 
 // DeleteOrgInput for DELETE /organization/delete
