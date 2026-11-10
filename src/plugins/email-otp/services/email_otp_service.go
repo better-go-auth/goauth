@@ -492,6 +492,15 @@ func (s *EmailOTPService) CheckRateLimit(ctx context.Context, endpointPath, clie
 
 // SendVerificationOTP generates (or reuses), stores, and dispatches an OTP code via the configured sender.
 func (s *EmailOTPService) SendVerificationOTP(ctx context.Context, email string, otpType emailotpconfig.OTPType, req *http.Request) error {
+	return s.sendVerificationOTP(ctx, email, otpType, req, otpType != emailotpconfig.OTPTypeChangeEmail)
+}
+
+// SendSignUpVerificationOTP dispatches an email-verification OTP for a newly created user without re-querying user existence.
+func (s *EmailOTPService) SendSignUpVerificationOTP(ctx context.Context, email string, req *http.Request) error {
+	return s.sendVerificationOTP(ctx, email, emailotpconfig.OTPTypeEmailVerification, req, false)
+}
+
+func (s *EmailOTPService) sendVerificationOTP(ctx context.Context, email string, otpType emailotpconfig.OTPType, req *http.Request, checkUserExists bool) error {
 	// Step 1: Validate callback and target email
 	if s.config.SendVerificationOTP == nil {
 		return ErrSenderNotConfigured
@@ -502,7 +511,21 @@ func (s *EmailOTPService) SendVerificationOTP(ctx context.Context, email string,
 
 	identifier := s.otpIdentifier(otpType, email)
 
-	// Step 2: Check reuse strategy before generating a fresh OTP
+	// Step 2: Enforce Better Auth user-existence / DisableSignUp rules before sending OTPs
+	// Only sign-in (with DisableSignUp=false) and already-known user/email-change flows send OTPs to unregistered addresses.
+	if checkUserExists {
+		existingUser, findErr := acceptNotFound(s.repos.FindUserByEmail(ctx, strings.ToLower(email)))
+		if findErr != nil {
+			return fmt.Errorf("email-otp: failed to lookup user: %w", findErr)
+		}
+		shouldSendToMissingUser := otpType == emailotpconfig.OTPTypeSignIn && !s.config.DisableSignUp
+		if existingUser == nil && !shouldSendToMissingUser {
+			_ = s.repos.DeleteVerificationByIdentifier(ctx, identifier)
+			return nil
+		}
+	}
+
+	// Step 3: Check reuse strategy before generating a fresh OTP
 	if s.config.ResendStrategy == emailotpconfig.ResendStrategyReuse {
 		if reusedCode, ok := s.tryReuseOTP(ctx, identifier); ok {
 			return s.config.SendVerificationOTP(emailotpconfig.SendVerificationOTPData{
@@ -513,13 +536,13 @@ func (s *EmailOTPService) SendVerificationOTP(ctx context.Context, email string,
 		}
 	}
 
-	// Step 3: Generate new OTP code (custom GenerateOTP or default numeric)
+	// Step 4: Generate new OTP code (custom GenerateOTP or default numeric)
 	code, err := s.generateOTPCode(email, otpType, req)
 	if err != nil {
 		return fmt.Errorf("email-otp: failed to generate code: %w", err)
 	}
 
-	// Step 4: Encode OTP according to StoreOTP mode and persist with attempt counter 0
+	// Step 5: Encode OTP according to StoreOTP mode and persist with attempt counter 0
 	storedOTP, err := s.storeOTPValue(code)
 	if err != nil {
 		return fmt.Errorf("email-otp: failed to encode code: %w", err)
@@ -536,7 +559,7 @@ func (s *EmailOTPService) SendVerificationOTP(ctx context.Context, email string,
 		return fmt.Errorf("email-otp: failed to store verification value: %w", err)
 	}
 
-	// Step 5: Dispatch plaintext OTP via caller's email sender callback
+	// Step 6: Dispatch plaintext OTP via caller's email sender callback
 	return s.config.SendVerificationOTP(emailotpconfig.SendVerificationOTPData{
 		Email: email,
 		OTP:   code,
@@ -647,7 +670,7 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 		// Auto sign up if user does not exist and signup is not disabled
 		if existingUser == nil {
 			if s.config.DisableSignUp {
-				return ErrUserNotFound
+				return ErrInvalidOTP
 			}
 			displayName := strings.TrimSpace(name)
 			if displayName == "" {

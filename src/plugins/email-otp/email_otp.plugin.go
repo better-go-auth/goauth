@@ -284,7 +284,7 @@ func (h *emailOTPHookService) AfterUserCreate(ctx context.Context, user *models.
 	cfg := h.plugin.config
 	// When sendVerificationOnSignUp or overrideDefaultEmailVerification is active, dispatch OTP
 	if (cfg.SendVerificationOnSignUp || cfg.OverrideDefaultEmailVerification) && !user.EmailVerified {
-		return h.plugin.service.SendVerificationOTP(ctx, user.Email, emailotpconfig.OTPTypeEmailVerification, nil)
+		return h.plugin.service.SendSignUpVerificationOTP(ctx, user.Email, nil)
 	}
 	return nil
 }

@@ -105,6 +105,17 @@ func (r *InvitationRepo) ListInvitationsByOrgID(ctx context.Context, orgID strin
 	return invitations, total, nil
 }
 
+func (r *InvitationRepo) CountPendingInvitationsByOrgID(ctx context.Context, orgID string) (int64, error) {
+	var total int64
+	if err := getDB(ctx, r.db).
+		Model(&models.Invitation{}).
+		Where(&models.Invitation{OrganizationID: orgID, Status: models.InvitationPending}, "OrganizationID", "Status").
+		Count(&total).Error; err != nil {
+		return 0, fmt.Errorf("gorm/invitation: count pending: %w", err)
+	}
+	return total, nil
+}
+
 func (r *InvitationRepo) ListInvitationsByEmail(ctx context.Context, email string) ([]models.Invitation, error) {
 	var invitations []models.Invitation
 	err := getDB(ctx, r.db).

@@ -33,6 +33,7 @@ func NewAccessTokenHandler(authserv services.IAccessTokenAuthService, sessionser
 		Cookies:     cookies,
 	}
 }
+
 func (h *AccessTokenHandler) tokenCookies(tokens *models.AuthTokens) []http.Cookie {
 	if tokens == nil {
 		return nil
@@ -62,7 +63,6 @@ func (h *AccessTokenHandler) Register(ctx context.Context, inputs *humatypes.Hum
 	gresp := dtos.SuccessCreated(resp, 1)
 	return humatypes.MakeResPtr(&gresp, 200), nil
 }
-
 
 // Login handles POST /login.
 func (h *AccessTokenHandler) Login(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.LoginData]) (*humatypes.HumaRes[dtos.GResp[authDtos.SignInResponse]], error) {
@@ -105,20 +105,3 @@ func (h *AccessTokenHandler) RefreshToken(ctx context.Context, inputs *humatypes
 	}
 	return humatypes.MakeRes(dtos.SuccessCreated(resp, tkn.RowsAffected), 201, cookies...), nil
 }
-
-
-
-// VerifyRegisteredAccount handles POST /verify.
-// func (h *AccessTokenHandler) VerifyRegisteredAccount(ctx context.Context, inputs *humatypes.HumaReqBody[accesstokendtos.VerificationInput]) (*humatypes.HumaRes[dtos.GResp[authDtos.VerifyEmailResponse]], error) {
-// 	usr, err := h.AuthServ.VerifyRegisteredUser(ctx, inputs.Body)
-// 	if err != nil {
-// 		return nil, humatypes.NewError(http.StatusBadRequest, err.Error())
-// 	}
-// 	u := authDtos.UserFromModel(&usr.Body)
-// 	resp := authDtos.VerifyEmailResponse{
-// 		User:   &u,
-// 		Status: true,
-// 	}
-// 	gresp := dtos.SuccessCreated(resp, usr.RowsAffected)
-// 	return humatypes.MakeRes(gresp, 200), nil
-// }

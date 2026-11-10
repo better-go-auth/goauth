@@ -624,7 +624,8 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 		var teamsResp []orgdtos.TeamResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &teamsResp))
-		require.Len(t, teamsResp, 1)
+		// Includes default team created by AdminCreateOrganization + manually created "Backend" team
+		require.Len(t, teamsResp, 2)
 
 		gotTeam, err := orgPlugin.Service().GetTeam(context.Background(), teamResp.ID, coOwnerID)
 		require.NoError(t, err)
@@ -649,6 +650,54 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 			"organizationId": orgResp.ID,
 		}, ownerAuth["Authorization"])
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+		// Step 8: AdminBlockOrg merges blockReason into existing JSON Metadata without overwriting it
+		metaJSON := `{"plan":"pro"}`
+		_, err = orgPlugin.Service().UpdateOrganization(context.Background(), orgResp.ID, orgdtos.UpdateOrgInput{Metadata: &metaJSON}, coOwnerID)
+		require.NoError(t, err)
+		rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/admin/organization/block", map[string]any{
+			"organizationId": orgResp.ID,
+			"reason":         "billing",
+		}, adminAuth)
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var blockedOrg orgdtos.OrgResponse
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &blockedOrg))
+		require.NotNil(t, blockedOrg.Metadata)
+		var parsedMeta map[string]any
+		require.NoError(t, json.Unmarshal([]byte(*blockedOrg.Metadata), &parsedMeta))
+		require.Equal(t, "pro", parsedMeta["plan"])
+		require.Equal(t, "billing", parsedMeta["blockReason"])
 	})
+}
+
+// TestOrg_InvitationLimit_CountsPendingOnly verifies canceled/accepted invitations do not consume InvitationLimit.
+func TestOrg_InvitationLimit_CountsPendingOnly(t *testing.T) {
+	ctx := context.Background()
+	invLimit := 1
+	env, _ := setupTeamsEnv(t, orgconfig.OrgConfig{
+		InvitationLimit: &invLimit,
+	})
+	ownerID, _ := setupOrgUser(t, env, "invlimit-owner@example.com", "", "")
+	org, err := env.OrgService.CreateOrganization(ctx, ownerID, orgdtos.CreateOrgInput{
+		Name: "Pending Limit Org",
+		Slug: "pending-limit-org",
+	})
+	require.NoError(t, err)
+
+	inv1, err := env.OrgService.InviteMember(ctx, ownerID, orgdtos.InviteMemberInput{
+		OrganizationID: org.ID,
+		Email:          "first-inv@example.com",
+		Role:           orgmodels.OrgRoleMember,
+	})
+	require.NoError(t, err)
+	require.NoError(t, env.OrgService.CancelInvitation(ctx, inv1.ID, ownerID))
+
+	// After canceling the only pending invitation, inviting another user succeeds
+	_, err = env.OrgService.InviteMember(ctx, ownerID, orgdtos.InviteMemberInput{
+		OrganizationID: org.ID,
+		Email:          "second-inv@example.com",
+		Role:           orgmodels.OrgRoleMember,
+	})
+	require.NoError(t, err)
 }
 

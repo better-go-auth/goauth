@@ -92,8 +92,20 @@ func TestEmailOTPPlugin_LifecycleAndEndpoints(t *testing.T) {
 	svc := otpPlugin.Service()
 	testEmail := "test.otp@example.com"
 
-	// 1. Send OTP for email verification
-	err := svc.SendVerificationOTP(ctx, testEmail, emailotpconfig.OTPTypeEmailVerification, nil)
+	// 1. Create unverified user in DB, then send OTP for email verification
+	_, err := repos.CreateUser(ctx, &models.User{
+		Base: models.Base{ID: models.NewID()},
+		UserDto: models.UserDto{
+			Email:         testEmail,
+			Name:          "Test OTP User",
+			EmailVerified: false,
+		},
+	})
+	if err != nil {
+		t.Fatalf("failed to create user: %v", err)
+	}
+
+	err = svc.SendVerificationOTP(ctx, testEmail, emailotpconfig.OTPTypeEmailVerification, nil)
 	if err != nil {
 		t.Fatalf("SendVerificationOTP failed: %v", err)
 	}
@@ -113,20 +125,7 @@ func TestEmailOTPPlugin_LifecycleAndEndpoints(t *testing.T) {
 		t.Fatalf("expected error for invalid OTP code")
 	}
 
-	// 3. Create unverified user in DB
-	u, err := repos.CreateUser(ctx, &models.User{
-		Base: models.Base{ID: models.NewID()},
-		UserDto: models.UserDto{
-			Email:         testEmail,
-			Name:          "Test OTP User",
-			EmailVerified: false,
-		},
-	})
-	if err != nil {
-		t.Fatalf("failed to create user: %v", err)
-	}
-
-	// 4. Verify Email with OTP
+	// 3. Verify Email with OTP
 	_, updatedUser, err := svc.VerifyEmail(ctx, testEmail, code, sessionsvc.Meta{}, nil)
 	if err != nil {
 		t.Fatalf("VerifyEmail failed: %v", err)
@@ -183,7 +182,8 @@ func TestEmailOTPPlugin_LifecycleAndEndpoints(t *testing.T) {
 	if sender.lastData.Email != "hook.user@example.com" {
 		t.Fatalf("expected OTP to be dispatched for hook user, got %s", sender.lastData.Email)
 	}
-	_ = u
+	// Verify OTP is now verified and consumed (Wait: CheckVerificationOTP above)
+	_ = updatedUser
 }
 
 func TestEmailOTP_OverrideDefaultEmailVerification_SuppressesNormalEmail(t *testing.T) {

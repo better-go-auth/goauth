@@ -471,16 +471,25 @@ func TestEmailOTP_DisableSignUp_And_DisableChangeEmail(t *testing.T) {
 		},
 	})
 
-	// Step 2: Signing in with OTP for non-existent user must fail
+	// Step 2: Sending sign-in or forget-password OTP for unknown user must silently succeed without dispatching email
 	if err := h.svc.SendVerificationOTP(ctx, "unknown@example.com", emailotpconfig.OTPTypeSignIn, nil); err != nil {
 		t.Fatalf("SendVerificationOTP failed: %v", err)
 	}
-	_, err := h.svc.SignIn(ctx, "unknown@example.com", h.sender.Last().OTP, sessionsvc.Meta{})
-	if !errors.Is(err, services.ErrUserNotFound) {
-		t.Fatalf("expected ErrUserNotFound when DisableSignUp=true, got %v", err)
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("expected 0 OTP emails sent when DisableSignUp=true for unknown user, got %d", len(h.sender.sent))
+	}
+	if err := h.svc.SendVerificationOTP(ctx, "unknown@example.com", emailotpconfig.OTPTypeForgetPassword, nil); err != nil {
+		t.Fatalf("SendVerificationOTP forget-password failed: %v", err)
+	}
+	if len(h.sender.sent) != 0 {
+		t.Fatalf("expected 0 forget-password OTP emails sent for unknown user, got %d", len(h.sender.sent))
+	}
+	_, err := h.svc.SignIn(ctx, "unknown@example.com", "123456", sessionsvc.Meta{})
+	if !errors.Is(err, services.ErrInvalidOTP) {
+		t.Fatalf("expected ErrInvalidOTP when DisableSignUp=true for unknown user, got %v", err)
 	}
 
-	// Step 3: RequestEmailChange must fail with ErrChangeEmailDisabled when ChangeEmail.Enabled=false
+	// Existing user can still sign in with OTP when DisableSignUp=true
 	u, err := h.repos.CreateUser(ctx, &models.User{
 		Base:    models.Base{ID: models.NewID()},
 		UserDto: models.UserDto{Email: "existing@example.com", Name: "Existing"},
@@ -488,6 +497,17 @@ func TestEmailOTP_DisableSignUp_And_DisableChangeEmail(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateUser failed: %v", err)
 	}
+	if err := h.svc.SendVerificationOTP(ctx, u.Email, emailotpconfig.OTPTypeSignIn, nil); err != nil {
+		t.Fatalf("SendVerificationOTP for existing user failed: %v", err)
+	}
+	if len(h.sender.sent) != 1 {
+		t.Fatalf("expected 1 OTP sent for existing user, got %d", len(h.sender.sent))
+	}
+	if _, err := h.svc.SignIn(ctx, u.Email, h.sender.Last().OTP, sessionsvc.Meta{}); err != nil {
+		t.Fatalf("existing user OTP SignIn with DisableSignUp=true failed: %v", err)
+	}
+
+	// Step 3: RequestEmailChange must fail with ErrChangeEmailDisabled when ChangeEmail.Enabled=false
 	err = h.svc.RequestEmailChange(ctx, u.ID, "other@example.com", nil, nil)
 	if autherr.AsAuthError(err) == nil || !errors.Is(err, services.ErrChangeEmailDisabled) {
 		t.Fatalf("expected ErrChangeEmailDisabled, got %v", err)

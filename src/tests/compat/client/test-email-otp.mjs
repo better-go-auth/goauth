@@ -3,6 +3,7 @@ import { emailOTPClient } from "better-auth/client/plugins";
 
 const baseURL = process.env.GOAUTH_URL || "http://127.0.0.1:8080";
 const rlURL = process.env.GOAUTH_RL_URL || "";
+const ovrURL = process.env.GOAUTH_OVR_URL || "";
 
 console.log("Running official better-auth/client EmailOTP test against:", baseURL);
 
@@ -109,8 +110,15 @@ async function main() {
   const s3 = await client.emailOtp.sendVerificationOtp({ email: signInEmail, type: "sign-in" });
   assert(!s3.error, `sendVerificationOtp 3 failed: ${JSON.stringify(s3.error)}`);
   const otp3 = await fetchLastOTP(baseURL, signInEmail);
-  const signInRes = await client.signIn.emailOtp({ email: signInEmail, otp: otp3 });
-  assert(!signInRes.error && signInRes.data?.user?.email === signInEmail, `signIn.emailOtp failed: ${JSON.stringify(signInRes)}`);
+  const signInRes = await client.signIn.emailOtp({ email: signInEmail, otp: otp3, name: "OTP Registered" });
+  assert(
+    !signInRes.error &&
+      signInRes.data?.user?.email === signInEmail &&
+      signInRes.data?.user?.emailVerified === true &&
+      signInRes.data?.user?.name === "OTP Registered" &&
+      Boolean(signInRes.data?.token),
+    `signIn.emailOtp failed: ${JSON.stringify(signInRes)}`
+  );
 
   // 4. Sign up password user, verify email via checkVerificationOtp + verifyEmail
   console.log("\n[4] Testing email verification (checkVerificationOtp + verifyEmail)...");
@@ -173,6 +181,31 @@ async function main() {
     assert(!r2.error, `rl 2 failed: ${JSON.stringify(r2.error)}`);
     const r3 = await rlClient.emailOtp.sendVerificationOtp({ email: rlEmail, type: "sign-in" });
     assert(r3.error && (r3.error.status === 429 || r3.error.code === "TOO_MANY_REQUESTS"), `expected 429 rate limit on 3rd call, got: ${JSON.stringify(r3)}`);
+  }
+
+  // 8. Flow 2: signUp.email with OverrideDefaultEmailVerification + RequireEmailVerification + AutoSignInAfterVerification
+  if (ovrURL) {
+    console.log("\n[8] Testing Flow 2 (signUp.email + OverrideDefaultEmailVerification -> verifyEmail -> autoSignIn)...");
+    const { client: ovrClient } = makeClient(ovrURL);
+    const ovrEmail = `otp-ovr-${ts}@example.com`;
+    const up = await ovrClient.signUp.email({ email: ovrEmail, password: "Password123!", name: "Override User" });
+    assert(!up.error && up.data?.user?.emailVerified === false && up.data?.token == null, `unexpected override signUp response: ${JSON.stringify(up)}`);
+
+    const countsResp = await fetch(`${ovrURL}/test/counts`);
+    assert(countsResp.ok, "failed to fetch override counts");
+    const counts = await countsResp.json();
+    assert(counts.linkCalls === 0, `expected core link sender suppressed (0 calls), got ${counts.linkCalls}`);
+    assert(counts.otpCalls === 1, `expected OTP sender called automatically once, got ${counts.otpCalls}`);
+
+    const autoOTP = await fetchLastOTP(ovrURL, ovrEmail);
+    const verOvr = await ovrClient.emailOtp.verifyEmail({ email: ovrEmail, otp: autoOTP });
+    assert(
+      !verOvr.error && verOvr.data?.status === true && verOvr.data?.user?.emailVerified === true && Boolean(verOvr.data?.token),
+      `override verifyEmail failed: ${JSON.stringify(verOvr)}`
+    );
+
+    const ovrSess = await ovrClient.getSession();
+    assert(!ovrSess.error && ovrSess.data?.user?.email === ovrEmail && ovrSess.data?.user?.emailVerified === true, `post-verify getSession failed: ${JSON.stringify(ovrSess)}`);
   }
 
   console.log("\n✅ All official better-auth/client EmailOTP plugin tests passed successfully!");

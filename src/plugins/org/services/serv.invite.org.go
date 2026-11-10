@@ -73,8 +73,8 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 		}
 	}
 
-	// Step 5: Check invitation limit
-	_, invCount, err := s.inviteRepo.ListInvitationsByOrgID(ctx, input.OrganizationID, models.Pagination{})
+	// Step 5: Check pending invitation limit (matches Better Auth findPendingInvitations)
+	invCount, err := s.inviteRepo.CountPendingInvitationsByOrgID(ctx, input.OrganizationID)
 	if err == nil {
 		limit := 100 // default 100
 		if s.Config.InvitationLimit != nil {

@@ -483,12 +483,64 @@ func TestOfficialBetterAuthClient_EmailOTP(t *testing.T) {
 		}),
 	)
 
+	// Step 2b: Start server with OverrideDefaultEmailVerification + RequireEmailVerification + AutoSignInAfterVerification
+	var ovrMu sync.Mutex
+	ovrOTPs := make(map[string]string)
+	linkCalls := 0
+	otpCalls := 0
+	ovrPlugin := emailotp.New(emailotpconfig.EmailOTPConfig{
+		OverrideDefaultEmailVerification: true,
+		SendVerificationOTP: func(data emailotpconfig.SendVerificationOTPData, req *http.Request) error {
+			ovrMu.Lock()
+			otpCalls++
+			ovrOTPs[strings.ToLower(data.Email)] = data.OTP
+			ovrMu.Unlock()
+			return nil
+		},
+	})
+	ovrServer := NewServer(t,
+		WithPlugin(bearer.New(bearerconfig.DefaultConfig())),
+		WithPlugin(ovrPlugin),
+		WithConfig(func(c *config.AuthConfig) {
+			compatMode(c)
+			c.TrustedOrigins = append(c.TrustedOrigins, "http://127.0.0.1:*", "http://localhost:*")
+			c.EmailAndPassword.RequireEmailVerification = true
+			c.EmailVerification.AutoSignInAfterVerification = true
+			c.EmailVerification.SendVerificationEmail = func(data config.EmailVerificationData, r *http.Request) error {
+				ovrMu.Lock()
+				linkCalls++
+				ovrMu.Unlock()
+				return nil
+			}
+		}),
+	)
+	ovrServer.Mux.HandleFunc("/test/last-otp", func(w http.ResponseWriter, r *http.Request) {
+		email := strings.ToLower(r.URL.Query().Get("email"))
+		ovrMu.Lock()
+		otp := ovrOTPs[email]
+		ovrMu.Unlock()
+		if otp == "" {
+			http.Error(w, "no otp", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"otp": otp})
+	})
+	ovrServer.Mux.HandleFunc("/test/counts", func(w http.ResponseWriter, r *http.Request) {
+		ovrMu.Lock()
+		lc, oc := linkCalls, otpCalls
+		ovrMu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]int{"linkCalls": lc, "otpCalls": oc})
+	})
+
 	// Step 3: Run official better-auth/client EmailOTP JS test
 	cmd := exec.Command("node", "test-email-otp.mjs")
 	cmd.Dir = "client"
 	cmd.Env = append(os.Environ(),
 		"GOAUTH_URL="+s.URL,
 		"GOAUTH_RL_URL="+rls.URL,
+		"GOAUTH_OVR_URL="+ovrServer.URL,
 	)
 
 	output, err := cmd.CombinedOutput()

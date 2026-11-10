@@ -42,6 +42,7 @@ type IInvitationRepo interface {
 	UpdateInvitation(ctx context.Context, id string, data map[string]interface{}) (*models.Invitation, error)
 	DeleteInvitationByID(ctx context.Context, id string) error
 	ListInvitationsByOrgID(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Invitation, int64, error)
+	CountPendingInvitationsByOrgID(ctx context.Context, orgID string) (int64, error)
 	ListInvitationsByEmail(ctx context.Context, email string) ([]models.Invitation, error)
 }
 

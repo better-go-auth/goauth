@@ -240,53 +240,8 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		}
 
 		// Step 9: If teams are enabled, handle default team creation
-		if s.TeamsEnabled() && s.teamRepo != nil {
-			defaultTeamEnabled := true
-			if s.Config.Teams.DefaultTeam != nil && s.Config.Teams.DefaultTeam.Enabled != nil {
-				defaultTeamEnabled = *s.Config.Teams.DefaultTeam.Enabled
-			}
-			if defaultTeamEnabled {
-				teamInput := dtos.CreateTeamInput{
-					OrganizationID: created.ID,
-					Name:           created.Name,
-				}
-				if s.Config.OrganizationHooks.BeforeCreateTeam != nil {
-					override, hookErr := s.Config.OrganizationHooks.BeforeCreateTeam(txCtx, orgconfig.BeforeCreateTeamData{
-						Team:         teamInput,
-						User:         creatorUser,
-						Organization: created,
-					})
-					if hookErr != nil {
-						return hookErr
-					}
-					if override != nil {
-						teamInput = *override
-					}
-				}
-				if s.Config.Teams.DefaultTeam != nil && s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam != nil {
-					createdDefaultTeam, err = s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam(txCtx, created)
-					if err != nil {
-						return fmt.Errorf("orgsvc: custom create default team: %w", err)
-					}
-				} else {
-					defaultTeam := &models.Team{
-						Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
-						Name:           teamInput.Name,
-						OrganizationID: created.ID,
-					}
-					createdDefaultTeam, err = s.teamRepo.CreateTeam(txCtx, defaultTeam)
-				}
-				if err == nil && createdDefaultTeam != nil && s.teamMemberRepo != nil {
-					tm := &models.TeamMember{
-						Base:   coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
-						TeamID: createdDefaultTeam.ID,
-						UserID: creatorUserID,
-					}
-					_, _ = s.teamMemberRepo.CreateTeamMember(txCtx, tm)
-				}
-			}
-		}
-		return nil
+		createdDefaultTeam, err = s.createDefaultTeamTx(txCtx, created, creatorUser, creatorUserID, now)
+		return err
 	})
 	if err != nil {
 		return nil, err
@@ -316,6 +271,66 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 	}
 
 	return created, nil
+}
+
+func (s *OrgService) createDefaultTeamTx(txCtx context.Context, org *models.Organization, user *coremodels.User, userID string, now time.Time) (*models.Team, error) {
+	if !s.TeamsEnabled() || s.teamRepo == nil {
+		return nil, nil
+	}
+	defaultTeamEnabled := true
+	if s.Config.Teams.DefaultTeam != nil && s.Config.Teams.DefaultTeam.Enabled != nil {
+		defaultTeamEnabled = *s.Config.Teams.DefaultTeam.Enabled
+	}
+	if !defaultTeamEnabled {
+		return nil, nil
+	}
+
+	teamInput := dtos.CreateTeamInput{
+		OrganizationID: org.ID,
+		Name:           org.Name,
+	}
+	if s.Config.OrganizationHooks.BeforeCreateTeam != nil {
+		override, hookErr := s.Config.OrganizationHooks.BeforeCreateTeam(txCtx, orgconfig.BeforeCreateTeamData{
+			Team:         teamInput,
+			User:         user,
+			Organization: org,
+		})
+		if hookErr != nil {
+			return nil, hookErr
+		}
+		if override != nil {
+			teamInput = *override
+		}
+	}
+
+	var createdDefaultTeam *models.Team
+	var err error
+	if s.Config.Teams.DefaultTeam != nil && s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam != nil {
+		createdDefaultTeam, err = s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam(txCtx, org)
+		if err != nil {
+			return nil, fmt.Errorf("orgsvc: custom create default team: %w", err)
+		}
+	} else {
+		defaultTeam := &models.Team{
+			Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
+			Name:           teamInput.Name,
+			OrganizationID: org.ID,
+		}
+		createdDefaultTeam, err = s.teamRepo.CreateTeam(txCtx, defaultTeam)
+		if err != nil {
+			return nil, fmt.Errorf("orgsvc: create default team: %w", err)
+		}
+	}
+
+	if createdDefaultTeam != nil && s.teamMemberRepo != nil {
+		tm := &models.TeamMember{
+			Base:   coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
+			TeamID: createdDefaultTeam.ID,
+			UserID: userID,
+		}
+		_, _ = s.teamMemberRepo.CreateTeamMember(txCtx, tm)
+	}
+	return createdDefaultTeam, nil
 }
 
 func (s *OrgService) GetOrganization(ctx context.Context, orgID string) (*models.Organization, error) {
@@ -626,6 +641,7 @@ func (s *OrgService) AdminCreateOrganization(ctx context.Context, requestingAdmi
 	}
 	var created *models.Organization
 	var creatorMember *models.Member
+	var createdDefaultTeam *models.Team
 	err := s.txManager.Transaction(ctx, func(txCtx context.Context) error {
 		var err error
 		created, err = s.orgRepo.CreateOrg(txCtx, org)
@@ -638,16 +654,46 @@ func (s *OrgService) AdminCreateOrganization(ctx context.Context, requestingAdmi
 			UserID:         ownerID,
 			Role:           creatorRole,
 		}
+		if s.Config.OrganizationHooks.BeforeAddMember != nil {
+			override, hookErr := s.Config.OrganizationHooks.BeforeAddMember(txCtx, orgconfig.BeforeAddMemberData{
+				Member:       *creatorMember,
+				User:         ownerUser,
+				Organization: created,
+			})
+			if hookErr != nil {
+				return hookErr
+			}
+			if override != nil {
+				creatorMember = override
+			}
+		}
 		if _, err := s.memberRepo.CreateMember(txCtx, creatorMember); err != nil {
 			return fmt.Errorf("orgsvc: admin add owner member: %w", err)
 		}
-		return nil
+
+		// Create default team when Teams are enabled
+		createdDefaultTeam, err = s.createDefaultTeamTx(txCtx, created, ownerUser, ownerID, now)
+		return err
 	})
 	if err != nil {
 		return nil, err
 	}
 
-	// Step 5: Fire afterCreateOrganization lifecycle hook if configured
+	// Step 5: Fire afterAddMember, afterCreateTeam, and afterCreateOrganization lifecycle hooks if configured
+	if s.Config.OrganizationHooks.AfterAddMember != nil && creatorMember != nil {
+		_ = s.Config.OrganizationHooks.AfterAddMember(ctx, orgconfig.AfterAddMemberData{
+			Member:       creatorMember,
+			User:         ownerUser,
+			Organization: created,
+		})
+	}
+	if s.Config.OrganizationHooks.AfterCreateTeam != nil && createdDefaultTeam != nil {
+		_ = s.Config.OrganizationHooks.AfterCreateTeam(ctx, orgconfig.AfterCreateTeamData{
+			Team:         createdDefaultTeam,
+			User:         ownerUser,
+			Organization: created,
+		})
+	}
 	if s.Config.OrganizationHooks.AfterCreateOrganization != nil {
 		_ = s.Config.OrganizationHooks.AfterCreateOrganization(ctx, orgconfig.AfterCreateOrgData{
 			Organization: created,
@@ -670,7 +716,7 @@ func (s *OrgService) AdminApproveOrg(ctx context.Context, orgID string) (*models
 	return s.orgRepo.UpdateOrg(ctx, orgID, map[string]interface{}{"Status": string(models.OrgStatusActive)})
 }
 
-// AdminBlockOrg suspends an organization.
+// AdminBlockOrg suspends an organization and merges blockReason into JSON Metadata without clobbering existing fields.
 func (s *OrgService) AdminBlockOrg(ctx context.Context, orgID, reason string) (*models.Organization, error) {
 	org, err := s.orgRepo.GetOrgByID(ctx, orgID)
 	if err != nil || org == nil {
@@ -678,7 +724,16 @@ func (s *OrgService) AdminBlockOrg(ctx context.Context, orgID, reason string) (*
 	}
 	updates := map[string]interface{}{"Status": string(models.OrgStatusSuspended)}
 	if reason != "" {
-		updates["Metadata"] = reason
+		metaMap := map[string]any{}
+		if org.Metadata != nil && strings.TrimSpace(*org.Metadata) != "" {
+			if unmarshalErr := json.Unmarshal([]byte(*org.Metadata), &metaMap); unmarshalErr != nil {
+				metaMap = map[string]any{"rawMetadata": *org.Metadata}
+			}
+		}
+		metaMap["blockReason"] = reason
+		if encoded, marshalErr := json.Marshal(metaMap); marshalErr == nil {
+			updates["Metadata"] = string(encoded)
+		}
 	}
 	return s.orgRepo.UpdateOrg(ctx, orgID, updates)
 }
