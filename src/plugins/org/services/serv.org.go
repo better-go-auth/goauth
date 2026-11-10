@@ -17,7 +17,6 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	authdtos "github.com/better-go-auth/goauth/src/models/dtos"
-	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/plugins"
 
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
@@ -182,7 +181,7 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		return nil, orgerrors.ErrSlugTaken
 	}
 
-	// Step 6: Determine initial organization approval status
+	// Step 6: Determine initial organization approval status uniformly for all callers
 	orgStatus := models.OrgStatusActive
 	if s.Config.OrgNeedsApproval {
 		orgStatus = models.OrgStatusPending
@@ -343,16 +342,9 @@ func (s *OrgService) CheckSlug(ctx context.Context, slug string) (bool, error) {
 	return true, nil
 }
 
-func (s *OrgService) isSystemAdminOrOrgAdmin(ctx context.Context, orgID, requestingUserID string) bool {
-	if s.userRepo != nil && requestingUserID != "" {
-		if u, err := s.userRepo.FindUserByID(ctx, requestingUserID); err == nil && u != nil {
-			if enums.HasRole(string(u.Role), enums.Admin.S()) {
-				return true
-			}
-		}
-	}
+func (s *OrgService) isOrgAdmin(ctx context.Context, orgID, requestingUserID string) bool {
 	requester, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
-	return err == nil && (requester.Role == models.OrgRoleOwner || requester.Role == models.OrgRoleAdmin)
+	return err == nil && requester != nil && (requester.Role == models.OrgRoleOwner || requester.Role == models.OrgRoleAdmin)
 }
 
 func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error) {
@@ -372,8 +364,8 @@ func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input
 		}
 	}
 
-	// Step 2: Permission check - requester must be system admin or organization admin/owner
-	if !s.isSystemAdminOrOrgAdmin(ctx, orgID, requestingUserID) {
+	// Step 2: Permission check - requester must be an organization admin/owner
+	if !s.isOrgAdmin(ctx, orgID, requestingUserID) {
 		return nil, autherr.ErrForbidden
 	}
 
@@ -446,8 +438,8 @@ func (s *OrgService) DeleteOrganization(ctx context.Context, orgID, requestingUs
 		return orgerrors.ErrOrganizationDeletionDisabled
 	}
 
-	// Step 2: Permission check - requester must be system admin or organization admin/owner
-	if !s.isSystemAdminOrOrgAdmin(ctx, orgID, requestingUserID) {
+	// Step 2: Permission check - requester must be an organization admin/owner
+	if !s.isOrgAdmin(ctx, orgID, requestingUserID) {
 		return autherr.ErrForbidden
 	}
 
@@ -579,6 +571,93 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 
 // ─── Admin Org Management ─────────────────────────────────────────────────────
 
+// AdminCreateOrganization creates an active organization immediately on behalf of a system administrator.
+// Optionally assigns ownership to input.OwnerUserID (defaulting to requestingAdminID).
+func (s *OrgService) AdminCreateOrganization(ctx context.Context, requestingAdminID string, input dtos.AdminCreateOrgInput) (*models.Organization, error) {
+	// Step 1: Resolve target owner user ID (defaults to requesting admin)
+	ownerID := strings.TrimSpace(input.OwnerUserID)
+	if ownerID == "" {
+		ownerID = requestingAdminID
+	}
+	var ownerUser *coremodels.User
+	if s.userRepo != nil && ownerID != "" {
+		u, err := s.userRepo.FindUserByID(ctx, ownerID)
+		if err != nil || u == nil {
+			return nil, autherr.ErrUserNotFound
+		}
+		ownerUser = u
+	}
+
+	// Step 2: Execute beforeCreateOrganization hook if configured
+	createInput := input.CreateOrgInput
+	if s.Config.OrganizationHooks.BeforeCreateOrganization != nil {
+		override, err := s.Config.OrganizationHooks.BeforeCreateOrganization(ctx, orgconfig.BeforeCreateOrgData{
+			Organization: createInput,
+			User:         ownerUser,
+		})
+		if err != nil {
+			return nil, err
+		}
+		if override != nil {
+			createInput = *override
+		}
+	}
+
+	// Step 3: Validate slug uniqueness
+	slug := strings.ToLower(strings.TrimSpace(createInput.Slug))
+	if existing, err := s.orgRepo.GetOrgBySlug(ctx, slug); err == nil && existing != nil {
+		return nil, orgerrors.ErrSlugTaken
+	}
+
+	// Step 4: Resolve creator role and create active organization + owner membership in transaction
+	creatorRole := models.OrgRoleOwner
+	if s.Config.CreatorRole != "" {
+		creatorRole = models.OrgMemberRole(s.Config.CreatorRole)
+	}
+	now := coremodels.TimeNow()
+	org := &models.Organization{
+		Base:      coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
+		Name:      createInput.Name,
+		Slug:      slug,
+		Logo:      createInput.Logo,
+		Metadata:  createInput.Metadata,
+		CreatedBy: ownerID,
+		Status:    models.OrgStatusActive,
+	}
+	var created *models.Organization
+	var creatorMember *models.Member
+	err := s.txManager.Transaction(ctx, func(txCtx context.Context) error {
+		var err error
+		created, err = s.orgRepo.CreateOrg(txCtx, org)
+		if err != nil {
+			return fmt.Errorf("orgsvc: admin create org: %w", err)
+		}
+		creatorMember = &models.Member{
+			Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
+			OrganizationID: created.ID,
+			UserID:         ownerID,
+			Role:           creatorRole,
+		}
+		if _, err := s.memberRepo.CreateMember(txCtx, creatorMember); err != nil {
+			return fmt.Errorf("orgsvc: admin add owner member: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// Step 5: Fire afterCreateOrganization lifecycle hook if configured
+	if s.Config.OrganizationHooks.AfterCreateOrganization != nil {
+		_ = s.Config.OrganizationHooks.AfterCreateOrganization(ctx, orgconfig.AfterCreateOrgData{
+			Organization: created,
+			Member:       creatorMember,
+			User:         ownerUser,
+		})
+	}
+	return created, nil
+}
+
 // AdminApproveOrg approves a pending organization, setting its status to active.
 func (s *OrgService) AdminApproveOrg(ctx context.Context, orgID string) (*models.Organization, error) {
 	org, err := s.orgRepo.GetOrgByID(ctx, orgID)
@@ -616,6 +695,11 @@ func (s *OrgService) AdminUnblockOrg(ctx context.Context, orgID string) (*models
 // AdminListOrganizations returns all organizations, optionally filtered by status.
 func (s *OrgService) AdminListOrganizations(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error) {
 	return s.orgRepo.ListAllOrgs(ctx, status, pagi)
+}
+
+// AdminSearchOrganizations returns organizations filtered by optional status and name/slug search query.
+func (s *OrgService) AdminSearchOrganizations(ctx context.Context, status *models.OrgStatus, query string, pagi models.Pagination) ([]models.Organization, int64, error) {
+	return s.orgRepo.SearchAllOrgs(ctx, status, query, pagi)
 }
 
 // ─── Dynamic Role Caching Helpers (Phase 6 Architecture) ─────────────────────

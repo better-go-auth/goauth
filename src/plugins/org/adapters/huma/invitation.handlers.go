@@ -106,3 +106,34 @@ func (h *OrgHandler) ListInvitations(ctx context.Context, input *ListInvitations
 	}
 	return humatypes.MakeRes(InvitationResp{Invitations: resps}, http.StatusOK), nil
 }
+
+// ListUserInvitations returns pending invitations addressed to the authenticated user's email.
+func (h *OrgHandler) ListUserInvitations(ctx context.Context, input *ListUserInvitationsInput) (*humatypes.HumaRes[InvitationResp], error) {
+	// Step 1: Authenticate requesting user
+	sessionResp, err := h.Authenticate(ctx, input.AuthHeaders)
+	if err != nil {
+		return nil, humatypes.RespondErr(err)
+	}
+
+	// Step 2: Resolve user email from session user or fallback lookup
+	email := sessionResp.User.Email
+	if email == "" {
+		email, err = h.Org.UserEmail(ctx, sessionResp.User.ID)
+		if err != nil {
+			return nil, humatypes.RespondErr(err)
+		}
+	}
+
+	// Step 3: Fetch pending invitations for the user's email
+	invs, err := h.Org.ListUserInvitations(ctx, email)
+	if err != nil {
+		return nil, humatypes.RespondErr(err)
+	}
+
+	// Step 4: Convert invitations with enriched org/inviter fields
+	resps := make([]orgdtos.InvitationResponse, 0, len(invs))
+	for i := range invs {
+		resps = append(resps, *orgdtos.InvitationToResponse(&invs[i]))
+	}
+	return humatypes.MakeRes(InvitationResp{Invitations: resps}, http.StatusOK), nil
+}

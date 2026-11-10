@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -103,6 +104,10 @@ func (r *OrgRepo) ListOrgsByUserID(ctx context.Context, userID string) ([]models
 }
 
 func (r *OrgRepo) ListAllOrgs(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error) {
+	return r.SearchAllOrgs(ctx, status, "", pagi)
+}
+
+func (r *OrgRepo) SearchAllOrgs(ctx context.Context, status *models.OrgStatus, query string, pagi models.Pagination) ([]models.Organization, int64, error) {
 	var orgs []models.Organization
 	var total int64
 
@@ -111,6 +116,13 @@ func (r *OrgRepo) ListAllOrgs(ctx context.Context, status *models.OrgStatus, pag
 	if status != nil {
 		q = q.Where(&models.Organization{Status: *status}, "Status")
 	}
+	if trimmed := strings.TrimSpace(query); trimmed != "" {
+		pattern := "%" + trimmed + "%"
+		q = q.Where(clause.Or(
+			gormutil.ILike(r.db, org, "Name", pattern),
+			gormutil.ILike(r.db, org, "Slug", pattern),
+		))
+	}
 	if err := q.Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/org: list all count: %w", err)
 	}
@@ -118,8 +130,12 @@ func (r *OrgRepo) ListAllOrgs(ctx context.Context, status *models.OrgStatus, pag
 	if !ok {
 		sortBy = "CreatedAt"
 	}
+	limit := pagi.Limit
+	if limit <= 0 {
+		limit = 50
+	}
 	if err := q.Order(gormutil.OrderBy(r.db, org, sortBy, pagi.SortDir != "asc")).
-		Limit(pagi.Limit).
+		Limit(limit).
 		Offset(pagi.Offset).
 		Find(&orgs).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/org: list all: %w", err)

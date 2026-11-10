@@ -74,6 +74,11 @@ type SetActiveOrgInput struct {
 	OrganizationSlug *string `json:"organizationSlug,omitempty"` // optional slug fallback
 }
 
+// LeaveOrgInput matches better-auth POST /organization/leave body.
+type LeaveOrgInput struct {
+	OrganizationID string `json:"organizationId" validate:"required"`
+}
+
 // ─── Admin Request DTOs ──────────────────────────────────────────────────────
 
 // AdminOrgIDInput is used for admin actions that only need an org ID.
@@ -85,6 +90,12 @@ type AdminOrgIDInput struct {
 type AdminBlockOrgInput struct {
 	OrganizationID string `json:"organizationId" validate:"required"`
 	Reason         string `json:"reason"`
+}
+
+// AdminCreateOrgInput allows a system administrator to create an active organization immediately.
+type AdminCreateOrgInput struct {
+	CreateOrgInput
+	OwnerUserID string `json:"ownerUserId,omitempty"`
 }
 
 // ─── Team Request DTOs ───────────────────────────────────────────────────────

@@ -66,3 +66,41 @@ it is doing a redundant logic.
 - [x] Authored in-depth physical columns repository architecture (Create, Query/Scan, Update, Filter across GORM, Bun, stdsql, sqlc, and Ent) in `_docs/phase8/06-physical-columns-repository-architecture.md`.
 - [x] Created file-by-file blueprint of exact additions and modifications across models, DTOs, migrations, repos, validation, and Huma HTTP routes in `_docs/phase8/07-physical-columns-code-changes-guide.md`.
 - [x] Created index and navigation guide in `_docs/phase8/README.md`.
+
+## Organization Plugin Fixes & Enhancements (Issues 2–6)
+- [x] **Issue 2 — Expose `ListTeamMembers` HTTP Endpoint & Preload `User`**:
+  - Already solved partially: [`TeamMemberToResponse`](src/plugins/org/dtos/response.go) already mapped `m.User` to `UserResponse`.
+  - Added `.Preload("User")` to [`TeamMemberRepo.ListMembersByTeamID`](src/plugins/org/repository/gorm/team_repo.go).
+  - Kept [`OrgService.ListTeamMembers`](src/plugins/org/services/serv.team.go) strictly org-member scoped (no system-admin bypass on `/organization/*` routes).
+  - Added `ListTeamMembers` Huma handler (`GET /organization/team/list-members` and Better Auth canonical `GET /organization/list-team-members`) returning `[]dtos.TeamMemberResponse`.
+- [x] **Issue 3 / Better Auth 100% Parity — Strictly Scope `/organization/*` Endpoints to Org Membership**:
+  - Removed all platform/system `Admin` bypasses from `/organization/*` endpoints and org services (`RequireOrgMember` in [`handler.go`](src/plugins/org/adapters/huma/handler.go), `isOrgAdmin` in [`serv.org.go`](src/plugins/org/services/serv.org.go), [`serv.member.org.go`](src/plugins/org/services/serv.member.org.go), and [`serv.team.go`](src/plugins/org/services/serv.team.go)) so regular `/organization/*` routes behave identically for all callers, matching Better Auth 100%.
+- [x] **Issue 4 — Expose Invitee Inbox (`ListUserInvitations`) & Enrich `InvitationResponse`**:
+  - Already solved at repository layer: [`InvitationRepo.ListInvitationsByEmail`](src/plugins/org/repository/gorm/invitation_repo.go) already existed and preloaded `Organization` and `Inviter`.
+  - Enriched [`InvitationResponse`](src/plugins/org/dtos/response.go) with `OrganizationName`, `OrganizationSlug`, and `Inviter` and populated them in [`InvitationToResponse`](src/plugins/org/dtos/response.go).
+  - Added `ListUserInvitations` to [`IOrgService`](src/plugins/org/services/serv.org.interfaces.go) / [`OrgService`](src/plugins/org/services/serv.invite.org.go) and exposed `GET /organization/list-user-invitations` in [`invitation.handlers.go`](src/plugins/org/adapters/huma/invitation.handlers.go) & [`routes.go`](src/plugins/org/adapters/huma/routes.go).
+- [x] **Issue 5 — Self-Service `LeaveOrganization` & Fix `ListMembers` Visibility**:
+  - Updated `OrgPermissionsMap[OrListMembers]` in [`routes.go`](src/plugins/org/adapters/huma/routes.go) to allow any authenticated org member (`AllowedRoles: []string{}`).
+  - Added `ErrCannotLeaveAsSoleOwner` (`CANNOT_LEAVE_AS_SOLE_OWNER`, HTTP 400), `LeaveOrgInput` DTO, [`OrgService.LeaveOrganization`](src/plugins/org/services/serv.member.org.go) (sole owner guard, `BeforeRemoveMember`/`AfterRemoveMember` hooks, and clearing matching `ActiveOrganizationID` on session), and `POST /organization/leave`.
+- [x] **Issue 6 — Dedicated Platform `/admin/organization/*` Endpoints & Search**:
+  - Preserved uniform behavior on `POST /organization/create` (respects `OrgNeedsApproval` for all callers) while adding dedicated `POST /admin/organization/create` (immediately active, optional `ownerUserId`), `GET /admin/organization/get?organizationId=...`, and case-insensitive cross-DB search (`q` / `_q` on `name` and `slug`) via [`OrgRepo.SearchAllOrgs`](src/plugins/org/repository/gorm/org_repo.go) on `GET /admin/organization/list`.
+- [x] Verified with Go HTTP handler tests (`TestOrgHandlers_Issues2To6` across SQLite, PostgreSQL, MySQL) and official `better-auth/client` JS compatibility tests (`TestOfficialBetterAuthClient_Org`).
+
+## Organization Plugin Fixes & Enhancements (Issues 2–6)
+- [x] **Issue 2 — Expose `ListTeamMembers` HTTP Endpoint & Preload `User`**:
+  - Already solved partially: [`TeamMemberToResponse`](src/plugins/org/dtos/response.go) already mapped `m.User` to `UserResponse`.
+  - Added `.Preload("User")` to [`TeamMemberRepo.ListMembersByTeamID`](src/plugins/org/repository/gorm/team_repo.go).
+  - Kept [`OrgService.ListTeamMembers`](src/plugins/org/services/serv.team.go) strictly org-member scoped (no system-admin bypass on `/organization/*` routes).
+  - Added `ListTeamMembers` Huma handler (`GET /organization/team/list-members` and Better Auth canonical `GET /organization/list-team-members`) returning `[]dtos.TeamMemberResponse`.
+- [x] **Issue 3 / Better Auth 100% Parity — Strictly Scope `/organization/*` Endpoints to Org Membership**:
+  - Removed all platform/system `Admin` bypasses from `/organization/*` endpoints and org services (`RequireOrgMember` in [`handler.go`](src/plugins/org/adapters/huma/handler.go), `isOrgAdmin` in [`serv.org.go`](src/plugins/org/services/serv.org.go), [`serv.member.org.go`](src/plugins/org/services/serv.member.org.go), and [`serv.team.go`](src/plugins/org/services/serv.team.go)) so regular `/organization/*` routes behave identically for all callers, matching Better Auth 100%.
+- [x] **Issue 4 — Expose Invitee Inbox (`ListUserInvitations`) & Enrich `InvitationResponse`**:
+  - Already solved at repository layer: [`InvitationRepo.ListInvitationsByEmail`](src/plugins/org/repository/gorm/invitation_repo.go) already existed and preloaded `Organization` and `Inviter`.
+  - Enriched [`InvitationResponse`](src/plugins/org/dtos/response.go) with `OrganizationName`, `OrganizationSlug`, and `Inviter` and populated them in [`InvitationToResponse`](src/plugins/org/dtos/response.go).
+  - Added `ListUserInvitations` to [`IOrgService`](src/plugins/org/services/serv.org.interfaces.go) / [`OrgService`](src/plugins/org/services/serv.invite.org.go) and exposed `GET /organization/list-user-invitations` in [`invitation.handlers.go`](src/plugins/org/adapters/huma/invitation.handlers.go) & [`routes.go`](src/plugins/org/adapters/huma/routes.go).
+- [x] **Issue 5 — Self-Service `LeaveOrganization` & Fix `ListMembers` Visibility**:
+  - Updated `OrgPermissionsMap[OrListMembers]` in [`routes.go`](src/plugins/org/adapters/huma/routes.go) to allow any authenticated org member (`AllowedRoles: []string{}`).
+  - Added `ErrCannotLeaveAsSoleOwner` (`CANNOT_LEAVE_AS_SOLE_OWNER`, HTTP 400), `LeaveOrgInput` DTO, [`OrgService.LeaveOrganization`](src/plugins/org/services/serv.member.org.go) (sole owner guard, `BeforeRemoveMember`/`AfterRemoveMember` hooks, and clearing matching `ActiveOrganizationID` on session), and `POST /organization/leave`.
+- [x] **Issue 6 — Dedicated Platform `/admin/organization/*` Endpoints & Search**:
+  - Preserved uniform behavior on `POST /organization/create` (respects `OrgNeedsApproval` for all callers) while adding dedicated `POST /admin/organization/create` (immediately active, optional `ownerUserId`), `GET /admin/organization/get?organizationId=...`, and case-insensitive cross-DB search (`q` / `_q` on `name` and `slug`) via [`OrgRepo.SearchAllOrgs`](src/plugins/org/repository/gorm/org_repo.go) on `GET /admin/organization/list`.
+- [x] Verified with Go HTTP handler tests (`TestOrgHandlers_Issues2To6` across SQLite, PostgreSQL, MySQL) and official `better-auth/client` JS compatibility tests (`TestOfficialBetterAuthClient_Org`).

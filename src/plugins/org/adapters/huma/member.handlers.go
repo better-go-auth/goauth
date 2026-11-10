@@ -101,3 +101,18 @@ func (h *OrgHandler) RemoveMember(ctx context.Context, input *RemoveMemberInput)
 	}
 	return humatypes.SuccessRes(http.StatusOK), nil
 }
+
+// LeaveOrganization allows an authenticated user to voluntarily leave an organization.
+func (h *OrgHandler) LeaveOrganization(ctx context.Context, input *LeaveOrgInput) (*humatypes.SuccessOutput, error) {
+	// Step 1: Authenticate requesting user
+	sessionResp, err := h.Authenticate(ctx, input.AuthHeaders)
+	if err != nil {
+		return nil, humatypes.RespondErr(err)
+	}
+
+	// Step 2: Leave organization via service layer (blocks sole owner and clears active org if matched)
+	if err := h.Org.LeaveOrganization(ctx, input.Body.OrganizationID, sessionResp.User.ID, sessionResp.Session.ID); err != nil {
+		return nil, humatypes.RespondErr(err)
+	}
+	return humatypes.SuccessRes(http.StatusOK), nil
+}

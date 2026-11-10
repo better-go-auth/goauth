@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
@@ -103,8 +104,8 @@ func (s *OrgService) UpdateMemberRole(ctx context.Context, input dtos.UpdateMemb
 }
 
 func (s *OrgService) RemoveMember(ctx context.Context, input dtos.RemoveMemberInput, requestingUserID string) error {
-	// Step 1: Permission check - requester must be system admin or organization admin/owner
-	if !s.isSystemAdminOrOrgAdmin(ctx, input.OrganizationID, requestingUserID) {
+	// Step 1: Permission check - requester must be an organization admin/owner
+	if !s.isOrgAdmin(ctx, input.OrganizationID, requestingUserID) {
 		return autherr.ErrForbidden
 	}
 
@@ -146,6 +147,104 @@ func (s *OrgService) RemoveMember(ctx context.Context, input dtos.RemoveMemberIn
 	if s.Config.OrganizationHooks.AfterRemoveMember != nil {
 		_ = s.Config.OrganizationHooks.AfterRemoveMember(ctx, orgconfig.AfterRemoveMemberData{
 			Member:       target,
+			User:         reqUser,
+			Organization: org,
+		})
+	}
+
+	return nil
+}
+
+// LeaveOrganization allows an authenticated member to voluntarily leave an organization.
+// Sole owners are blocked with ErrCannotLeaveAsSoleOwner; active session org context is cleared if it matched.
+func (s *OrgService) LeaveOrganization(ctx context.Context, orgID, userID, sessionID string) error {
+	// Step 1: Verify caller is currently a member of the organization
+	member, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, userID)
+	if err != nil || member == nil {
+		return orgerrors.ErrMemberNotFound
+	}
+
+	// Step 2: If leaving member is an owner, ensure at least one other owner remains
+	if member.Role == models.OrgRoleOwner {
+		members, total, listErr := s.memberRepo.ListMembersByOrgID(ctx, orgID, models.Pagination{Limit: 1000})
+		if listErr != nil {
+			return listErr
+		}
+		hasOtherOwner := false
+		for _, m := range members {
+			if m.Role == models.OrgRoleOwner && m.UserID != userID {
+				hasOtherOwner = true
+				break
+			}
+		}
+		// Check remaining pages if organization has more than 1000 members
+		for offset := len(members); !hasOtherOwner && int64(offset) < total; {
+			page, _, pageErr := s.memberRepo.ListMembersByOrgID(ctx, orgID, models.Pagination{Limit: 1000, Offset: offset})
+			if pageErr != nil || len(page) == 0 {
+				break
+			}
+			for _, m := range page {
+				if m.Role == models.OrgRoleOwner && m.UserID != userID {
+					hasOtherOwner = true
+					break
+				}
+			}
+			offset += len(page)
+		}
+		if !hasOtherOwner {
+			return orgerrors.ErrCannotLeaveAsSoleOwner
+		}
+	}
+
+	// Step 3: Fetch user and organization for hook context
+	var reqUser *coremodels.User
+	if s.userRepo != nil && userID != "" {
+		reqUser, _ = s.userRepo.FindUserByID(ctx, userID)
+	}
+	org, _ := s.orgRepo.GetOrgByID(ctx, orgID)
+
+	// Step 4: Execute beforeRemoveMember lifecycle hook if configured
+	if s.Config.OrganizationHooks.BeforeRemoveMember != nil {
+		if err := s.Config.OrganizationHooks.BeforeRemoveMember(ctx, orgconfig.BeforeRemoveMemberData{
+			Member:       member,
+			User:         reqUser,
+			Organization: org,
+		}); err != nil {
+			return err
+		}
+	}
+
+	// Step 5: Delete caller's membership record
+	if err := s.memberRepo.DeleteMemberByID(ctx, member.ID); err != nil {
+		return err
+	}
+
+	// Step 6: Clear ActiveOrganizationID on session if it currently points to the left organization
+	if sessionID != "" {
+		shouldClear := false
+		if sRepo, ok := s.userRepo.(repo_interfaces.ISessionRepo); ok {
+			if dbSess, err := sRepo.FindSessionByID(ctx, sessionID); err == nil && dbSess != nil {
+				if dbSess.ActiveOrganizationID != nil && *dbSess.ActiveOrganizationID == orgID {
+					shouldClear = true
+				}
+			}
+		}
+		if !shouldClear && s.sessionMgr != nil {
+			if sw, err := s.sessionMgr.Get(ctx, sessionID); err == nil && sw != nil {
+				if sw.Session.ActiveOrganizationID != nil && *sw.Session.ActiveOrganizationID == orgID {
+					shouldClear = true
+				}
+			}
+		}
+		if shouldClear {
+			_, _ = s.SetActiveOrganization(ctx, sessionID, nil, userID, "")
+		}
+	}
+
+	// Step 7: Execute afterRemoveMember lifecycle hook if configured
+	if s.Config.OrganizationHooks.AfterRemoveMember != nil {
+		_ = s.Config.OrganizationHooks.AfterRemoveMember(ctx, orgconfig.AfterRemoveMemberData{
+			Member:       member,
 			User:         reqUser,
 			Organization: org,
 		})

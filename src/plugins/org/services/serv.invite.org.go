@@ -467,3 +467,8 @@ func (s *OrgService) CancelInvitation(ctx context.Context, invitationID string, 
 func (s *OrgService) ListInvitations(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Invitation, int64, error) {
 	return s.inviteRepo.ListInvitationsByOrgID(ctx, orgID, pagi)
 }
+
+// ListUserInvitations returns all pending, unexpired invitations addressed to email (with Organization & Inviter preloaded).
+func (s *OrgService) ListUserInvitations(ctx context.Context, email string) ([]models.Invitation, error) {
+	return s.inviteRepo.ListInvitationsByEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
+}

@@ -35,6 +35,7 @@ type IOrgService interface {
 	RejectInvitation(ctx context.Context, invitationID, userID string) error
 	CancelInvitation(ctx context.Context, invitationID, requestingUserID string) error
 	ListInvitations(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Invitation, int64, error)
+	ListUserInvitations(ctx context.Context, email string) ([]models.Invitation, error)
 
 	// Members
 	GetMember(ctx context.Context, orgID, userID string) (*models.Member, error)
@@ -43,12 +44,15 @@ type IOrgService interface {
 	ListMembers(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Member, int64, error)
 	UpdateMemberRole(ctx context.Context, input dtos.UpdateMemberRoleInput, requestingUserID string) (*models.Member, error)
 	RemoveMember(ctx context.Context, input dtos.RemoveMemberInput, requestingUserID string) error
+	LeaveOrganization(ctx context.Context, orgID, userID, sessionID string) error
 
 	// Admin-only org management
+	AdminCreateOrganization(ctx context.Context, requestingAdminID string, input dtos.AdminCreateOrgInput) (*models.Organization, error)
 	AdminApproveOrg(ctx context.Context, orgID string) (*models.Organization, error)
 	AdminBlockOrg(ctx context.Context, orgID, reason string) (*models.Organization, error)
 	AdminUnblockOrg(ctx context.Context, orgID string) (*models.Organization, error)
 	AdminListOrganizations(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error)
+	AdminSearchOrganizations(ctx context.Context, status *models.OrgStatus, query string, pagi models.Pagination) ([]models.Organization, int64, error)
 }
 
 // ITeamService defines operations for team and dynamic access control management.

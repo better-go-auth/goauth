@@ -19,6 +19,8 @@ type IOrgRepo interface {
 	ListOrgsByUserID(ctx context.Context, userID string) ([]models.Organization, error)
 	// ListAllOrgs returns all organizations with optional status filter (admin use).
 	ListAllOrgs(ctx context.Context, status *models.OrgStatus, pagi models.Pagination) ([]models.Organization, int64, error)
+	// SearchAllOrgs returns organizations matching optional status and name/slug search query (admin use).
+	SearchAllOrgs(ctx context.Context, status *models.OrgStatus, query string, pagi models.Pagination) ([]models.Organization, int64, error)
 }
 
 // IMemberRepo defines the repository interface for Member persistence.

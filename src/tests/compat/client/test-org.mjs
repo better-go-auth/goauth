@@ -167,6 +167,18 @@ async function main() {
   const verifyResp = await fetch(`${baseURL}/test/verify-user?userId=${encodeURIComponent(inviteeUserId)}`, { method: "POST" });
   assert(verifyResp.ok, "test helper /test/verify-user failed");
 
+  // Verified invitee can check inbox via listUserInvitations (enriched with organizationName, slug, inviter)
+  const inboxRes = await invitee.organization.listUserInvitations();
+  assert(!inboxRes.error && Array.isArray(inboxRes.data?.invitations), `listUserInvitations failed: ${JSON.stringify(inboxRes)}`);
+  const inboxInv = inboxRes.data.invitations.find((i) => i.id === inv2.id);
+  assert(
+    inboxInv &&
+      inboxInv.organizationName === "Acme Updated" &&
+      inboxInv.organizationSlug === `acme-${ts}` &&
+      inboxInv.inviter?.email === ownerEmail,
+    `expected enriched invitation in listUserInvitations, got: ${JSON.stringify(inboxRes.data)}`
+  );
+
   // Verified invitee can now getInvitation and acceptInvitation
   const getInvOk = await invitee.organization.getInvitation({ query: { id: inv2.id } });
   assert(!getInvOk.error && getInvOk.data?.id === inv2.id, `verified getInvitation failed: ${JSON.stringify(getInvOk.error)}`);
@@ -188,6 +200,14 @@ async function main() {
   });
   assert(!addTmRes.error, `addTeamMember failed: ${JSON.stringify(addTmRes.error)}`);
 
+  const listTmRes = await owner.organization.listTeamMembers({
+    query: { teamId: team2.id },
+  });
+  assert(
+    !listTmRes.error && Array.isArray(listTmRes.data) && listTmRes.data.length === 1 && listTmRes.data[0].user?.email === inviteeEmail,
+    `listTeamMembers failed or missing preloaded user: ${JSON.stringify(listTmRes)}`
+  );
+
   const setActiveTeamRes = await invitee.organization.setActiveTeam({ teamId: team2.id });
   assert(!setActiveTeamRes.error, `setActiveTeam failed: ${JSON.stringify(setActiveTeamRes.error)}`);
 
@@ -208,16 +228,35 @@ async function main() {
   });
   assert(!updRoleRes.error && updRoleRes.data?.role === "member", `updateMemberRole failed: ${JSON.stringify(updRoleRes)}`);
 
+  // Regular "member" can call listMembers
+  const memListByMember = await invitee.organization.listMembers({ query: { organizationId: org.id } });
+  assert(!memListByMember.error && memListByMember.data?.members?.length === 2, `member listMembers failed: ${JSON.stringify(memListByMember)}`);
+
+  // Sole owner cannot leave organization
+  const soleOwnerLeave = await owner.organization.leave({ organizationId: org.id });
+  assert(soleOwnerLeave.error, "expected sole owner leave to fail with CANNOT_LEAVE_AS_SOLE_OWNER");
+
   const rmMemRes = await owner.organization.removeMember({
     memberIdOrEmail: inviteeEmail,
     organizationId: org.id,
   });
   assert(!rmMemRes.error, `removeMember by email failed: ${JSON.stringify(rmMemRes.error)}`);
 
-  // 7. OrganizationLimit (max 2)
-  console.log("\n[7] Testing OrganizationLimit=2...");
+  // 7. OrganizationLimit (max 2) + Self-Service LeaveOrganization
+  console.log("\n[7] Testing OrganizationLimit=2 & leave...");
   const org2Res = await owner.organization.create({ name: "Second Org", slug: `second-${ts}` });
   assert(!org2Res.error && org2Res.data?.id, `2nd org create failed: ${JSON.stringify(org2Res.error)}`);
+
+  const invOrg2 = await owner.organization.inviteMember({
+    email: inviteeEmail,
+    role: "member",
+    organizationId: org2Res.data.id,
+  });
+  assert(!invOrg2.error && invOrg2.data?.id, `invite to org2 failed: ${JSON.stringify(invOrg2.error)}`);
+  const acceptOrg2 = await invitee.organization.acceptInvitation({ invitationId: invOrg2.data.id });
+  assert(!acceptOrg2.error, `accept org2 failed: ${JSON.stringify(acceptOrg2.error)}`);
+  const leaveOrg2 = await invitee.organization.leave({ organizationId: org2Res.data.id });
+  assert(!leaveOrg2.error, `invitee leave org2 failed: ${JSON.stringify(leaveOrg2.error)}`);
 
   const org3Res = await owner.organization.create({ name: "Third Org", slug: `third-${ts}` });
   assert(org3Res.error, "expected 3rd org creation to fail due to OrganizationLimit=2");

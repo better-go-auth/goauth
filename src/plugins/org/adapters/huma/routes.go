@@ -19,18 +19,20 @@ const (
 	OrSetActiveOrg = consts.OperationId("Or-6-SetActiveOrg")
 
 	// Invitation
-	OrInviteMember     = consts.OperationId("Or-7-InviteMember")
-	OrGetInvitation    = consts.OperationId("Or-8-GetInvitation")
-	OrAcceptInvitation = consts.OperationId("Or-9-AcceptInvitation")
-	OrRejectInvitation = consts.OperationId("Or-10-RejectInvitation")
-	OrCancelInvitation = consts.OperationId("Or-11-CancelInvitation")
-	OrListInvitations  = consts.OperationId("Or-12-ListInvitations")
+	OrInviteMember        = consts.OperationId("Or-7-InviteMember")
+	OrGetInvitation       = consts.OperationId("Or-8-GetInvitation")
+	OrAcceptInvitation    = consts.OperationId("Or-9-AcceptInvitation")
+	OrRejectInvitation    = consts.OperationId("Or-10-RejectInvitation")
+	OrCancelInvitation    = consts.OperationId("Or-11-CancelInvitation")
+	OrListInvitations     = consts.OperationId("Or-12-ListInvitations")
+	OrListUserInvitations = consts.OperationId("Or-12b-ListUserInvitations")
 
 	// Member
 	OrGetMember        = consts.OperationId("Or-13-GetMember")
 	OrListMembers      = consts.OperationId("Or-14-ListMembers")
 	OrUpdateMemberRole = consts.OperationId("Or-15-UpdateMemberRole")
 	OrRemoveMember     = consts.OperationId("Or-16-RemoveMember")
+	OrLeaveOrg         = consts.OperationId("Or-16b-LeaveOrg")
 
 	// Teams
 	OrCreateTeam       = consts.OperationId("Or-17-CreateTeam")
@@ -40,12 +42,15 @@ const (
 	OrAddTeamMember    = consts.OperationId("Or-21-AddTeamMember")
 	OrRemoveTeamMember = consts.OperationId("Or-22-RemoveTeamMember")
 	OrSetActiveTeam    = consts.OperationId("Or-23-SetActiveTeam")
+	OrListTeamMembers  = consts.OperationId("Or-24-ListTeamMembers")
 
 	// Admin
+	OrAdminCreateOrg  = consts.OperationId("Or-Admin-0-CreateOrg")
 	OrAdminApproveOrg = consts.OperationId("Or-Admin-1-ApproveOrg")
 	OrAdminBlockOrg   = consts.OperationId("Or-Admin-2-BlockOrg")
 	OrAdminUnblockOrg = consts.OperationId("Or-Admin-3-UnblockOrg")
 	OrAdminListOrgs   = consts.OperationId("Or-Admin-4-ListOrgs")
+	OrAdminGetOrg     = consts.OperationId("Or-Admin-5-GetOrg")
 )
 
 var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
@@ -58,18 +63,20 @@ var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	OrSetActiveOrg: {AllowedRoles: []string{}, Description: "Set Active Organization"},
 
 	// Invitation
-	OrInviteMember:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Invite Member"},
-	OrGetInvitation:    {AllowedRoles: []string{}, Description: "Get Invitation Details"},
-	OrAcceptInvitation: {AllowedRoles: []string{}, Description: "Accept Invitation"},
-	OrRejectInvitation: {AllowedRoles: []string{}, Description: "Reject Invitation"},
-	OrCancelInvitation: {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Cancel Invitation"},
-	OrListInvitations:  {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "List Organization Invitations"},
+	OrInviteMember:        {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Invite Member"},
+	OrGetInvitation:       {AllowedRoles: []string{}, Description: "Get Invitation Details"},
+	OrAcceptInvitation:    {AllowedRoles: []string{}, Description: "Accept Invitation"},
+	OrRejectInvitation:    {AllowedRoles: []string{}, Description: "Reject Invitation"},
+	OrCancelInvitation:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Cancel Invitation"},
+	OrListInvitations:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "List Organization Invitations"},
+	OrListUserInvitations: {AllowedRoles: []string{}, Description: "List User Invitations"},
 
 	// Member
 	OrGetMember:        {AllowedRoles: []string{}, Description: "Get Member Details"},
-	OrListMembers:      {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "List Organization Members"},
+	OrListMembers:      {AllowedRoles: []string{}, Description: "List Organization Members"},
 	OrUpdateMemberRole: {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str()}, Description: "Update Member Role"},
 	OrRemoveMember:     {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Remove Member"},
+	OrLeaveOrg:         {AllowedRoles: []string{}, Description: "Leave Organization"},
 
 	// Teams
 	OrCreateTeam:       {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Create Team"},
@@ -79,12 +86,15 @@ var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	OrAddTeamMember:    {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Add Team Member"},
 	OrRemoveTeamMember: {AllowedRoles: []string{orgmodels.OrgRoleOwner.Str(), orgmodels.OrgRoleAdmin.Str()}, Description: "Remove Team Member"},
 	OrSetActiveTeam:    {AllowedRoles: []string{}, Description: "Set Active Team"},
+	OrListTeamMembers:  {AllowedRoles: []string{}, Description: "List Team Members"},
 
 	// Admin (system-level Admin role required — enforced in handler, not middleware)
+	OrAdminCreateOrg:  {AllowedRoles: []string{}, Description: "Admin: Create Organization"},
 	OrAdminApproveOrg: {AllowedRoles: []string{}, Description: "Approve Pending Organization"},
 	OrAdminBlockOrg:   {AllowedRoles: []string{}, Description: "Block/Suspend Organization"},
 	OrAdminUnblockOrg: {AllowedRoles: []string{}, Description: "Unblock/Re-activate Organization"},
 	OrAdminListOrgs:   {AllowedRoles: []string{}, Description: "Admin: List All Organizations"},
+	OrAdminGetOrg:     {AllowedRoles: []string{}, Description: "Admin: Get Organization"},
 }
 
 // SetupOrgRoutes registers all organization, invitation, and member endpoints.
@@ -224,6 +234,15 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Tags:        invitationTags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.ListInvitations)
+	huma.Register(api, huma.Operation{
+		OperationID: OrListUserInvitations.Str(),
+		Method:      http.MethodGet,
+		Path:        path + "/organization/list-user-invitations",
+		Summary:     "List User Invitations",
+		Description: "Lists pending invitations addressed to the authenticated user's email.",
+		Tags:        invitationTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.ListUserInvitations)
 
 	memberTags := []string{"Org-Members"}
 	// Member
@@ -263,6 +282,15 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Tags:        memberTags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.RemoveMember)
+	huma.Register(api, huma.Operation{
+		OperationID: OrLeaveOrg.Str(),
+		Method:      http.MethodPost,
+		Path:        path + "/organization/leave",
+		Summary:     "Leave Organization",
+		Description: "Allows the authenticated member to voluntarily leave an organization.",
+		Tags:        memberTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.LeaveOrganization)
 
 	teamTags := []string{"Teams"}
 	huma.Register(api, huma.Operation{
@@ -328,6 +356,15 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Tags:        teamTags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.SetActiveTeam)
+	huma.Register(api, huma.Operation{
+		OperationID: OrListTeamMembers.Str(),
+		Method:      http.MethodGet,
+		Path:        path + "/organization/team/list-members",
+		Summary:     "List Team Members",
+		Description: "Returns all members of a team with user details.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.ListTeamMembers)
 
 	// Better Auth canonical team route aliases (/organization/*-team)
 	huma.Register(api, huma.Operation{
@@ -384,9 +421,37 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Tags:        teamTags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.RemoveTeamMember)
+	huma.Register(api, huma.Operation{
+		OperationID: OrListTeamMembers.Str() + "-BA",
+		Method:      http.MethodGet,
+		Path:        path + "/organization/list-team-members",
+		Summary:     "List Team Members (Better Auth)",
+		Description: "Returns all members of a team with user details.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.ListTeamMembers)
 
 	adminTags := []string{"Admin-Orgs"}
 	// Admin Org Management
+	huma.Register(api, huma.Operation{
+		OperationID:   OrAdminCreateOrg.Str(),
+		Method:        http.MethodPost,
+		Path:          path + "/admin/organization/create",
+		Summary:       "[Admin] Create Organization",
+		Description:   "Creates an active organization immediately, optionally assigning an ownerUserId. Requires system Admin role.",
+		Tags:          adminTags,
+		DefaultStatus: http.StatusCreated,
+		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.AdminCreateOrg)
+	huma.Register(api, huma.Operation{
+		OperationID: OrAdminGetOrg.Str(),
+		Method:      http.MethodGet,
+		Path:        path + "/admin/organization/get",
+		Summary:     "[Admin] Get Organization",
+		Description: "Returns organization details by organizationId. Requires system Admin role.",
+		Tags:        adminTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.AdminGetOrg)
 	huma.Register(api, huma.Operation{
 		OperationID: OrAdminApproveOrg.Str(),
 		Method:      http.MethodPost,

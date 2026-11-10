@@ -23,8 +23,8 @@ func (s *OrgService) CreateTeam(ctx context.Context, input dtos.CreateTeamInput,
 		return nil, orgerrors.ErrTeamsDisabled
 	}
 
-	// Step 2: Verify requesting user is system admin or organization admin/owner
-	if !s.isSystemAdminOrOrgAdmin(ctx, input.OrganizationID, requestingUserID) {
+	// Step 2: Verify requesting user is an organization admin/owner
+	if !s.isOrgAdmin(ctx, input.OrganizationID, requestingUserID) {
 		return nil, autherr.ErrForbidden
 	}
 
@@ -99,13 +99,16 @@ func (s *OrgService) CreateTeam(ctx context.Context, input dtos.CreateTeamInput,
 }
 
 func (s *OrgService) GetTeam(ctx context.Context, teamID string, requestingUserID string) (*models.Team, error) {
+	// Step 1: Verify teams are enabled
 	if !s.TeamsEnabled() {
 		return nil, orgerrors.ErrTeamsDisabled
 	}
+	// Step 2: Load target team
 	team, err := s.teamRepo.GetTeamByID(ctx, teamID)
 	if err != nil || team == nil {
 		return nil, orgerrors.ErrTeamNotFound
 	}
+	// Step 3: Verify requesting user is a member of the organization
 	m, err := s.memberRepo.GetMemberByOrgAndUser(ctx, team.OrganizationID, requestingUserID)
 	if err != nil || m == nil {
 		return nil, autherr.ErrForbidden
@@ -125,8 +128,8 @@ func (s *OrgService) UpdateTeam(ctx context.Context, input dtos.UpdateTeamInput,
 		return nil, orgerrors.ErrTeamNotFound
 	}
 
-	// Step 3: Verify requesting user is system admin or organization admin/owner
-	if !s.isSystemAdminOrOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
+	// Step 3: Verify requesting user is an organization admin/owner
+	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
 		return nil, autherr.ErrForbidden
 	}
 
@@ -184,8 +187,8 @@ func (s *OrgService) DeleteTeam(ctx context.Context, input dtos.DeleteTeamInput,
 		return orgerrors.ErrTeamNotFound
 	}
 
-	// Step 3: Verify requesting user is system admin or organization admin/owner
-	if !s.isSystemAdminOrOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
+	// Step 3: Verify requesting user is an organization admin/owner
+	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
 		return autherr.ErrForbidden
 	}
 
@@ -233,9 +236,11 @@ func (s *OrgService) DeleteTeam(ctx context.Context, input dtos.DeleteTeamInput,
 }
 
 func (s *OrgService) ListTeams(ctx context.Context, orgID string, requestingUserID string, pagi models.Pagination) ([]models.Team, int64, error) {
+	// Step 1: Verify teams are enabled
 	if !s.TeamsEnabled() {
 		return nil, 0, orgerrors.ErrTeamsDisabled
 	}
+	// Step 2: Verify requesting user is a member of the organization
 	requester, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
 	if err != nil || requester == nil {
 		return nil, 0, autherr.ErrForbidden
@@ -255,8 +260,8 @@ func (s *OrgService) AddTeamMember(ctx context.Context, input dtos.AddTeamMember
 		return nil, orgerrors.ErrTeamNotFound
 	}
 
-	// Step 3: Verify requesting user is system admin or organization admin/owner
-	if !s.isSystemAdminOrOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
+	// Step 3: Verify requesting user is an organization admin/owner
+	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
 		return nil, autherr.ErrForbidden
 	}
 
@@ -357,9 +362,9 @@ func (s *OrgService) RemoveTeamMember(ctx context.Context, input dtos.RemoveTeam
 		return orgerrors.ErrTeamNotFound
 	}
 
-	// Step 3: Permission check - user can remove themselves or admin can remove
+	// Step 3: Permission check - user can remove themselves or an org admin/owner can remove
 	if requestingUserID != input.UserID {
-		if !s.isSystemAdminOrOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
+		if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
 			return autherr.ErrForbidden
 		}
 	}
@@ -408,13 +413,16 @@ func (s *OrgService) RemoveTeamMember(ctx context.Context, input dtos.RemoveTeam
 }
 
 func (s *OrgService) ListTeamMembers(ctx context.Context, teamID string, requestingUserID string, pagi models.Pagination) ([]models.TeamMember, int64, error) {
+	// Step 1: Verify teams are enabled
 	if !s.TeamsEnabled() {
 		return nil, 0, orgerrors.ErrTeamsDisabled
 	}
+	// Step 2: Load target team
 	team, err := s.teamRepo.GetTeamByID(ctx, teamID)
 	if err != nil || team == nil {
 		return nil, 0, orgerrors.ErrTeamNotFound
 	}
+	// Step 3: Verify requesting user is a member of the organization
 	m, err := s.memberRepo.GetMemberByOrgAndUser(ctx, team.OrganizationID, requestingUserID)
 	if err != nil || m == nil {
 		return nil, 0, autherr.ErrForbidden

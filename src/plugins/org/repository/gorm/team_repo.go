@@ -114,7 +114,7 @@ func (r *TeamMemberRepo) ListMembersByTeamID(ctx context.Context, teamID string,
 	if pagi.Limit > 0 {
 		limit = pagi.Limit
 	}
-	if err := q.Limit(limit).Offset(pagi.Offset).Order("created_at DESC").Find(&out).Error; err != nil {
+	if err := q.Preload("User").Limit(limit).Offset(pagi.Offset).Order("created_at DESC").Find(&out).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/team-member: list: %w", err)
 	}
 	return out, total, nil

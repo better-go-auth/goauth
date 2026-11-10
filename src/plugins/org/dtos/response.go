@@ -29,14 +29,17 @@ type MemberResponse struct {
 
 // InvitationResponse is the public invitation response.
 type InvitationResponse struct {
-	ID             string `json:"id"`
-	OrganizationID string `json:"organizationId"`
-	Email          string `json:"email"`
-	Role           string `json:"role"`
-	Status         string `json:"status"`
-	InviterID      string `json:"inviterId"`
-	ExpiresAt      string `json:"expiresAt"`
-	CreatedAt      string `json:"createdAt"`
+	ID               string                 `json:"id"`
+	OrganizationID   string                 `json:"organizationId"`
+	OrganizationName *string                `json:"organizationName,omitempty"`
+	OrganizationSlug *string                `json:"organizationSlug,omitempty"`
+	Email            string                 `json:"email"`
+	Role             string                 `json:"role"`
+	Status           string                 `json:"status"`
+	InviterID        string                 `json:"inviterId"`
+	Inviter          *coredtos.UserResponse `json:"inviter,omitempty"`
+	ExpiresAt        string                 `json:"expiresAt"`
+	CreatedAt        string                 `json:"createdAt"`
 }
 
 // ─── Converters ──────────────────────────────────────────────────────────────
@@ -85,7 +88,7 @@ func InvitationToResponse(i *models.Invitation) *InvitationResponse {
 		return nil
 	}
 	createdAt := i.CreatedAt.UTC().Format("2006-01-02T15:04:05.999Z")
-	return &InvitationResponse{
+	resp := &InvitationResponse{
 		ID:             i.ID,
 		OrganizationID: i.OrganizationID,
 		Email:          i.Email,
@@ -95,6 +98,17 @@ func InvitationToResponse(i *models.Invitation) *InvitationResponse {
 		ExpiresAt:      i.ExpiresAt.UTC().Format("2006-01-02T15:04:05.999Z"),
 		CreatedAt:      createdAt,
 	}
+	if i.Organization != nil {
+		name := i.Organization.Name
+		slug := i.Organization.Slug
+		resp.OrganizationName = &name
+		resp.OrganizationSlug = &slug
+	}
+	if i.Inviter != nil {
+		u := coredtos.UserFromModel(i.Inviter)
+		resp.Inviter = &u
+	}
+	return resp
 }
 
 // TeamResponse is the public team response.

@@ -38,6 +38,7 @@ const (
 	OrganizationDeletionDisabled = errors.RespCode("ORGANIZATION_DELETION_DISABLED")
 	EmailVerificationRequired    = errors.RespCode("EMAIL_NOT_VERIFIED")
 	PendingInvitationExists      = errors.RespCode("PENDING_INVITATION_EXISTS")
+	CannotLeaveAsSoleOwner       = errors.RespCode("CANNOT_LEAVE_AS_SOLE_OWNER")
 )
 
 var (
@@ -58,6 +59,7 @@ var (
 	ErrOrganizationDeletionDisabled = errors.New(OrganizationDeletionDisabled, "Organization deletion is disabled", http.StatusBadRequest)
 	ErrEmailVerificationRequired = errors.New(EmailVerificationRequired, "Email verification is required for invitations", http.StatusForbidden)
 	ErrPendingInvitationExists   = errors.New(PendingInvitationExists, "A pending invitation already exists for this email", http.StatusBadRequest)
+	ErrCannotLeaveAsSoleOwner    = errors.New(CannotLeaveAsSoleOwner, "Cannot leave organization as the sole owner", http.StatusBadRequest)
 
 	// Team Errors
 	ErrTeamNotFound              = errors.New(TeamNotFound, "Team not found", http.StatusNotFound)

@@ -45,6 +45,10 @@ type ListInvitationsInput struct {
 	OrganizationID string `query:"organizationId" doc:"Organization ID"`
 }
 
+type ListUserInvitationsInput struct {
+	humatypes.AuthHeaders
+}
+
 // ─── Member Inputs ────────────────────────────────────────────────────────────
 
 type GetMemberInput struct {
@@ -61,19 +65,28 @@ type ListMembersInput struct {
 type (
 	UpdateMemberRoleInput = humatypes.HumaReqBody[orgdtos.UpdateMemberRoleInput]
 	RemoveMemberInput     = humatypes.HumaReqBody[orgdtos.RemoveMemberInput]
+	LeaveOrgInput         = humatypes.HumaReqBody[orgdtos.LeaveOrgInput]
 )
 
 // ─── Admin Inputs ─────────────────────────────────────────────────────────────
 
 type (
+	AdminCreateOrgInput  = humatypes.HumaReqBody[orgdtos.AdminCreateOrgInput]
 	AdminApproveOrgInput = humatypes.HumaReqBody[orgdtos.AdminOrgIDInput]
 	AdminBlockOrgInput   = humatypes.HumaReqBody[orgdtos.AdminBlockOrgInput]
 	AdminUnblockOrgInput = humatypes.HumaReqBody[orgdtos.AdminOrgIDInput]
 )
 
+type AdminGetOrgInput struct {
+	humatypes.AuthHeaders
+	OrganizationID string `query:"organizationId" doc:"Organization ID"`
+}
+
 type AdminListOrgsInput struct {
 	humatypes.AuthHeaders
 	Status string `query:"status,omitempty" doc:"Filter by org status: active, pending, inactive, suspended"`
+	Q      string `query:"q,omitempty" doc:"Case-insensitive search on organization name or slug"`
+	Search string `query:"_q,omitempty" doc:"Alias for q search query"`
 	Limit  int    `query:"limit,omitempty" doc:"Page size (default 50)"`
 	Offset int    `query:"offset,omitempty" doc:"Page offset"`
 }
