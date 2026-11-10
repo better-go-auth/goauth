@@ -36,14 +36,14 @@ type EmailOTPChangeEmailConfig struct {
 
 // EmailOTPConfig holds configuration options for the Email OTP plugin.
 type EmailOTPConfig struct {
+	// SendVerificationOTP is the user-provided callback to send the OTP email.
+	SendVerificationOTP SendVerificationOTP
 	// OtpLength specifies the number of digits in the generated OTP. Default is 6.
 	OtpLength int
 
 	// ExpiresIn specifies how long the OTP code is valid for. Default is 5 minutes (300 seconds).
 	ExpiresIn time.Duration
 
-	// SendVerificationOTP is the user-provided callback to send the OTP email.
-	SendVerificationOTP SendVerificationOTP
 
 	// OverrideDefaultEmailVerification when true bypasses link-based email verification in favor of OTP codes.
 	OverrideDefaultEmailVerification bool

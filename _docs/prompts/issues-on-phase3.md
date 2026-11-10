@@ -19,3 +19,19 @@ if h.services == nil {
 
 ---- 
 check how the origin works
+
+
+
+-- Email otp usage count
+
+for email otp cant we use secondary storage: wont it cause memory erros
+
+
+
+?? why do they check otp with out consuming it
+
+
+
+&nbsp;
+
+instead of paniking 
