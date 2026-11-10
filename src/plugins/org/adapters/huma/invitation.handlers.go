@@ -11,10 +11,13 @@ import (
 // ─── Invitation ───────────────────────────────────────────────────────────────
 
 func (h *OrgHandler) InviteMember(ctx context.Context, input *InviteMemberInput) (*humatypes.HumaRes[orgdtos.InvitationResponse], error) {
-	session, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrInviteMember)...)
+	// Step 1: Verify membership and resolve organizationId (falls back to active organization)
+	session, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrInviteMember)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
+	input.Body.OrganizationID = orgID
+	// Step 2: Create and dispatch invitation
 	inv, err := h.Org.InviteMember(ctx, session.User.ID, input.Body)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
@@ -23,15 +26,21 @@ func (h *OrgHandler) InviteMember(ctx context.Context, input *InviteMemberInput)
 }
 
 func (h *OrgHandler) GetInvitation(ctx context.Context, input *GetInvitationInput) (*humatypes.HumaRes[orgdtos.InvitationResponse], error) {
+	// Step 1: Authenticate caller and resolve invitation ID from ?invitationId= or ?id=
 	session, err := h.Authenticate(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	inv, err := h.Org.GetInvitation(ctx, input.InvitationID)
+	invID := input.InvitationID
+	if invID == "" {
+		invID = input.ID
+	}
+	// Step 2: Fetch invitation (enforcing RequireEmailVerificationOnInvitation when caller is recipient)
+	inv, err := h.Org.GetInvitationForUser(ctx, invID, session.User.ID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	// visible to the invitee, or to org members who may manage invitations
+	// Step 3: Visible to the invitee, or to org members who may manage invitations
 	if !h.isInvitee(ctx, session, inv.Email) {
 		if _, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, inv.OrganizationID, rolesFor(OrListInvitations)...); err != nil {
 			return nil, humatypes.RespondErr(err)

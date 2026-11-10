@@ -17,6 +17,8 @@ type IOrgService interface {
 	// Orgs
 	CreateOrganization(ctx context.Context, creatorUserID string, input dtos.CreateOrgInput) (*models.Organization, error)
 	GetOrganization(ctx context.Context, orgID string) (*models.Organization, error)
+	GetOrganizationBySlug(ctx context.Context, slug string) (*models.Organization, error)
+	CheckSlug(ctx context.Context, slug string) (bool, error)
 	UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error)
 	DeleteOrganization(ctx context.Context, orgID string, requestingUserID string) error
 	ListOrganizations(ctx context.Context, userID string) ([]models.Organization, error)
@@ -27,6 +29,7 @@ type IOrgService interface {
 	// Invitations
 	InviteMember(ctx context.Context, inviterUserID string, input dtos.InviteMemberInput) (*models.Invitation, error)
 	GetInvitation(ctx context.Context, invitationID string) (*models.Invitation, error)
+	GetInvitationForUser(ctx context.Context, invitationID, requestingUserID string) (*models.Invitation, error)
 	UserEmail(ctx context.Context, userID string) (string, error)
 	AcceptInvitation(ctx context.Context, invitationID, userID string) error
 	RejectInvitation(ctx context.Context, invitationID, userID string) error
@@ -36,6 +39,7 @@ type IOrgService interface {
 	// Members
 	GetMember(ctx context.Context, orgID, userID string) (*models.Member, error)
 	GetMemberByID(ctx context.Context, memberID string) (*models.Member, error)
+	ResolveMemberID(ctx context.Context, orgID, memberIDOrEmail string) (string, error)
 	ListMembers(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Member, int64, error)
 	UpdateMemberRole(ctx context.Context, input dtos.UpdateMemberRoleInput, requestingUserID string) (*models.Member, error)
 	RemoveMember(ctx context.Context, input dtos.RemoveMemberInput, requestingUserID string) error

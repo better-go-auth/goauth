@@ -12,11 +12,13 @@ type CreateOrgInput = humatypes.HumaReqBody[orgdtos.CreateOrgInput]
 
 type GetOrgInput struct {
 	humatypes.AuthHeaders
-	OrganizationID string `query:"organizationId" doc:"Organization ID"`
+	OrganizationID   string `query:"organizationId,omitempty" doc:"Organization ID"`
+	OrganizationSlug string `query:"organizationSlug,omitempty" doc:"Organization Slug"`
 }
 
 type (
 	UpdateOrgInput    = humatypes.HumaReqBody[orgdtos.UpdateOrgInput]
+	CheckSlugInput    = humatypes.HumaReqBody[orgdtos.CheckSlugInput]
 	DeleteOrgInput    = humatypes.HumaReqBody[orgdtos.DeleteOrgInput]
 	ListOrgsInput     struct{ humatypes.AuthHeaders }
 	SetActiveOrgInput = humatypes.HumaReqBody[orgdtos.SetActiveOrgInput]
@@ -28,7 +30,8 @@ type InviteMemberInput = humatypes.HumaReqBody[orgdtos.InviteMemberInput]
 
 type GetInvitationInput struct {
 	humatypes.AuthHeaders
-	InvitationID string `query:"invitationId" doc:"Invitation ID"`
+	InvitationID string `query:"invitationId,omitempty" doc:"Invitation ID"`
+	ID           string `query:"id,omitempty" doc:"Invitation ID (better-auth client query param)"`
 }
 
 type (

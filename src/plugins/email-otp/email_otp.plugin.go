@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
@@ -25,6 +26,7 @@ type Plugin struct {
 	service     *services.EmailOTPService
 	handler     *humaemailotp.EmailOTPHandler
 	hookService *emailOTPHookService
+	middleware  *middleware.AuthMiddleware
 }
 
 var (
@@ -60,6 +62,46 @@ func WithExpiresIn(d time.Duration) Option {
 func WithSendVerificationOTP(fn emailotpconfig.SendVerificationOTP) Option {
 	return func(p *Plugin) {
 		p.config.SendVerificationOTP = fn
+	}
+}
+
+// WithGenerateOTP sets a custom function to generate OTP codes.
+func WithGenerateOTP(fn emailotpconfig.GenerateOTPFunc) Option {
+	return func(p *Plugin) {
+		p.config.GenerateOTP = fn
+	}
+}
+
+// WithAllowedAttempts sets the maximum verification attempts allowed per OTP (default 3).
+func WithAllowedAttempts(attempts int) Option {
+	return func(p *Plugin) {
+		p.config.AllowedAttempts = attempts
+	}
+}
+
+// WithStoreOTP configures how OTP values are stored in the verification table.
+func WithStoreOTP(storeCfg emailotpconfig.StoreOTPConfig) Option {
+	return func(p *Plugin) {
+		p.config.StoreOTP = storeCfg
+	}
+}
+
+// WithResendStrategy configures how requesting a new OTP handles an existing valid OTP ("rotate" or "reuse").
+func WithResendStrategy(strategy emailotpconfig.ResendStrategy) Option {
+	return func(p *Plugin) {
+		p.config.ResendStrategy = strategy
+	}
+}
+
+// WithRateLimit configures rate limiting for Email OTP endpoints.
+func WithRateLimit(window time.Duration, max int) Option {
+	return func(p *Plugin) {
+		enabled := true
+		p.config.RateLimit = emailotpconfig.EmailOTPRateLimitConfig{
+			Enabled: &enabled,
+			Window:  window,
+			Max:     max,
+		}
 	}
 }
 
@@ -103,6 +145,7 @@ func WithBasePath(basePath string) Option {
 // Directly accepts the config struct so users can configure it directly (mimicking Better Auth's plugin pattern),
 // with functional options supported as additional optional overrides.
 func New(cfg emailotpconfig.EmailOTPConfig, opts ...Option) *Plugin {
+	// Step 1: Apply default values for unset fields matching Better Auth specifications
 	defaultCfg := emailotpconfig.DefaultConfig()
 	if cfg.OtpLength <= 0 {
 		cfg.OtpLength = defaultCfg.OtpLength
@@ -110,10 +153,17 @@ func New(cfg emailotpconfig.EmailOTPConfig, opts ...Option) *Plugin {
 	if cfg.ExpiresIn <= 0 {
 		cfg.ExpiresIn = defaultCfg.ExpiresIn
 	}
-	if !cfg.ChangeEmail.Enabled && !cfg.ChangeEmail.VerifyCurrentEmail {
-		cfg.ChangeEmail.Enabled = true
+	if cfg.AllowedAttempts <= 0 {
+		cfg.AllowedAttempts = defaultCfg.AllowedAttempts
+	}
+	if cfg.StoreOTP.Mode == "" && cfg.StoreOTP.Hash == nil && cfg.StoreOTP.Encrypt == nil {
+		cfg.StoreOTP.Mode = defaultCfg.StoreOTP.Mode
+	}
+	if cfg.ResendStrategy == "" {
+		cfg.ResendStrategy = defaultCfg.ResendStrategy
 	}
 
+	// Step 2: Construct plugin and apply any functional options
 	p := &Plugin{
 		config: cfg,
 	}
@@ -130,6 +180,7 @@ func (p *Plugin) ID() string {
 
 // Init initializes the service, lifecycle hooks, and mounts Huma routes.
 func (p *Plugin) Init(ictx *plugins.InitContext) error {
+	// Step 1: Validate required dependencies in InitContext
 	if ictx == nil {
 		return fmt.Errorf("email-otp plugin: init context is required")
 	}
@@ -137,6 +188,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		return fmt.Errorf("email-otp plugin: repositories are required")
 	}
 
+	// Step 2: Resolve base path
 	if p.basePath == "" {
 		p.basePath = ictx.Config.BasePath
 	}
@@ -144,6 +196,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		p.basePath = "/api/auth"
 	}
 
+	// Step 3: Initialize EmailOTPService and attach secondary storage for rate limiting
 	passwords := authcrypto.NewPasswords(ictx.Config)
 
 	p.service = services.NewEmailOTPService(
@@ -154,10 +207,12 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		passwords,
 		ictx.TxManager,
 	)
+	if ictx.SecondaryStorage != nil {
+		p.service.SetSecondaryStorage(ictx.SecondaryStorage)
+	}
 
+	// Step 4: Register lifecycle hook to send verification OTP code when a new user is created
 	p.hookService = &emailOTPHookService{plugin: p}
-
-	// Register lifecycle hook to send verification OTP code when a new user is created
 	if ictx.Hooks != nil {
 		ictx.Hooks.Register(p.hookService)
 		if p.config.OverrideDefaultEmailVerification {
@@ -165,8 +220,10 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		}
 	}
 
+	// Step 5: Construct HTTP handler and mount Huma routes
 	cookieMgr := cookies.New(ictx.Config)
-	p.handler = humaemailotp.NewEmailOTPHandler(p.service, cookieMgr, ictx.Config)
+	p.middleware = ictx.MiddleWare
+	p.handler = humaemailotp.NewEmailOTPHandler(p.service, cookieMgr, ictx.Config, ictx.Authenticator)
 
 	if ictx.Api != nil {
 		p.SetupHumaRoutes(ictx.Api)
@@ -180,7 +237,7 @@ func (p *Plugin) SetupHumaRoutes(api huma.API) {
 	if p.handler == nil {
 		return
 	}
-	humaemailotp.SetupEmailOTPRoutes(api, p.handler, p.basePath)
+	humaemailotp.SetupEmailOTPRoutes(api, p.handler, p.basePath, p.middleware)
 }
 
 // Migrator returns nil since Email OTP uses the standard Better Auth verification and user tables.

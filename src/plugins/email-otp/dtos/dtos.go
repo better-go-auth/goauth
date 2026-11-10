@@ -24,6 +24,12 @@ type VerifyEmailOTPInput struct {
 type SignInEmailOTPInput struct {
 	Email string `json:"email" doc:"User's email address"`
 	OTP   string `json:"otp" doc:"The verification code"`
+	Name  string `json:"name,omitempty" doc:"Optional user display name on first sign-up"`
+	Image string `json:"image,omitempty" doc:"Optional user profile image URL on first sign-up"`
+}
+
+type RequestPasswordResetOTPInput struct {
+	Email string `json:"email" doc:"User's email address"`
 }
 
 type ResetPasswordOTPInput struct {
@@ -42,7 +48,13 @@ type ChangeEmailOTPInput struct {
 	OTP      string `json:"otp" doc:"The verification code received on the new email address"`
 }
 
+// VerifyEmailResponse matches Better Auth's /email-otp/verify-email response shape.
+type VerifyEmailResponse struct {
+	Status bool               `json:"status"`
+	Token  *string            `json:"token"`
+	User   *dtos.UserResponse `json:"user"`
+}
+
 type SuccessResponse = dtos.SuccessResponse
 type StatusResponse = dtos.StatusResponse
-type VerifyEmailResponse = dtos.VerifyEmailResponse
 type SignInResponse = dtos.SignInResponse

@@ -50,17 +50,21 @@ func (h *OrgHandler) ListMembers(ctx context.Context, input *ListMembersInput) (
 }
 
 func (h *OrgHandler) UpdateMemberRole(ctx context.Context, input *UpdateMemberRoleInput) (*humatypes.HumaRes[orgdtos.MemberResponse], error) {
-	session, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrUpdateMemberRole)...)
+	// Step 1: Verify membership and resolve organizationId
+	session, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrUpdateMemberRole)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	target, err := h.targetMember(ctx, input.Body.OrganizationID, input.Body.MemberID)
+	input.Body.OrganizationID = orgID
+	// Step 2: Load target member and guard against demoting owner
+	target, err := h.targetMember(ctx, orgID, input.Body.MemberID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
 	if target.Role == orgmodels.OrgRoleOwner && input.Body.Role != orgmodels.OrgRoleOwner {
 		return nil, humatypes.RespondErr(autherr.New("CANNOT_DEMOTE_OWNER", "Cannot change the owner's role", http.StatusBadRequest))
 	}
+	// Step 3: Update role in service layer
 	member, err := h.Org.UpdateMemberRole(ctx, input.Body, session.User.ID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
@@ -69,17 +73,29 @@ func (h *OrgHandler) UpdateMemberRole(ctx context.Context, input *UpdateMemberRo
 }
 
 func (h *OrgHandler) RemoveMember(ctx context.Context, input *RemoveMemberInput) (*humatypes.SuccessOutput, error) {
-	sessionResp, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrRemoveMember)...)
+	// Step 1: Verify membership and resolve organizationId
+	sessionResp, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrRemoveMember)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
-	target, err := h.targetMember(ctx, input.Body.OrganizationID, input.Body.MemberID)
+	input.Body.OrganizationID = orgID
+	// Step 2: Resolve memberId from memberIdOrEmail if memberId was omitted
+	if input.Body.MemberID == "" && input.Body.MemberIDOrEmail != "" {
+		resolvedID, rErr := h.Org.ResolveMemberID(ctx, orgID, input.Body.MemberIDOrEmail)
+		if rErr != nil {
+			return nil, humatypes.RespondErr(rErr)
+		}
+		input.Body.MemberID = resolvedID
+	}
+	// Step 3: Load target member and prevent removing owner
+	target, err := h.targetMember(ctx, orgID, input.Body.MemberID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
 	if target.Role == orgmodels.OrgRoleOwner {
 		return nil, humatypes.RespondErr(autherr.New("CANNOT_REMOVE_OWNER", "Cannot remove the organization owner", http.StatusBadRequest))
 	}
+	// Step 4: Remove member via service layer
 	if err := h.Org.RemoveMember(ctx, input.Body, sessionResp.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}

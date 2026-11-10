@@ -2,6 +2,7 @@ package orgsvc
 
 import (
 	"context"
+	"strings"
 
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	coremodels "github.com/better-go-auth/goauth/src/models"
@@ -27,6 +28,23 @@ func (s *OrgService) GetMemberByID(ctx context.Context, memberID string) (*model
 		return nil, orgerrors.ErrMemberNotFound
 	}
 	return member, nil
+}
+
+// ResolveMemberID resolves either a member ID or user email into a member ID for the given organization.
+func (s *OrgService) ResolveMemberID(ctx context.Context, orgID, memberIDOrEmail string) (string, error) {
+	// Step 1: Check if memberIDOrEmail matches a member ID directly in the target organization
+	if m, err := s.memberRepo.GetMemberByID(ctx, memberIDOrEmail); err == nil && m != nil && m.OrganizationID == orgID {
+		return m.ID, nil
+	}
+	// Step 2: Otherwise treat as email and look up user + membership
+	if s.userRepo != nil {
+		if u, err := s.userRepo.FindUserByEmail(ctx, strings.ToLower(strings.TrimSpace(memberIDOrEmail))); err == nil && u != nil {
+			if m, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, u.ID); err == nil && m != nil {
+				return m.ID, nil
+			}
+		}
+	}
+	return "", orgerrors.ErrMemberNotFound
 }
 
 func (s *OrgService) ListMembers(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Member, int64, error) {

@@ -37,6 +37,7 @@ type Server struct {
 	Auth   *goauth.GoAuth
 	DB     *gorm.DB
 	API    huma.API
+	Mux    *http.ServeMux
 	Client *http.Client
 	Jar    *cookiejar.Jar
 	// Origin is sent on every request: the configured BaseURL, or the test server URL.
@@ -140,6 +141,7 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 		Auth:   a,
 		DB:     db,
 		API:    api,
+		Mux:    mux,
 		Jar:    jar,
 		Client: &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}

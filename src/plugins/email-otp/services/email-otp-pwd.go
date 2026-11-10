@@ -14,6 +14,7 @@ import (
 
 // RequestEmailChange dispatches a change-email OTP to the target new email address.
 func (s *EmailOTPService) RequestEmailChange(ctx context.Context, userID, newEmail string, currentOTP *string, req *http.Request) error {
+	// Step 1: Ensure email change is enabled and validate target email
 	if !s.config.ChangeEmail.Enabled {
 		return ErrChangeEmailDisabled
 	}
@@ -21,6 +22,7 @@ func (s *EmailOTPService) RequestEmailChange(ctx context.Context, userID, newEma
 		return ErrInvalidEmailAddress
 	}
 
+	// Step 2: Load current user and ensure target email differs from current email
 	user, err := s.repos.FindUserByID(ctx, userID)
 	if err != nil || user == nil {
 		return ErrUserNotFound
@@ -29,17 +31,18 @@ func (s *EmailOTPService) RequestEmailChange(ctx context.Context, userID, newEma
 		return autherr.Err(http.StatusBadRequest, "SAME_EMAIL", "New email must be different from current email")
 	}
 
-	// If verifyCurrentEmail is required, check that currentOTP is valid for user.Email
+	// Step 3: If verifyCurrentEmail is required, verify and consume OTP for current email
 	if s.config.ChangeEmail.VerifyCurrentEmail {
 		if currentOTP == nil || *currentOTP == "" {
 			return autherr.Err(http.StatusBadRequest, "CURRENT_EMAIL_OTP_REQUIRED", "OTP for current email is required")
 		}
-		if err := s.CheckVerificationOTP(ctx, user.Email, *currentOTP, emailotpconfig.OTPTypeEmailVerification); err != nil {
-			return ErrInvalidOTP
+		currentIdentifier := s.otpIdentifier(emailotpconfig.OTPTypeEmailVerification, user.Email)
+		if err := s.verifyOTPAttempt(ctx, currentIdentifier, *currentOTP, true); err != nil {
+			return err
 		}
 	}
 
-	// Check if new email already belongs to another user
+	// Step 4: Check if new email already belongs to another user
 	existing, err := acceptNotFound(s.repos.FindUserByEmail(ctx, strings.ToLower(newEmail)))
 	if err != nil {
 		return err
@@ -48,33 +51,29 @@ func (s *EmailOTPService) RequestEmailChange(ctx context.Context, userID, newEma
 		return ErrEmailAlreadyExists
 	}
 
+	// Step 5: Send change-email OTP to the new email address
 	return s.SendVerificationOTP(ctx, newEmail, emailotpconfig.OTPTypeChangeEmail, req)
 }
 
 // ChangeEmail verifies the OTP sent to newEmail and updates the user's email.
 func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp string) (*models.User, error) {
+	// Step 1: Ensure email change is enabled and validate inputs
 	if !s.config.ChangeEmail.Enabled {
 		return nil, ErrChangeEmailDisabled
 	}
 	if !validEmail(newEmail) || otp == "" {
 		return nil, ErrInvalidOTP
 	}
-	// Step 2: Fetch verification record by identifier
+
+	// Step 2: Verify OTP against stored value with attempt tracking
 	identifier := s.otpIdentifier(emailotpconfig.OTPTypeChangeEmail, newEmail)
-	rec, err := s.repos.FindVerificationValue(ctx, identifier)
-	if err != nil || rec == nil || rec.IsExpired() {
-		return nil, ErrInvalidOTP
+	if err := s.verifyOTPAttempt(ctx, identifier, otp, false); err != nil {
+		return nil, err
 	}
 
-	// Step 3: Verify OTP hash; rate limiting is handled globally at the route level
-	if ok, _, err := s.passwords.Verify(rec.Value, otp); err != nil || !ok {
-		return nil, ErrInvalidOTP
-	}
-
-	// Step 4: Update user email in transaction
-
+	// Step 3: Update user email in transaction
 	var updatedUser *models.User
-	err = s.withTx(ctx, func(txCtx context.Context) error {
+	err := s.withTx(ctx, func(txCtx context.Context) error {
 		user, err := s.repos.FindUserByID(txCtx, userID)
 		if err != nil || user == nil {
 			return ErrUserNotFound
@@ -124,7 +123,7 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 				return fmt.Errorf("email-otp: failed to create account: %w", err)
 			}
 		}
-		// Step 5: Consume OTP upon successful verification
+		// Step 4: Consume OTP upon successful verification
 		_ = s.repos.DeleteVerificationByIdentifier(txCtx, identifier)
 
 		return nil
@@ -132,5 +131,8 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 	if err != nil {
 		return nil, err
 	}
+
+	// Step 5: Refresh cached user copy across active sessions so getSession reflects the new email
+	s.refreshSessionUser(ctx, updatedUser)
 	return updatedUser, nil
 }

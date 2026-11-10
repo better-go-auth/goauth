@@ -129,12 +129,17 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 		}
 
 		now := time.Now().UTC()
+		var teamID *string
+		if s.TeamsEnabled() && input.TeamID != nil && *input.TeamID != "" {
+			teamID = input.TeamID
+		}
 		inv := &models.Invitation{
 			Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 			OrganizationID: input.OrganizationID,
 			InviterID:      inviterID,
 			Email:          strings.ToLower(input.Email),
 			Role:           input.Role,
+			TeamID:         teamID,
 			Status:         models.InvitationPending,
 			ExpiresAt:      now.Add(expiresIn),
 		}
@@ -204,6 +209,24 @@ func (s *OrgService) GetInvitation(ctx context.Context, invitationID string) (*m
 	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
 	if err != nil {
 		return nil, orgerrors.ErrInvitationNotFound
+	}
+	return inv, nil
+}
+
+// GetInvitationForUser fetches an invitation and enforces RequireEmailVerificationOnInvitation when applicable.
+func (s *OrgService) GetInvitationForUser(ctx context.Context, invitationID, requestingUserID string) (*models.Invitation, error) {
+	// Step 1: Fetch invitation record
+	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
+	if err != nil || inv == nil {
+		return nil, orgerrors.ErrInvitationNotFound
+	}
+	// Step 2: Check email verification requirement if caller is the recipient
+	if s.Config.RequireEmailVerificationOnInvitation && s.userRepo != nil && requestingUserID != "" {
+		if user, err := s.userRepo.FindUserByID(ctx, requestingUserID); err == nil && user != nil {
+			if strings.EqualFold(user.Email, inv.Email) && !user.EmailVerified {
+				return nil, orgerrors.ErrEmailVerificationRequired
+			}
+		}
 	}
 	return inv, nil
 }
@@ -300,6 +323,16 @@ func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID 
 		createdMember, err = s.memberRepo.CreateMember(txCtx, member)
 		if err != nil {
 			return fmt.Errorf("orgsvc: add member on accept: %w", err)
+		}
+
+		// Step 8b: If invitation includes a TeamID and teams are enabled, add member to that team
+		if s.TeamsEnabled() && inv.TeamID != nil && *inv.TeamID != "" && s.teamMemberRepo != nil {
+			tmNow := time.Now().UTC()
+			_, _ = s.teamMemberRepo.CreateTeamMember(txCtx, &models.TeamMember{
+				Base:   coremodels.Base{ID: coremodels.NewID(), CreatedAt: tmNow, UpdatedAt: tmNow},
+				TeamID: *inv.TeamID,
+				UserID: userID,
+			})
 		}
 
 		// Update invitation status

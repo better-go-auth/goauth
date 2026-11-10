@@ -131,6 +131,25 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.DeleteOrg)
 	huma.Register(api, huma.Operation{
+		OperationID:   OrDeleteOrg.Str() + "-Post",
+		Method:        http.MethodPost,
+		Path:          path + "/organization/delete",
+		Summary:       "Delete Organization (Better Auth POST alias)",
+		Description:   "Deletes an organization and all its memberships.",
+		Tags:          orgTags,
+		DefaultStatus: http.StatusOK,
+		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.DeleteOrg)
+	huma.Register(api, huma.Operation{
+		OperationID: "Or-CheckSlug",
+		Method:      http.MethodPost,
+		Path:        path + "/organization/check-slug",
+		Summary:     "Check Organization Slug",
+		Description: "Checks whether an organization slug is available.",
+		Tags:        orgTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.CheckSlug)
+	huma.Register(api, huma.Operation{
 		OperationID: OrListOrgs.Str(),
 		Method:      http.MethodGet,
 		Path:        path + "/organization/list",
@@ -309,6 +328,62 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Tags:        teamTags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.SetActiveTeam)
+
+	// Better Auth canonical team route aliases (/organization/*-team)
+	huma.Register(api, huma.Operation{
+		OperationID: OrCreateTeam.Str() + "-BA",
+		Method:      http.MethodPost,
+		Path:        path + "/organization/create-team",
+		Summary:     "Create Team (Better Auth)",
+		Description: "Creates a new team within an organization.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.CreateTeam)
+	huma.Register(api, huma.Operation{
+		OperationID: OrUpdateTeam.Str() + "-BA",
+		Method:      http.MethodPost,
+		Path:        path + "/organization/update-team",
+		Summary:     "Update Team (Better Auth)",
+		Description: "Updates an existing team's details.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.UpdateTeam)
+	huma.Register(api, huma.Operation{
+		OperationID: OrDeleteTeam.Str() + "-BA",
+		Method:      http.MethodPost,
+		Path:        path + "/organization/remove-team",
+		Summary:     "Remove Team (Better Auth)",
+		Description: "Deletes a team from an organization.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.DeleteTeam)
+	huma.Register(api, huma.Operation{
+		OperationID: OrListTeams.Str() + "-BA",
+		Method:      http.MethodGet,
+		Path:        path + "/organization/list-teams",
+		Summary:     "List Teams (Better Auth)",
+		Description: "Returns all teams within an organization.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.ListTeams)
+	huma.Register(api, huma.Operation{
+		OperationID: OrAddTeamMember.Str() + "-BA",
+		Method:      http.MethodPost,
+		Path:        path + "/organization/add-team-member",
+		Summary:     "Add Team Member (Better Auth)",
+		Description: "Adds an existing organization member to a team.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.AddTeamMember)
+	huma.Register(api, huma.Operation{
+		OperationID: OrRemoveTeamMember.Str() + "-BA",
+		Method:      http.MethodPost,
+		Path:        path + "/organization/remove-team-member",
+		Summary:     "Remove Team Member (Better Auth)",
+		Description: "Removes a member from a team.",
+		Tags:        teamTags,
+		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+	}, h.RemoveTeamMember)
 
 	adminTags := []string{"Admin-Orgs"}
 	// Admin Org Management

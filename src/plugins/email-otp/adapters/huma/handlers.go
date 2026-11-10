@@ -2,6 +2,7 @@ package humaemailotp
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
+	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/plugins/email-otp/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/email-otp/services"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
@@ -21,13 +23,19 @@ type EmailOTPHandler struct {
 	Service *services.EmailOTPService
 	Cookies *cookies.Manager
 	Config  config.AuthConfig
+	authFn  authenticator.AuthenticateFunc
 }
 
-func NewEmailOTPHandler(svc *services.EmailOTPService, cm *cookies.Manager, cfg config.AuthConfig) *EmailOTPHandler {
+func NewEmailOTPHandler(svc *services.EmailOTPService, cm *cookies.Manager, cfg config.AuthConfig, authFn ...authenticator.AuthenticateFunc) *EmailOTPHandler {
+	var af authenticator.AuthenticateFunc
+	if len(authFn) > 0 {
+		af = authFn[0]
+	}
 	return &EmailOTPHandler{
 		Service: svc,
 		Cookies: cm,
 		Config:  cfg,
+		authFn:  af,
 	}
 }
 
@@ -46,6 +54,33 @@ func (h *EmailOTPHandler) meta(ctx context.Context) authint.SessionMeta {
 	}
 }
 
+func (h *EmailOTPHandler) clientIP(ctx context.Context) string {
+	req := config.GetHTTPRequest(ctx)
+	if req == nil {
+		return "global"
+	}
+	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
+		parts := strings.Split(xff, ",")
+		if ip := strings.TrimSpace(parts[0]); ip != "" {
+			return ip
+		}
+	}
+	if host, _, err := net.SplitHostPort(req.RemoteAddr); err == nil && host != "" {
+		return host
+	}
+	if req.RemoteAddr != "" {
+		return req.RemoteAddr
+	}
+	return "global"
+}
+
+func (h *EmailOTPHandler) checkRateLimit(ctx context.Context, path string) error {
+	if h.Service == nil {
+		return nil
+	}
+	return h.Service.CheckRateLimit(ctx, path, h.clientIP(ctx))
+}
+
 // ─── SendVerificationOTP ───────────────────────────────────────────────────────
 
 type sendVerificationOTPInput struct {
@@ -57,6 +92,11 @@ type sendVerificationOTPOutput struct {
 }
 
 func (h *EmailOTPHandler) SendVerificationOTP(ctx context.Context, in *sendVerificationOTPInput) (*sendVerificationOTPOutput, error) {
+	// Step 1: Enforce per-endpoint rate limit if configured
+	if err := h.checkRateLimit(ctx, "/email-otp/send-verification-otp"); err != nil {
+		return nil, err
+	}
+	// Step 2: Generate and dispatch OTP via service
 	req := config.GetHTTPRequest(ctx)
 	if err := h.Service.SendVerificationOTP(ctx, in.Body.Email, in.Body.Type, req); err != nil {
 		return nil, err
@@ -77,6 +117,11 @@ type checkVerificationOTPOutput struct {
 }
 
 func (h *EmailOTPHandler) CheckVerificationOTP(ctx context.Context, in *checkVerificationOTPInput) (*checkVerificationOTPOutput, error) {
+	// Step 1: Enforce per-endpoint rate limit if configured
+	if err := h.checkRateLimit(ctx, "/email-otp/check-verification-otp"); err != nil {
+		return nil, err
+	}
+	// Step 2: Verify OTP without consuming it
 	if err := h.Service.CheckVerificationOTP(ctx, in.Body.Email, in.Body.OTP, in.Body.Type); err != nil {
 		return nil, err
 	}
@@ -97,20 +142,30 @@ type verifyEmailOutput struct {
 }
 
 func (h *EmailOTPHandler) VerifyEmail(ctx context.Context, in *verifyEmailInput) (*verifyEmailOutput, error) {
+	// Step 1: Enforce per-endpoint rate limit if configured
+	if err := h.checkRateLimit(ctx, "/email-otp/verify-email"); err != nil {
+		return nil, err
+	}
+	// Step 2: Verify email OTP and optionally issue session
 	req := config.GetHTTPRequest(ctx)
 	session, user, err := h.Service.VerifyEmail(ctx, in.Body.Email, in.Body.OTP, h.meta(ctx), req)
 	if err != nil {
 		return nil, err
 	}
 
+	// Step 3: Build Better Auth compatible response with optional session token & cookie
 	out := &verifyEmailOutput{}
 	out.Body.Status = true
 	if user != nil {
 		userDto := modeldtos.UserFromModel(user)
 		out.Body.User = &userDto
 	}
-	if session != nil && h.Cookies != nil {
-		out.SetCookie = h.Cookies.SessionCookies(session.Session.Token, false)
+	if session != nil {
+		tok := session.Session.Token
+		out.Body.Token = &tok
+		if h.Cookies != nil {
+			out.SetCookie = h.Cookies.SessionCookies(tok, false)
+		}
 	}
 	return out, nil
 }
@@ -127,17 +182,48 @@ type signInOutput struct {
 }
 
 func (h *EmailOTPHandler) SignIn(ctx context.Context, in *signInInput) (*signInOutput, error) {
-	sw, err := h.Service.SignIn(ctx, in.Body.Email, in.Body.OTP, h.meta(ctx))
+	// Step 1: Enforce per-endpoint rate limit if configured
+	if err := h.checkRateLimit(ctx, "/sign-in/email-otp"); err != nil {
+		return nil, err
+	}
+	// Step 2: Authenticate or auto-register user with OTP
+	sw, err := h.Service.SignInWithProfile(ctx, in.Body.Email, in.Body.OTP, in.Body.Name, in.Body.Image, h.meta(ctx))
 	if err != nil {
 		return nil, err
 	}
 
+	// Step 3: Attach session cookie and return session token + user
 	out := &signInOutput{}
 	if h.Cookies != nil {
 		out.SetCookie = h.Cookies.SessionCookies(sw.Session.Token, false)
 	}
 	out.Body.Token = sw.Session.Token
 	out.Body.User = &sw.User
+	return out, nil
+}
+
+// ─── RequestPasswordReset ─────────────────────────────────────────────────────
+
+type requestPasswordResetInput struct {
+	Body dtos.RequestPasswordResetOTPInput
+}
+
+type requestPasswordResetOutput struct {
+	Body dtos.SuccessResponse
+}
+
+func (h *EmailOTPHandler) RequestPasswordReset(ctx context.Context, in *requestPasswordResetInput) (*requestPasswordResetOutput, error) {
+	// Step 1: Enforce per-endpoint rate limit if configured
+	if err := h.checkRateLimit(ctx, "/email-otp/request-password-reset"); err != nil {
+		return nil, err
+	}
+	// Step 2: Dispatch forget-password OTP
+	req := config.GetHTTPRequest(ctx)
+	if err := h.Service.SendVerificationOTP(ctx, in.Body.Email, emailotpconfig.OTPTypeForgetPassword, req); err != nil {
+		return nil, err
+	}
+	out := &requestPasswordResetOutput{}
+	out.Body.Success = true
 	return out, nil
 }
 
@@ -152,6 +238,11 @@ type resetPasswordOutput struct {
 }
 
 func (h *EmailOTPHandler) ResetPassword(ctx context.Context, in *resetPasswordInput) (*resetPasswordOutput, error) {
+	// Step 1: Enforce per-endpoint rate limit if configured
+	if err := h.checkRateLimit(ctx, "/email-otp/reset-password"); err != nil {
+		return nil, err
+	}
+	// Step 2: Validate OTP and reset password
 	if err := h.Service.ResetPassword(ctx, in.Body.Email, in.Body.OTP, in.Body.Password); err != nil {
 		return nil, err
 	}
@@ -168,6 +259,11 @@ func (h *EmailOTPHandler) getSession(ctx context.Context, auth types.AuthHeaders
 	}
 	if sw, ok := authenticator.SessionFromContext(ctx); ok && sw != nil {
 		return sw, true
+	}
+	if h.authFn != nil {
+		if sw, err := h.authFn(ctx, auth); err == nil && sw != nil {
+			return sw, true
+		}
 	}
 
 	var tok string
@@ -209,10 +305,16 @@ type requestEmailChangeOutput struct {
 }
 
 func (h *EmailOTPHandler) RequestEmailChange(ctx context.Context, in *requestEmailChangeInput) (*requestEmailChangeOutput, error) {
+	// Step 1: Enforce per-endpoint rate limit if configured
+	if err := h.checkRateLimit(ctx, "/email-otp/request-email-change"); err != nil {
+		return nil, err
+	}
+	// Step 2: Require authenticated session
 	sw, ok := h.getSession(ctx, in.AuthHeaders)
 	if !ok || sw == nil {
 		return nil, huma.NewError(http.StatusUnauthorized, "Unauthorized")
 	}
+	// Step 3: Dispatch email change OTP
 	req := config.GetHTTPRequest(ctx)
 	if err := h.Service.RequestEmailChange(ctx, sw.User.ID, in.Body.NewEmail, in.Body.OTP, req); err != nil {
 		return nil, err
@@ -232,10 +334,16 @@ type changeEmailOutput struct {
 }
 
 func (h *EmailOTPHandler) ChangeEmail(ctx context.Context, in *changeEmailInput) (*changeEmailOutput, error) {
+	// Step 1: Enforce per-endpoint rate limit if configured
+	if err := h.checkRateLimit(ctx, "/email-otp/change-email"); err != nil {
+		return nil, err
+	}
+	// Step 2: Require authenticated session
 	sw, ok := h.getSession(ctx, in.AuthHeaders)
 	if !ok || sw == nil {
 		return nil, huma.NewError(http.StatusUnauthorized, "Unauthorized")
 	}
+	// Step 3: Verify OTP and update user's email
 	if _, err := h.Service.ChangeEmail(ctx, sw.User.ID, in.Body.NewEmail, in.Body.OTP); err != nil {
 		return nil, err
 	}
@@ -243,4 +351,3 @@ func (h *EmailOTPHandler) ChangeEmail(ctx context.Context, in *changeEmailInput)
 	out.Body.Status = true
 	return out, nil
 }
-

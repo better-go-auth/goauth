@@ -71,10 +71,11 @@ func (h *OrgHandler) CreateTeam(ctx context.Context, in *CreateTeamInput) (*Team
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, _, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrCreateTeam)...)
+	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrCreateTeam)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
+	in.Body.OrganizationID = orgID
 	team, err := h.Org.CreateTeam(ctx, in.Body, sessionResp.User.ID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
@@ -86,9 +87,13 @@ func (h *OrgHandler) UpdateTeam(ctx context.Context, in *UpdateTeamInput) (*Team
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, _, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrUpdateTeam)...)
+	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrUpdateTeam)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
+	}
+	in.Body.OrganizationID = orgID
+	if in.Body.Data != nil && in.Body.Name == "" {
+		in.Body.Name = in.Body.Data.Name
 	}
 	team, err := h.Org.UpdateTeam(ctx, in.Body, sessionResp.User.ID)
 	if err != nil {
@@ -101,10 +106,11 @@ func (h *OrgHandler) DeleteTeam(ctx context.Context, in *DeleteTeamInput) (*huma
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, _, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrDeleteTeam)...)
+	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrDeleteTeam)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
+	in.Body.OrganizationID = orgID
 	if err := h.Org.DeleteTeam(ctx, in.Body, sessionResp.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -134,10 +140,11 @@ func (h *OrgHandler) AddTeamMember(ctx context.Context, in *AddTeamMemberInput) 
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, _, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrAddTeamMember)...)
+	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrAddTeamMember)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
+	in.Body.OrganizationID = orgID
 	member, err := h.Org.AddTeamMember(ctx, in.Body, sessionResp.User.ID)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
@@ -149,10 +156,11 @@ func (h *OrgHandler) RemoveTeamMember(ctx context.Context, in *RemoveTeamMemberI
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, _, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrRemoveTeamMember)...)
+	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrRemoveTeamMember)...)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
+	in.Body.OrganizationID = orgID
 	if err := h.Org.RemoveTeamMember(ctx, in.Body, sessionResp.User.ID); err != nil {
 		return nil, humatypes.RespondErr(err)
 	}

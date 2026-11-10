@@ -208,6 +208,7 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 
 	var created *models.Organization
 	var creatorMember *models.Member
+	var createdDefaultTeam *models.Team
 	err := s.txManager.Transaction(ctx, func(txCtx context.Context) error {
 		var err error
 		created, err = s.orgRepo.CreateOrg(txCtx, org)
@@ -215,12 +216,25 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 			return fmt.Errorf("orgsvc: create org: %w", err)
 		}
 
-		// Add creator with resolved role
+		// Add creator with resolved role (invoking beforeAddMember hook if set)
 		creatorMember = &models.Member{
 			Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 			OrganizationID: created.ID,
 			UserID:         creatorUserID,
 			Role:           creatorRole,
+		}
+		if s.Config.OrganizationHooks.BeforeAddMember != nil {
+			override, hookErr := s.Config.OrganizationHooks.BeforeAddMember(txCtx, orgconfig.BeforeAddMemberData{
+				Member:       *creatorMember,
+				User:         creatorUser,
+				Organization: created,
+			})
+			if hookErr != nil {
+				return hookErr
+			}
+			if override != nil {
+				creatorMember = override
+			}
 		}
 		if _, err := s.memberRepo.CreateMember(txCtx, creatorMember); err != nil {
 			return fmt.Errorf("orgsvc: add owner member: %w", err)
@@ -233,24 +247,40 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 				defaultTeamEnabled = *s.Config.Teams.DefaultTeam.Enabled
 			}
 			if defaultTeamEnabled {
-				var createdTeam *models.Team
+				teamInput := dtos.CreateTeamInput{
+					OrganizationID: created.ID,
+					Name:           created.Name,
+				}
+				if s.Config.OrganizationHooks.BeforeCreateTeam != nil {
+					override, hookErr := s.Config.OrganizationHooks.BeforeCreateTeam(txCtx, orgconfig.BeforeCreateTeamData{
+						Team:         teamInput,
+						User:         creatorUser,
+						Organization: created,
+					})
+					if hookErr != nil {
+						return hookErr
+					}
+					if override != nil {
+						teamInput = *override
+					}
+				}
 				if s.Config.Teams.DefaultTeam != nil && s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam != nil {
-					createdTeam, err = s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam(txCtx, created)
+					createdDefaultTeam, err = s.Config.Teams.DefaultTeam.CustomCreateDefaultTeam(txCtx, created)
 					if err != nil {
 						return fmt.Errorf("orgsvc: custom create default team: %w", err)
 					}
 				} else {
 					defaultTeam := &models.Team{
 						Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
-						Name:           created.Name,
+						Name:           teamInput.Name,
 						OrganizationID: created.ID,
 					}
-					createdTeam, err = s.teamRepo.CreateTeam(txCtx, defaultTeam)
+					createdDefaultTeam, err = s.teamRepo.CreateTeam(txCtx, defaultTeam)
 				}
-				if err == nil && createdTeam != nil && s.teamMemberRepo != nil {
+				if err == nil && createdDefaultTeam != nil && s.teamMemberRepo != nil {
 					tm := &models.TeamMember{
 						Base:   coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
-						TeamID: createdTeam.ID,
+						TeamID: createdDefaultTeam.ID,
 						UserID: creatorUserID,
 					}
 					_, _ = s.teamMemberRepo.CreateTeamMember(txCtx, tm)
@@ -263,7 +293,21 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		return nil, err
 	}
 
-	// Step 10: Execute afterCreateOrganization lifecycle hook if configured
+	// Step 10: Execute afterAddMember, afterCreateTeam, and afterCreateOrganization lifecycle hooks
+	if s.Config.OrganizationHooks.AfterAddMember != nil && creatorMember != nil {
+		_ = s.Config.OrganizationHooks.AfterAddMember(ctx, orgconfig.AfterAddMemberData{
+			Member:       creatorMember,
+			User:         creatorUser,
+			Organization: created,
+		})
+	}
+	if s.Config.OrganizationHooks.AfterCreateTeam != nil && createdDefaultTeam != nil {
+		_ = s.Config.OrganizationHooks.AfterCreateTeam(ctx, orgconfig.AfterCreateTeamData{
+			Team:         createdDefaultTeam,
+			User:         creatorUser,
+			Organization: created,
+		})
+	}
 	if s.Config.OrganizationHooks.AfterCreateOrganization != nil {
 		_ = s.Config.OrganizationHooks.AfterCreateOrganization(ctx, orgconfig.AfterCreateOrgData{
 			Organization: created,
@@ -283,6 +327,22 @@ func (s *OrgService) GetOrganization(ctx context.Context, orgID string) (*models
 	return org, nil
 }
 
+func (s *OrgService) GetOrganizationBySlug(ctx context.Context, slug string) (*models.Organization, error) {
+	org, err := s.orgRepo.GetOrgBySlug(ctx, strings.ToLower(strings.TrimSpace(slug)))
+	if err != nil || org == nil {
+		return nil, orgerrors.ErrOrgNotFound
+	}
+	return org, nil
+}
+
+func (s *OrgService) CheckSlug(ctx context.Context, slug string) (bool, error) {
+	normalized := strings.ToLower(strings.TrimSpace(slug))
+	if existing, err := s.orgRepo.GetOrgBySlug(ctx, normalized); err == nil && existing != nil {
+		return false, orgerrors.ErrSlugTaken
+	}
+	return true, nil
+}
+
 func (s *OrgService) isSystemAdminOrOrgAdmin(ctx context.Context, orgID, requestingUserID string) bool {
 	if s.userRepo != nil && requestingUserID != "" {
 		if u, err := s.userRepo.FindUserByID(ctx, requestingUserID); err == nil && u != nil {
@@ -296,7 +356,23 @@ func (s *OrgService) isSystemAdminOrOrgAdmin(ctx context.Context, orgID, request
 }
 
 func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error) {
-	// Step 1: Permission check - requester must be system admin or organization admin/owner
+	// Step 1: Normalize nested Data payload if sent by better-auth/client
+	if input.Data != nil {
+		if input.Name == nil && input.Data.Name != nil {
+			input.Name = input.Data.Name
+		}
+		if input.Slug == nil && input.Data.Slug != nil {
+			input.Slug = input.Data.Slug
+		}
+		if input.Logo == nil && input.Data.Logo != nil {
+			input.Logo = input.Data.Logo
+		}
+		if input.Metadata == nil && input.Data.Metadata != nil {
+			input.Metadata = input.Data.Metadata
+		}
+	}
+
+	// Step 2: Permission check - requester must be system admin or organization admin/owner
 	if !s.isSystemAdminOrOrgAdmin(ctx, orgID, requestingUserID) {
 		return nil, autherr.ErrForbidden
 	}
