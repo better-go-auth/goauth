@@ -197,6 +197,15 @@ async function main() {
     assert(counts.linkCalls === 0, `expected core link sender suppressed (0 calls), got ${counts.linkCalls}`);
     assert(counts.otpCalls === 1, `expected OTP sender called automatically once, got ${counts.otpCalls}`);
 
+    // Core sendVerificationEmail endpoint must also dispatch OTP (not link) when overridden
+    const resendVer = await ovrClient.sendVerificationEmail({ email: ovrEmail });
+    assert(!resendVer.error, `sendVerificationEmail failed: ${JSON.stringify(resendVer.error)}`);
+    const countsAfterResendResp = await fetch(`${ovrURL}/test/counts`);
+    assert(countsAfterResendResp.ok, "failed to fetch override counts after resend");
+    const countsAfterResend = await countsAfterResendResp.json();
+    assert(countsAfterResend.linkCalls === 0, `expected linkCalls still 0 after sendVerificationEmail, got ${countsAfterResend.linkCalls}`);
+    assert(countsAfterResend.otpCalls === 2, `expected otpCalls=2 after sendVerificationEmail, got ${countsAfterResend.otpCalls}`);
+
     const autoOTP = await fetchLastOTP(ovrURL, ovrEmail);
     const verOvr = await ovrClient.emailOtp.verifyEmail({ email: ovrEmail, otp: autoOTP });
     assert(

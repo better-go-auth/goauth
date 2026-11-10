@@ -61,19 +61,49 @@ func (s *Service) baseURL() string {
 	return strings.TrimRight(s.cfg.BaseURL, "/") + s.cfg.BasePath
 }
 
-// sendVerificationEmail is better-auth's sendVerificationEmailFn: build a token + link and pass them
-// to the app's sender. It is a no-op without a sender.
-func (s *Service) sendVerificationEmail(ctx context.Context, user *models.User, callbackURL string) error {
-	// config: EmailVerification.SendVerificationEmail is the app's function that actually sends the email
+// hasVerificationSender reports whether core EmailVerification.SendVerificationEmail or a plugin override is configured.
+func (s *Service) hasVerificationSender() bool {
+	if s.Hooks != nil && s.Hooks.IsEmailVerificationOverridden() {
+		return true
+	}
+	return s.cfg.EmailVerification.SendVerificationEmail != nil
+}
+
+// dispatchVerificationEmail delivers verification either via an overridden plugin sender (e.g. email-otp)
+// or via the app's configured EmailVerification.SendVerificationEmail link callback.
+func (s *Service) dispatchVerificationEmail(ctx context.Context, user *models.User, callbackURL, tok string) error {
+	// Step 1: Delegate to plugin override sender if global verification override is active
+	if s.Hooks != nil && s.Hooks.IsEmailVerificationOverridden() {
+		if sender := s.Hooks.VerificationEmailSender(); sender != nil {
+			return sender(ctx, user, callbackURL)
+		}
+		return nil
+	}
+	// Step 2: Fall back to configured core EmailVerification.SendVerificationEmail link callback
 	send := s.cfg.EmailVerification.SendVerificationEmail
 	if send == nil {
 		return nil
 	}
+	return send(config.EmailVerificationData{User: *user, URL: s.verifyURL(tok, callbackURL), Token: tok}, request(ctx))
+}
+
+// sendVerificationEmail is better-auth's sendVerificationEmailFn: build a token + link (unless overridden) and pass them
+// to the active verification sender. It is a no-op without a sender.
+func (s *Service) sendVerificationEmail(ctx context.Context, user *models.User, callbackURL string) error {
+	// Step 1: Skip minting an unused JWT link token when a plugin overrides default email verification
+	if s.Hooks != nil && s.Hooks.IsEmailVerificationOverridden() {
+		return s.dispatchVerificationEmail(ctx, user, callbackURL, "")
+	}
+	// config: EmailVerification.SendVerificationEmail is the app's function that actually sends the email
+	if s.cfg.EmailVerification.SendVerificationEmail == nil {
+		return nil
+	}
+	// Step 2: Generate link token and dispatch core verification email
 	tok, err := s.emailVerificationToken(user.Email, "", "")
 	if err != nil {
 		return err
 	}
-	return send(config.EmailVerificationData{User: *user, URL: s.verifyURL(tok, callbackURL), Token: tok}, request(ctx))
+	return s.dispatchVerificationEmail(ctx, user, callbackURL, tok)
 }
 
 // SendVerificationEmail mirrors better-auth's POST /send-verification-email.
@@ -83,8 +113,8 @@ func (s *Service) sendVerificationEmail(ctx context.Context, user *models.User, 
 // 500ms, so timing is equal too.
 // Signed in: the email must be the session user's own, still unverified, address.
 func (s *Service) SendVerificationEmail(ctx context.Context, current *dtos.SessionWithUser, in dtos.SendVerificationEmailInput) error {
-	// config: without an EmailVerification.SendVerificationEmail sender the endpoint is disabled
-	if s.cfg.EmailVerification.SendVerificationEmail == nil {
+	// config: require either EmailVerification.SendVerificationEmail or an overridden verification sender
+	if !s.hasVerificationSender() {
 		return autherr.ErrVerificationEmailNotEnabled
 	}
 	if current == nil {
@@ -219,11 +249,11 @@ func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWi
 		if err != nil {
 			return nil, err
 		}
-		// config: the regular verification sender delivers it, addressed to the new email
-		if send := s.cfg.EmailVerification.SendVerificationEmail; send != nil {
+		// config: the active verification sender delivers it (core link or plugin override), addressed to the new email
+		if s.hasVerificationSender() {
 			target := *user
 			target.Email = updateTo
-			if err := send(config.EmailVerificationData{User: target, URL: s.verifyURL(tok, callbackURL), Token: tok}, request(ctx)); err != nil {
+			if err := s.dispatchVerificationEmail(ctx, &target, callbackURL, tok); err != nil {
 				return nil, err
 			}
 		}
@@ -299,11 +329,11 @@ func (s *Service) ChangeEmail(ctx context.Context, current *dtos.SessionWithUser
 	}
 	callbackURL := deref(in.CallbackURL)
 	// work out which flows the config allows (see the function comment)
-	sendVerification := s.cfg.EmailVerification.SendVerificationEmail
+	hasSender := s.hasVerificationSender()
 	withoutVerification := !current.User.EmailVerified && ce.UpdateEmailWithoutVerification
-	withConfirmation := sendVerification != nil && current.User.EmailVerified && ce.SendChangeEmailConfirmation != nil
+	withConfirmation := hasSender && current.User.EmailVerified && ce.SendChangeEmailConfirmation != nil
 	// checked before looking up newEmail, so a misconfiguration can't leak whether the address is taken
-	if !withoutVerification && !withConfirmation && sendVerification == nil {
+	if !withoutVerification && !withConfirmation && !hasSender {
 		return nil, autherr.ErrVerificationEmailNotEnabled
 	}
 
@@ -356,5 +386,5 @@ func (s *Service) ChangeEmail(ctx context.Context, current *dtos.SessionWithUser
 	}
 	target := *user
 	target.Email = newEmail
-	return nil, sendVerification(config.EmailVerificationData{User: target, URL: s.verifyURL(tok, callbackURL), Token: tok}, request(ctx))
+	return nil, s.dispatchVerificationEmail(ctx, &target, callbackURL, tok)
 }

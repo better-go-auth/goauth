@@ -176,23 +176,31 @@ func TestEmailOTP_BothRegistrationFlows(t *testing.T) {
 		require.Equal(t, http.StatusForbidden, signInBlocked.Status, string(signInBlocked.Body))
 		require.Contains(t, string(signInBlocked.Body), "EMAIL_NOT_VERIFIED")
 
-		// Check how SendOnSignIn & /send-verification-email interact with override flag:
+		// Blocked SignIn with SendOnSignIn=true must route through OTP override (0 links, 2nd OTP)
 		mu.Lock()
 		linksAfterSignIn := linkCalls
+		otpsAfterSignIn := len(otpCalls)
 		mu.Unlock()
+		require.Equal(t, 0, linksAfterSignIn, "SendOnSignIn must not call core link sender when overridden")
+		require.Equal(t, 2, otpsAfterSignIn, "SendOnSignIn must dispatch OTP when overridden")
+
+		// POST /send-verification-email must route through OTP override (0 links, 3rd OTP)
 		sendVerRes := s.Post(t, "/api/auth/send-verification-email", map[string]any{
 			"email": email,
 		})
+		require.Equal(t, http.StatusOK, sendVerRes.Status, string(sendVerRes.Body))
 		mu.Lock()
 		linksAfterSendVerEndpoint := linkCalls
+		latestOTP := otpCalls[len(otpCalls)-1]
+		totalOTPs := len(otpCalls)
 		mu.Unlock()
-		t.Logf("linkCalls: afterSignUp=%d, afterBlockedSignInWithSendOnSignIn=%d, afterSendVerificationEmail=%d (status=%d)",
-			linksAfterSignUp, linksAfterSignIn, linksAfterSendVerEndpoint, sendVerRes.Status)
+		require.Equal(t, 0, linksAfterSendVerEndpoint, "/send-verification-email must not call core link sender when overridden")
+		require.Equal(t, 3, totalOTPs, "/send-verification-email must dispatch OTP when overridden")
 
-		// Step 3: Verify email using the auto-sent OTP -> sets emailVerified=true and auto-signs in
+		// Step 3: Verify email using the latest OTP -> sets emailVerified=true and auto-signs in
 		verRes := s.Post(t, "/api/auth/email-otp/verify-email", map[string]any{
 			"email": email,
-			"otp":   otpsAfterSignUp[0].OTP,
+			"otp":   latestOTP.OTP,
 		})
 		require.Equal(t, http.StatusOK, verRes.Status, string(verRes.Body))
 		var verResp struct {
@@ -213,6 +221,38 @@ func TestEmailOTP_BothRegistrationFlows(t *testing.T) {
 		sessRes := s.Get(t, "/api/auth/get-session")
 		require.Equal(t, http.StatusOK, sessRes.Status, string(sessRes.Body))
 		require.Contains(t, string(sessRes.Body), email)
+
+		// Step 5: Verify /send-verification-email works even when core EmailVerification.SendVerificationEmail is nil
+		var otpOnlyMu sync.Mutex
+		var otpOnlyCalls []emailotpconfig.SendVerificationOTPData
+		sOTPOnly := NewServer(t,
+			WithPlugin(emailotp.New(emailotpconfig.EmailOTPConfig{
+				OverrideDefaultEmailVerification: true,
+				SendVerificationOTP: func(data emailotpconfig.SendVerificationOTPData, req *http.Request) error {
+					otpOnlyMu.Lock()
+					otpOnlyCalls = append(otpOnlyCalls, data)
+					otpOnlyMu.Unlock()
+					return nil
+				},
+			})),
+			WithConfig(func(c *config.AuthConfig) {
+				compatMode(c)
+				c.EmailAndPassword.RequireEmailVerification = true
+			}),
+		)
+		res = sOTPOnly.Post(t, "/api/auth/sign-up/email", map[string]any{
+			"email":    "otponly@example.com",
+			"password": "Password123!",
+			"name":     "OTP Only User",
+		})
+		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+		res = sOTPOnly.Post(t, "/api/auth/send-verification-email", map[string]any{
+			"email": "otponly@example.com",
+		})
+		require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+		otpOnlyMu.Lock()
+		require.Len(t, otpOnlyCalls, 2)
+		otpOnlyMu.Unlock()
 	})
 }
 

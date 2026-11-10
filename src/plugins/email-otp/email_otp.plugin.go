@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/common/middleware"
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
@@ -211,12 +212,17 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		p.service.SetSecondaryStorage(ictx.SecondaryStorage)
 	}
 
-	// Step 4: Register lifecycle hook to send verification OTP code when a new user is created
+	// Step 4: Register lifecycle hook and global verification override sender when enabled
 	p.hookService = &emailOTPHookService{plugin: p}
 	if ictx.Hooks != nil {
 		ictx.Hooks.Register(p.hookService)
 		if p.config.OverrideDefaultEmailVerification {
-			ictx.Hooks.OverrideEmailVerification()
+			ictx.Hooks.SetVerificationEmailSender(func(ctx context.Context, user *models.User, _ string) error {
+				if user == nil {
+					return nil
+				}
+				return p.service.SendSignUpVerificationOTP(ctx, user.Email, config.GetHTTPRequest(ctx))
+			})
 		}
 	}
 

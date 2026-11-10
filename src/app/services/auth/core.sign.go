@@ -193,8 +193,8 @@ func (s *Service) SignInEmail(ctx context.Context, in dtos.SignInEmailInput, met
 	// config: RequireEmailVerification blocks unverified users. The check runs after the password check,
 	// so only the real owner learns the email is unverified.
 	if s.cfg.EmailAndPassword.RequireEmailVerification && !user.EmailVerified {
-		// config: EmailVerification.SendOnSignIn re-sends the verification link on each blocked attempt
-		if s.cfg.EmailVerification.SendVerificationEmail != nil && s.cfg.EmailVerification.SendOnSignIn {
+		// config: EmailVerification.SendOnSignIn re-sends verification via core link or overridden plugin sender (e.g. email-otp)
+		if s.hasVerificationSender() && s.cfg.EmailVerification.SendOnSignIn {
 			if err := s.sendVerificationEmail(ctx, user, deref(in.CallbackURL)); err != nil {
 				return nil, err
 			}

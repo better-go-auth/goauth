@@ -81,10 +81,15 @@ type HookRegistry interface {
 	TriggerSessionRevoked(ctx context.Context, session *models.Session) error
 	TriggerActiveOrgChanged(ctx context.Context, userID, newOrgID string) error
 
-	// Verification Override allows plugins (e.g. email-otp) to suppress the core default verification email.
+	// Verification Override allows plugins (e.g. email-otp) to suppress or replace the core default verification email.
 	OverrideEmailVerification()
+	SetVerificationEmailSender(fn VerificationEmailSender)
 	IsEmailVerificationOverridden() bool
+	VerificationEmailSender() VerificationEmailSender
 }
+
+// VerificationEmailSender defines an overridden email verification dispatcher (e.g. sending an OTP instead of a link).
+type VerificationEmailSender func(ctx context.Context, user *models.User, callbackURL string) error
 
 // DefaultHookRegistry provides thread-safe lifecycle hook registration and dispatch.
 type DefaultHookRegistry struct {
@@ -92,6 +97,7 @@ type DefaultHookRegistry struct {
 	services []HookService
 
 	emailVerificationOverridden bool
+	verificationEmailSender     VerificationEmailSender
 
 	beforeUserCreate    []func(ctx context.Context, user *models.User) error
 	afterUserCreate     []func(ctx context.Context, user *models.User) error
@@ -113,10 +119,23 @@ func (h *DefaultHookRegistry) OverrideEmailVerification() {
 	h.emailVerificationOverridden = true
 }
 
+func (h *DefaultHookRegistry) SetVerificationEmailSender(fn VerificationEmailSender) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.emailVerificationOverridden = true
+	h.verificationEmailSender = fn
+}
+
 func (h *DefaultHookRegistry) IsEmailVerificationOverridden() bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.emailVerificationOverridden
+}
+
+func (h *DefaultHookRegistry) VerificationEmailSender() VerificationEmailSender {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return h.verificationEmailSender
 }
 
 func (h *DefaultHookRegistry) Register(service HookService) {
