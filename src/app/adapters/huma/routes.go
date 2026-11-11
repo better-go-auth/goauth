@@ -10,12 +10,51 @@ import (
 
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/origin"
 	"github.com/danielgtaylor/huma/v2"
+)
+
+// Core Better Auth operation IDs.
+const (
+	// Health & diagnostics
+	OpOK        = consts.OperationId("ok")
+	OpErrorPage = consts.OperationId("error")
+
+	// Session
+	OpGetSession          = consts.OperationId("getSession")
+	OpRefreshSession      = consts.OperationId("refreshSession")
+	OpListSessions        = consts.OperationId("listSessions")
+	OpRevokeSession       = consts.OperationId("revokeSession")
+	OpRevokeSessions      = consts.OperationId("revokeSessions")
+	OpRevokeOtherSessions = consts.OperationId("revokeOtherSessions")
+	OpUpdateSession       = consts.OperationId("updateSession")
+
+	// Auth & Verification
+	OpSignUpWithEmailAndPassword = consts.OperationId("signUpWithEmailAndPassword")
+	OpSignInEmail                = consts.OperationId("signInEmail")
+	OpSignOut                    = consts.OperationId("signOut")
+	OpVerifyPassword             = consts.OperationId("verifyPassword")
+	OpSendVerificationEmail      = consts.OperationId("sendVerificationEmail")
+	OpVerifyEmail                = consts.OperationId("verifyEmail")
+	OpChangeEmail                = consts.OperationId("changeEmail")
+
+	// Password Reset & Change
+	OpRequestPasswordReset  = consts.OperationId("requestPasswordReset")
+	OpResetPasswordCallback = consts.OperationId("resetPasswordCallback")
+	OpResetPassword         = consts.OperationId("resetPassword")
+	OpChangePassword        = consts.OperationId("changePassword")
+
+	// User & Accounts
+	OpUpdateUser         = consts.OperationId("updateUser")
+	OpDeleteUser         = consts.OperationId("deleteUser")
+	OpDeleteUserCallback = consts.OperationId("deleteUserCallback")
+	OpListUserAccounts   = consts.OperationId("listUserAccounts")
+	OpUnlinkAccount      = consts.OperationId("unlinkAccount")
 )
 
 // Deps are what the better-auth endpoints need.
@@ -61,43 +100,43 @@ func RegisterRoutes(api huma.API, d Deps) {
 		}
 		register(op)
 	}
-	get := func(id, path, summary string) huma.Operation {
-		return huma.Operation{OperationID: id, Method: http.MethodGet, Path: path, Summary: summary}
+	get := func(id consts.OperationId, path, summary string) huma.Operation {
+		return huma.Operation{OperationID: id.Str(), Method: http.MethodGet, Path: path, Summary: summary}
 	}
-	post := func(id, path, summary string) huma.Operation {
-		return huma.Operation{OperationID: id, Method: http.MethodPost, Path: path, Summary: summary}
+	post := func(id consts.OperationId, path, summary string) huma.Operation {
+		return huma.Operation{OperationID: id.Str(), Method: http.MethodPost, Path: path, Summary: summary}
 	}
 
-	reg(get("ok", "/ok", "Health check"), public, func(op huma.Operation) { huma.Register(api, op, h.ok) })
-	reg(get("error", "/error", "Error page"), public, func(op huma.Operation) { huma.Register(api, op, h.errorPage) })
+	reg(get(OpOK, "/ok", "Health check"), public, func(op huma.Operation) { huma.Register(api, op, h.ok) })
+	reg(get(OpErrorPage, "/error", "Error page"), public, func(op huma.Operation) { huma.Register(api, op, h.errorPage) })
 
-	reg(get("getSession", "/get-session", "Get the current session"), public, func(op huma.Operation) { huma.Register(api, op, h.GetSession) })
-	reg(post("refreshSession", "/get-session", "Refresh the current session (deferSessionRefresh)"), public, func(op huma.Operation) { huma.Register(api, op, h.PostSession) })
-	reg(get("listSessions", "/list-sessions", "List the user's sessions"), session, func(op huma.Operation) { huma.Register(api, op, h.ListSessions) })
-	reg(post("revokeSession", "/revoke-session", "Revoke one session"), session, func(op huma.Operation) { huma.Register(api, op, h.RevokeSession) })
-	reg(post("revokeSessions", "/revoke-sessions", "Revoke all sessions"), session, func(op huma.Operation) { huma.Register(api, op, h.RevokeSessions) })
-	reg(post("revokeOtherSessions", "/revoke-other-sessions", "Revoke all other sessions"), session, func(op huma.Operation) { huma.Register(api, op, h.RevokeOtherSessions) })
-	reg(post("updateSession", "/update-session", "Update session fields"), session, func(op huma.Operation) { huma.Register(api, op, h.UpdateSession) })
+	reg(get(OpGetSession, "/get-session", "Get the current session"), public, func(op huma.Operation) { huma.Register(api, op, h.GetSession) })
+	reg(post(OpRefreshSession, "/get-session", "Refresh the current session (deferSessionRefresh)"), public, func(op huma.Operation) { huma.Register(api, op, h.PostSession) })
+	reg(get(OpListSessions, "/list-sessions", "List the user's sessions"), session, func(op huma.Operation) { huma.Register(api, op, h.ListSessions) })
+	reg(post(OpRevokeSession, "/revoke-session", "Revoke one session"), session, func(op huma.Operation) { huma.Register(api, op, h.RevokeSession) })
+	reg(post(OpRevokeSessions, "/revoke-sessions", "Revoke all sessions"), session, func(op huma.Operation) { huma.Register(api, op, h.RevokeSessions) })
+	reg(post(OpRevokeOtherSessions, "/revoke-other-sessions", "Revoke all other sessions"), session, func(op huma.Operation) { huma.Register(api, op, h.RevokeOtherSessions) })
+	reg(post(OpUpdateSession, "/update-session", "Update session fields"), session, func(op huma.Operation) { huma.Register(api, op, h.UpdateSession) })
 
-	reg(post("signUpWithEmailAndPassword", "/sign-up/email", "Sign up with email and password"), form, func(op huma.Operation) { huma.Register(api, op, h.SignUpEmail) })
-	reg(post("signInEmail", "/sign-in/email", "Sign in with email and password"), form, func(op huma.Operation) { huma.Register(api, op, h.SignInEmail) })
-	reg(post("signOut", "/sign-out", "Sign out"), public, func(op huma.Operation) { huma.Register(api, op, h.SignOut) })
-	reg(post("verifyPassword", "/verify-password", "Check the current user's password"), session, func(op huma.Operation) { huma.Register(api, op, h.VerifyPassword) })
+	reg(post(OpSignUpWithEmailAndPassword, "/sign-up/email", "Sign up with email and password"), form, func(op huma.Operation) { huma.Register(api, op, h.SignUpEmail) })
+	reg(post(OpSignInEmail, "/sign-in/email", "Sign in with email and password"), form, func(op huma.Operation) { huma.Register(api, op, h.SignInEmail) })
+	reg(post(OpSignOut, "/sign-out", "Sign out"), public, func(op huma.Operation) { huma.Register(api, op, h.SignOut) })
+	reg(post(OpVerifyPassword, "/verify-password", "Check the current user's password"), session, func(op huma.Operation) { huma.Register(api, op, h.VerifyPassword) })
 
-	reg(post("sendVerificationEmail", "/send-verification-email", "Send a verification email"), withSession, func(op huma.Operation) { huma.Register(api, op, h.SendVerificationEmail) })
-	reg(get("verifyEmail", "/verify-email", "Verify an email address"), withSession, func(op huma.Operation) { huma.Register(api, op, h.VerifyEmail) })
-	reg(post("changeEmail", "/change-email", "Change the user's email"), session, func(op huma.Operation) { huma.Register(api, op, h.ChangeEmail) })
+	reg(post(OpSendVerificationEmail, "/send-verification-email", "Send a verification email"), withSession, func(op huma.Operation) { huma.Register(api, op, h.SendVerificationEmail) })
+	reg(get(OpVerifyEmail, "/verify-email", "Verify an email address"), withSession, func(op huma.Operation) { huma.Register(api, op, h.VerifyEmail) })
+	reg(post(OpChangeEmail, "/change-email", "Change the user's email"), session, func(op huma.Operation) { huma.Register(api, op, h.ChangeEmail) })
 
-	reg(post("requestPasswordReset", "/request-password-reset", "Send a password reset link"), public, func(op huma.Operation) { huma.Register(api, op, h.RequestPasswordReset) })
-	reg(get("resetPasswordCallback", "/reset-password/{token}", "Validate a reset link and redirect"), public, func(op huma.Operation) { huma.Register(api, op, h.ResetPasswordCallback) })
-	reg(post("resetPassword", "/reset-password", "Reset the password with a token"), public, func(op huma.Operation) { huma.Register(api, op, h.ResetPassword) })
-	reg(post("changePassword", "/change-password", "Change the user's password"), session, func(op huma.Operation) { huma.Register(api, op, h.ChangePassword) })
+	reg(post(OpRequestPasswordReset, "/request-password-reset", "Send a password reset link"), public, func(op huma.Operation) { huma.Register(api, op, h.RequestPasswordReset) })
+	reg(get(OpResetPasswordCallback, "/reset-password/{token}", "Validate a reset link and redirect"), public, func(op huma.Operation) { huma.Register(api, op, h.ResetPasswordCallback) })
+	reg(post(OpResetPassword, "/reset-password", "Reset the password with a token"), public, func(op huma.Operation) { huma.Register(api, op, h.ResetPassword) })
+	reg(post(OpChangePassword, "/change-password", "Change the user's password"), session, func(op huma.Operation) { huma.Register(api, op, h.ChangePassword) })
 
-	reg(post("updateUser", "/update-user", "Update the user"), session, func(op huma.Operation) { huma.Register(api, op, h.UpdateUser) })
-	reg(post("deleteUser", "/delete-user", "Delete the user"), session, func(op huma.Operation) { huma.Register(api, op, h.DeleteUser) })
-	reg(get("deleteUserCallback", "/delete-user/callback", "Confirm account deletion"), withSession, func(op huma.Operation) { huma.Register(api, op, h.DeleteUserCallback) })
-	reg(get("listUserAccounts", "/list-accounts", "List the user's accounts"), session, func(op huma.Operation) { huma.Register(api, op, h.ListAccounts) })
-	reg(post("unlinkAccount", "/unlink-account", "Unlink an account"), session, func(op huma.Operation) { huma.Register(api, op, h.UnlinkAccount) })
+	reg(post(OpUpdateUser, "/update-user", "Update the user"), session, func(op huma.Operation) { huma.Register(api, op, h.UpdateUser) })
+	reg(post(OpDeleteUser, "/delete-user", "Delete the user"), session, func(op huma.Operation) { huma.Register(api, op, h.DeleteUser) })
+	reg(get(OpDeleteUserCallback, "/delete-user/callback", "Confirm account deletion"), withSession, func(op huma.Operation) { huma.Register(api, op, h.DeleteUserCallback) })
+	reg(get(OpListUserAccounts, "/list-accounts", "List the user's accounts"), session, func(op huma.Operation) { huma.Register(api, op, h.ListAccounts) })
+	reg(post(OpUnlinkAccount, "/unlink-account", "Unlink an account"), session, func(op huma.Operation) { huma.Register(api, op, h.UnlinkAccount) })
 }
 
 type statusBody struct {

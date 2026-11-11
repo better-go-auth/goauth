@@ -58,10 +58,16 @@ func setupOrgUser(t *testing.T, env *helpers.TestEnv, email string, orgID, orgRo
 	return user.ID, map[string]string{"Authorization": "Bearer " + swu.Session.Token}
 }
 
+func setupOrgHTTPUser(t *testing.T, env *helpers.TestEnv, email string, orgID, orgRole string) (string, map[string]string) {
+	t.Helper()
+	uid, hdr := setupOrgUser(t, env, email, orgID, orgRole)
+	return uid, helpers.SignedBearerHeader(hdr, env.Options.Secret)
+}
+
 func TestOrgE2E_FullFlow(t *testing.T) {
 	env := helpers.SetupTestEnv(t, true)
-	ownerUserID, ownerAuthHeader := setupOrgUser(t, env, "owner@example.com", "", "")
-	memberUserID, memberAuthHeader := setupOrgUser(t, env, "member@example.com", "", "")
+	ownerUserID, ownerAuthHeader := setupOrgHTTPUser(t, env, "owner@example.com", "", "")
+	memberUserID, memberAuthHeader := setupOrgHTTPUser(t, env, "member@example.com", "", "")
 
 	var orgID string
 	var invitationID string
@@ -118,7 +124,7 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 		{
 			var swu dtos.SessionWithUser
 			if err := json.Unmarshal([]byte(setBody), &swu); err == nil && swu.Session.Token != "" {
-				ownerAuthHeader = map[string]string{"Authorization": "Bearer " + swu.Session.Token}
+				ownerAuthHeader = map[string]string{"Authorization": helpers.SignedBearerAuth(swu.Session.Token, env.Options.Secret)}
 			}
 		}
 
@@ -173,7 +179,7 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 		if swu.Session.Token == "" {
 			t.Fatalf("Expected valid session token in SetActiveOrg response")
 		}
-		ownerAuthHeader = map[string]string{"Authorization": "Bearer " + swu.Session.Token}
+		ownerAuthHeader = map[string]string{"Authorization": helpers.SignedBearerAuth(swu.Session.Token, env.Options.Secret)}
 
 		// Legacy client refresh flow: exchange session token for JWT access token with new org claim
 		refreshInput := map[string]string{"token": swu.Session.Token}

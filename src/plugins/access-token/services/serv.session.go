@@ -156,6 +156,9 @@ func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*models.Aut
 	if s.ActiveOrganizationRole != nil {
 		claims.ActiveOrgRole = *s.ActiveOrganizationRole
 	}
+	if s.ActiveTeamID != nil {
+		claims.ActiveTeamId = *s.ActiveTeamID
+	}
 	access, err := jwttoken.SignWithExpiry(aus.SConf.JWT.AccessSecret, &claims, aus.SConf.JWT.AccessExpiresIn)
 	if err != nil {
 		return nil, err

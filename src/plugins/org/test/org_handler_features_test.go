@@ -45,7 +45,7 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 	envDenied, _ := setupTeamsEnv(t, orgconfig.OrgConfig{
 		AllowUserToCreateOrganization: &allowFalse,
 	})
-	_, deniedAuth := setupOrgUser(t, envDenied, "http-denied@example.com", "", "")
+	_, deniedAuth := setupOrgHTTPUser(t, envDenied, "http-denied@example.com", "", "")
 	rec := doOrgHTTP(t, envDenied.Mux, http.MethodPost, "/api/auth/organization/create", map[string]any{
 		"name": "Denied Org",
 		"slug": "denied-org",
@@ -65,7 +65,7 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 		InvitationLimit:                    &invLimit,
 		CancelPendingInvitationsOnReInvite: &reinviteFalse,
 	})
-	ownerID, ownerAuth := setupOrgUser(t, env, "http-limit-owner@example.com", "", "")
+	ownerID, ownerAuth := setupOrgHTTPUser(t, env, "http-limit-owner@example.com", "", "")
 	_ = ownerID
 
 	// Create 1st org succeeds
@@ -151,8 +151,8 @@ func TestOrgHandlers_EmailVerificationAndReInvite(t *testing.T) {
 			},
 		},
 	})
-	_, ownerAuth := setupOrgUser(t, env, "http-verif-owner@example.com", "", "")
-	inviteeID, inviteeAuth := setupOrgUser(t, env, "http-verif-invitee@example.com", "", "")
+	_, ownerAuth := setupOrgHTTPUser(t, env, "http-verif-owner@example.com", "", "")
+	inviteeID, inviteeAuth := setupOrgHTTPUser(t, env, "http-verif-invitee@example.com", "", "")
 
 	// Mark invitee unverified
 	require.NoError(t, env.DB.Model(&coremodels.User{}).Where("id = ?", inviteeID).Update("email_verified", false).Error)
@@ -293,8 +293,8 @@ func TestOrgHandlers_TeamsAndHooks(t *testing.T) {
 		},
 	})
 
-	ownerID, ownerAuth := setupOrgUser(t, env, "http-teams-owner@example.com", "", "")
-	memberID, memberAuth := setupOrgUser(t, env, "http-teams-member@example.com", "", "")
+	ownerID, ownerAuth := setupOrgHTTPUser(t, env, "http-teams-owner@example.com", "", "")
+	memberID, memberAuth := setupOrgHTTPUser(t, env, "http-teams-member@example.com", "", "")
 	_ = ownerID
 
 	// Step 1: Create org -> creates custom default team and activates org on session
@@ -421,7 +421,7 @@ func setupSystemAdminUser(t *testing.T, env *helpers.TestEnv, email string) (str
 	require.NoError(t, env.DB.Create(user).Error)
 	swu, err := env.Auth.Sessions().Create(context.Background(), user, serv_interfaces.SessionMeta{}, serv_interfaces.SessionCreateOptions{})
 	require.NoError(t, err)
-	return user.ID, "Bearer " + swu.Session.Token
+	return user.ID, helpers.SignedBearerAuth(swu.Session.Token, env.Options.Secret)
 }
 
 // TestOrgHandlers_Issues2To6 tests Issues 2–6 across SQLite, PostgreSQL, and MySQL.
@@ -435,10 +435,10 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 		})
 
 		adminID, adminAuth := setupSystemAdminUser(t, env, "sysadmin-issues@example.com")
-		ownerID, ownerAuth := setupOrgUser(t, env, "owner-issues@example.com", "", "")
-		memberID, memberAuth := setupOrgUser(t, env, "member-issues@example.com", "", "")
+		ownerID, ownerAuth := setupOrgHTTPUser(t, env, "owner-issues@example.com", "", "")
+		memberID, memberAuth := setupOrgHTTPUser(t, env, "member-issues@example.com", "", "")
 		_ = memberID
-		coOwnerID, coOwnerAuth := setupOrgUser(t, env, "coowner-issues@example.com", "", "")
+		coOwnerID, coOwnerAuth := setupOrgHTTPUser(t, env, "coowner-issues@example.com", "", "")
 
 		// Step 1 (Better Auth parity): /organization/create behaves uniformly (pending when OrgNeedsApproval=true) even for system Admin; /admin/organization/create activates immediately
 		rec := doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/create", map[string]any{

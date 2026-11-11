@@ -54,6 +54,7 @@ func ValidateToken(tokenStr string, signingKey string) (*token.CustomClaims, err
 			// multi tenancy support
 			ActiveOrgId:   claims.ActiveOrgID,
 			ActiveOrgRole: claims.ActiveOrgRole,
+			ActiveTeamId:  claims.ActiveTeamID,
 		}, nil
 	}
 	return nil, jwt.ErrInvalidKey
@@ -100,6 +101,7 @@ func SignWithExpiry(signingKey string, claims *token.CustomClaims, expiryMinutes
 		Type:          claims.Type,
 		ActiveOrgID:   claims.ActiveOrgId,
 		ActiveOrgRole: claims.ActiveOrgRole,
+		ActiveTeamID:  claims.ActiveTeamId,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtClaims)
 	signed, err := token.SignedString([]byte(signingKey))
@@ -145,6 +147,7 @@ type jwtClaims struct {
 	Type          string `json:"typ,omitempty"`
 	ActiveOrgID   string `json:"activeOrgId,omitempty"`
 	ActiveOrgRole string `json:"activeOrgRole,omitempty"`
+	ActiveTeamID  string `json:"activeTeamId,omitempty"`
 }
 
 // Implementation of token.ITokenManager
@@ -164,6 +167,7 @@ func (m *JWTManager) GenerateToken(_ context.Context, claims token.CustomClaims)
 		Role:          claims.Role,
 		ActiveOrgID:   claims.ActiveOrgId,
 		ActiveOrgRole: claims.ActiveOrgRole,
+		ActiveTeamID:  claims.ActiveTeamId,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtClaims)
 	signed, err := token.SignedString(m.Secret)
@@ -194,6 +198,7 @@ func (m *JWTManager) ValidateToken(ctx context.Context, tokenStr string) (*token
 			// multi tenancy support
 			ActiveOrgId:   claims.ActiveOrgID,
 			ActiveOrgRole: claims.ActiveOrgRole,
+			ActiveTeamId:  claims.ActiveTeamID,
 		}, nil
 	}
 	return nil, jwt.ErrInvalidKey

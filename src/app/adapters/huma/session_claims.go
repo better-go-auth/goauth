@@ -13,7 +13,7 @@ import (
 )
 
 // SessionClaims implements middleware.SessionClaimsResolver: it lets the legacy auth middleware accept a
-// better-auth session token (raw bearer token or signed session cookie) in place of an access JWT.
+// verified session cookie (including cookies injected by the bearer or access-token plugins) in place of an access JWT.
 type SessionClaims struct {
 	mgr     *sessionsvc.Manager
 	cookies *cookies.Manager
@@ -28,13 +28,13 @@ func (r *SessionClaims) ClaimsFromSession(ctx context.Context, bearer, cookieHea
 	var sw *dtos.SessionWithUser
 	var err error
 
-	// 1. Try resolving session from Bearer token
-	if bearer != "" {
-		sw, err = r.mgr.Get(ctx, bearer)
-	}
+	// Raw Bearer tokens are intentionally ignored here: opaque Bearer tokens must be validated
+	// by the bearer plugin (which injects a signed session cookie into Cookie) and Access JWTs
+	// are validated by access-token middleware.
+	_ = bearer
 
-	// 2. If Bearer token did not resolve a session (e.g. it was an access JWT and cookie was injected), try session cookie
-	if (sw == nil || err != nil) && cookieHeader != "" {
+	// 1. Resolve session exclusively from the HMAC-signed session cookie
+	if cookieHeader != "" {
 		if cookieTok, ok := r.cookies.SessionToken(cookieHeader); ok && cookieTok != "" {
 			sw, err = r.mgr.Get(ctx, cookieTok)
 		}

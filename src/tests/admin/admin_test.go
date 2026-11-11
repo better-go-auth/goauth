@@ -46,7 +46,8 @@ func setupAdminUser(t *testing.T, env *helpers.TestEnv) (string, map[string]stri
 
 func TestAdminE2E_FullFlow(t *testing.T) {
 	env := helpers.SetupTestEnv(t, true)
-	_, adminAuthHeader := setupAdminUser(t, env)
+	_, rawAuthHeader := setupAdminUser(t, env)
+	adminAuthHeader := helpers.SignedBearerHeader(rawAuthHeader, env.Options.Secret)
 
 	var managedUserID string
 	var userSessionID string
@@ -267,7 +268,7 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 	})
 
 	t.Run("Stop Impersonating", func(t *testing.T) {
-		impersonatedAuthHeader := map[string]string{"Authorization": "Bearer " + impersonatedToken}
+		impersonatedAuthHeader := map[string]string{"Authorization": helpers.SignedBearerAuth(impersonatedToken, env.Options.Secret)}
 		stopInput := admindtos.AdminStopImpersonatingInput{}
 		resp, body := env.PostJSON("/api/auth/admin/stop-impersonating", stopInput, impersonatedAuthHeader)
 		if !isSuccess(resp.StatusCode) {

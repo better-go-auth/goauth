@@ -22,10 +22,13 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/plugins/bearer"
+	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
 	"github.com/better-go-auth/goauth/src/plugins/org"
 	humaorg "github.com/better-go-auth/goauth/src/plugins/org/adapters/huma"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	redis_storage "github.com/better-go-auth/goauth/src/providers/sec-storage/redis"
@@ -168,6 +171,7 @@ func SetupTestEnvWithDB(t *testing.T, dbType DatabaseType) *TestEnv {
 			TrustedOrigins: []string{"http://127.0.0.1:*", "http://localhost:*"},
 		},
 		Plugins: []plugin.Plugin{
+			bearer.New(bearerconfig.DefaultConfig()),
 			adminPlugin,
 			orgPlugin,
 			accessTokenPlugin,
@@ -360,6 +364,23 @@ func (e *TestEnv) doJSON(method, path string, body any, headers ...map[string]st
 // ContextWithClaims wraps a context with authenticated token.CustomClaims for direct handler testing.
 func ContextWithClaims(ctx context.Context, claims token.CustomClaims) context.Context {
 	return context.WithValue(ctx, consts.CtxClaims.Str(), claims)
+}
+
+// SignedBearerAuth signs a raw opaque session token with HMAC-SHA256 for Authorization: Bearer requests.
+func SignedBearerAuth(rawToken, secret string) string {
+	return "Bearer " + cookies.SignCookieValue(rawToken, secret)
+}
+
+// SignedBearerHeader signs an existing `Bearer <rawToken>` header map for HTTP requests.
+func SignedBearerHeader(hdr map[string]string, secret string) map[string]string {
+	out := make(map[string]string, len(hdr))
+	for k, v := range hdr {
+		out[k] = v
+	}
+	if auth, ok := out["Authorization"]; ok && len(auth) > 7 && auth[:7] == "Bearer " {
+		out["Authorization"] = SignedBearerAuth(auth[7:], secret)
+	}
+	return out
 }
 
 // AuthContext creates a context with user claims for direct handler testing.

@@ -2,9 +2,13 @@ package accesstoken
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -28,11 +32,11 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
-
 
 func safeHumagoUnwrap(ctx huma.Context) (r *http.Request, w http.ResponseWriter) {
 	defer func() {
@@ -380,6 +384,7 @@ func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Contex
 			authHeader = ctx.Header("authorization")
 		}
 
+		var refreshedTokenCtx huma.Context
 		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 			raw := strings.TrimSpace(authHeader[7:])
 			// if the raw is a jwt token verify and attach the session with the request
@@ -387,61 +392,24 @@ func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Contex
 				// 1. Verify access JWT
 				claims, err := jwttoken.ValidateAccessToken(raw, accessSecret)
 				if err == nil && claims != nil && claims.SessionID != "" {
-					// 2. Revocation check — check if session is blacklisted in secondary storage.:
-					// TODO: not really needed if we use secondary storage sessions
-					isRevoked := false
-					if p.secStorage != nil {
-						if _, exists, _ := p.secStorage.Get(ctx.Context(), sec_storage.RevokedSessionPrefix+claims.SessionID); exists {
-							isRevoked = true
-						}
-					}
-					// 3. Fast-path: plugin-owned sid: -> token index (zero DB hit when cache warm)
-					var sessWithUsr *dtos.SessionWithUser
-					var sessToken string
-					if !isRevoked && p.sessionSvc != nil {
-						if cached, _ := p.sessionSvc.GetBySID(ctx.Context(), claims.SessionID); cached != nil {
-							sessWithUsr = cached
-							sessToken = cached.Session.Token
-						}
-					}
-					// 4. DB fallback on index miss + backfill
-					if sessWithUsr == nil && !isRevoked && p.repos != nil {
-						// find the session by session.id
-						sess, err := p.repos.FindSessionByID(ctx.Context(), claims.SessionID)
-						if err == nil && sess != nil && sess.ExpiresAt.After(time.Now()) {
-							if p.sessionMgr != nil {
-								sessWithUsr, _ = p.sessionMgr.Get(ctx.Context(), sess.Token)
-							}
-							// if the session is not in the cache, add it to the cache
-							if sessWithUsr == nil {
-								u, err := p.repos.FindUserByID(ctx.Context(), sess.UserID)
-								if err == nil && u != nil {
-									sessWithUsr = &dtos.SessionWithUser{
-										Session: dtos.SessionFromModel(sess),
-										User:    dtos.UserFromModel(u),
-									}
-								}
-							}
-							// if we have found the session with user, update the sid:token
-							if sessWithUsr != nil {
-								sessToken = sess.Token
-								ttl := time.Until(sess.ExpiresAt)
-								if ttl > 0 {
-									if p.sessionSvc != nil {
-										p.sessionSvc.BackfillSidIndex(ctx.Context(), sess.ID, sess.Token, ttl)
-									} else if p.secStorage != nil {
-										_ = p.secStorage.Set(ctx.Context(), SidPrefix+sess.ID, sess.Token, ttl)
-									}
-								}
-							}
-						}
-					}
-					// put he session user in the context
+					// Preserve original token org/team claims to detect session mutations after handler runs
+					tokenOrgID := claims.ActiveOrgId
+					tokenOrgRole := claims.ActiveOrgRole
+					tokenTeamID := claims.ActiveTeamId
+
+					// 2. Revocation check + live session lookup (cache fast-path with DB fallback)
+					sessWithUsr, sessToken := p.resolveLiveSessionByID(ctx.Context(), claims.SessionID, true)
+					// put the session user in the context
 					if sessWithUsr != nil {
 						tok := sessToken
 						if tok == "" {
 							tok = sessWithUsr.Session.Token
 						}
+
+						// Layer 1 fix: Sync JWT claims with live session active org/role/team
+						// so subsequent requests with an older JWT immediately reflect session state.
+						syncClaimsFromSession(claims, &sessWithUsr.Session)
+
 						// Attach to context
 						stdCtx := ctx.Context()
 						stdCtx = humaadapter.WithSession(stdCtx, sessWithUsr)
@@ -452,39 +420,192 @@ func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Contex
 							stdCtx = context.WithValue(stdCtx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
 						}
 						ctx = huma.WithContext(ctx, stdCtx)
-
-						if !idgen.IsToken(tok) {
-							tok = ""
-						} else {
+						// add token from the session to cookie
+						if idgen.IsToken(tok) {
 							signedCookieVal := cm.Signed(tok)
 							if r, _ := safeHumagoUnwrap(ctx); r != nil {
 								injectCookieHeader(r, cookieName, signedCookieVal)
 							}
 						}
-					}
-				}
-			} else if raw != "" && p.sessionMgr != nil {
-				if sw, _ := p.sessionMgr.Get(ctx.Context(), raw); sw != nil {
-					// Attach to context
-					ctx = huma.WithContext(ctx, humaadapter.WithSession(ctx.Context(), sw))
-					ctx = huma.WithContext(ctx, humaadapter.WithBearerToken(ctx.Context(), raw))
-					ctx = huma.WithValue(ctx, constant.CTXUser_ID.Str(), sw.User.ID)
-					if sw.Session.ActiveOrganizationID != nil {
-						ctx = huma.WithValue(ctx, constant.CTXCompany_ID.Str(), *sw.Session.ActiveOrganizationID)
-					}
 
-					if idgen.IsToken(raw) {
-						signedCookieVal := cm.Signed(raw)
-						if r, _ := safeHumagoUnwrap(ctx); r != nil {
-							injectCookieHeader(r, cookieName, signedCookieVal)
+						// Layer 2 fix: If this request mutates active org/role/team (e.g. SetActiveOrganization / SetActiveTeam),
+						// mint a fresh access JWT and return it in the set-auth-token response header before writing headers.
+						if p.sessionSvc != nil {
+							sessionID := claims.SessionID
+							innerCtx := ctx
+							wrapped := &accessTokenContextWrapper{
+								inner: innerCtx,
+								onBeforeWrite: func() {
+									latest, _ := p.resolveLiveSessionByID(innerCtx.Context(), sessionID, false)
+									if latest == nil {
+										return
+									}
+									curOrgID := derefStr(latest.Session.ActiveOrganizationID)
+									curOrgRole := derefStr(latest.Session.ActiveOrganizationRole)
+									curTeamID := derefStr(latest.Session.ActiveTeamID)
+									if curOrgID == tokenOrgID && curOrgRole == tokenOrgRole && curTeamID == tokenTeamID {
+										return
+									}
+									tokens, tokErr := p.sessionSvc.Tokens(&latest.Session, latest.User.Role)
+									if tokErr != nil || tokens == nil || tokens.AccessToken == "" {
+										return
+									}
+									innerCtx.SetHeader("set-auth-token", tokens.AccessToken)
+									curExp := innerCtx.Header("Access-Control-Expose-Headers")
+									innerCtx.SetHeader("Access-Control-Expose-Headers", appendExposedHeader(curExp, "set-auth-token"))
+									if _, hw := safeHumagoUnwrap(innerCtx); hw != nil {
+										hw.Header().Set("set-auth-token", tokens.AccessToken)
+										hwExp := hw.Header().Get("Access-Control-Expose-Headers")
+										hw.Header().Set("Access-Control-Expose-Headers", appendExposedHeader(hwExp, "set-auth-token"))
+									}
+								},
+							}
+							refreshedTokenCtx = wrapped
 						}
 					}
 				}
 			}
 		}
 
+		if refreshedTokenCtx != nil {
+			next(refreshedTokenCtx)
+			if w, ok := refreshedTokenCtx.(*accessTokenContextWrapper); ok {
+				w.flush()
+			}
+			return
+		}
 		next(ctx)
 	}
+}
+// resolveLiveSessionByID after a jwt token is verified, gets the token by session.id and checks if it is revoked
+func (p *Plugin) resolveLiveSessionByID(ctx context.Context, sessionID string, populateCache bool) (*dtos.SessionWithUser, string) {
+	// Step 1: Reject blacklisted sessions
+	if p.secStorage != nil {
+		if _, exists, _ := p.secStorage.Get(ctx, sec_storage.RevokedSessionPrefix+sessionID); exists {
+			return nil, ""
+		}
+	}
+	// Step 2: Fast-path via sid: -> token cache index
+	if p.sessionSvc != nil {
+		if cached, _ := p.sessionSvc.GetBySID(ctx, sessionID); cached != nil {
+			return cached, cached.Session.Token
+		}
+	}
+	// Step 3: Fallback to DB session lookup
+	if p.repos == nil {
+		return nil, ""
+	}
+	sess, err := p.repos.FindSessionByID(ctx, sessionID)
+	if err != nil || sess == nil || !sess.ExpiresAt.After(time.Now()) {
+		return nil, ""
+	}
+	var sessWithUsr *dtos.SessionWithUser
+	if p.sessionMgr != nil {
+		sessWithUsr, _ = p.sessionMgr.Get(ctx, sess.Token)
+	}
+	if sessWithUsr == nil {
+		u, err := p.repos.FindUserByID(ctx, sess.UserID)
+		if err == nil && u != nil {
+			sessWithUsr = &dtos.SessionWithUser{
+				Session: dtos.SessionFromModel(sess),
+				User:    dtos.UserFromModel(u),
+			}
+		}
+	}
+	if sessWithUsr != nil && populateCache {
+		ttl := time.Until(sess.ExpiresAt)
+		if ttl > 0 {
+			if p.sessionSvc != nil {
+				p.sessionSvc.BackfillSidIndex(ctx, sess.ID, sess.Token, ttl)
+			} else if p.secStorage != nil {
+				_ = p.secStorage.Set(ctx, SidPrefix+sess.ID, sess.Token, ttl)
+			}
+		}
+	}
+	return sessWithUsr, sess.Token
+}
+
+func syncClaimsFromSession(claims *token.CustomClaims, sess *dtos.SessionData) {
+	if claims == nil || sess == nil {
+		return
+	}
+	claims.ActiveOrgId = derefStr(sess.ActiveOrganizationID)
+	claims.ActiveOrgRole = derefStr(sess.ActiveOrganizationRole)
+	claims.ActiveTeamId = derefStr(sess.ActiveTeamID)
+}
+
+func derefStr(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+type accessTokenContextWrapper struct {
+	inner         huma.Context
+	onBeforeWrite func()
+	wrote         bool
+}
+
+var _ huma.Context = (*accessTokenContextWrapper)(nil)
+
+func (w *accessTokenContextWrapper) flush() {
+	if !w.wrote {
+		w.wrote = true
+		if w.onBeforeWrite != nil {
+			w.onBeforeWrite()
+		}
+	}
+}
+
+func (w *accessTokenContextWrapper) Unwrap() huma.Context       { return w.inner }
+func (w *accessTokenContextWrapper) Operation() *huma.Operation { return w.inner.Operation() }
+func (w *accessTokenContextWrapper) Context() context.Context   { return w.inner.Context() }
+func (w *accessTokenContextWrapper) TLS() *tls.ConnectionState  { return w.inner.TLS() }
+func (w *accessTokenContextWrapper) Version() huma.ProtoVersion { return w.inner.Version() }
+func (w *accessTokenContextWrapper) Method() string             { return w.inner.Method() }
+func (w *accessTokenContextWrapper) Host() string               { return w.inner.Host() }
+func (w *accessTokenContextWrapper) RemoteAddr() string         { return w.inner.RemoteAddr() }
+func (w *accessTokenContextWrapper) URL() url.URL               { return w.inner.URL() }
+func (w *accessTokenContextWrapper) Param(name string) string   { return w.inner.Param(name) }
+func (w *accessTokenContextWrapper) Query(name string) string   { return w.inner.Query(name) }
+func (w *accessTokenContextWrapper) Header(name string) string  { return w.inner.Header(name) }
+func (w *accessTokenContextWrapper) EachHeader(cb func(name, value string)) {
+	w.inner.EachHeader(cb)
+}
+func (w *accessTokenContextWrapper) BodyReader() io.Reader { return w.inner.BodyReader() }
+func (w *accessTokenContextWrapper) GetMultipartForm() (*multipart.Form, error) {
+	return w.inner.GetMultipartForm()
+}
+
+func (w *accessTokenContextWrapper) SetReadDeadline(t time.Time) error {
+	return w.inner.SetReadDeadline(t)
+}
+func (w *accessTokenContextWrapper) Status() int { return w.inner.Status() }
+func (w *accessTokenContextWrapper) SetStatus(code int) {
+	w.flush()
+	w.inner.SetStatus(code)
+}
+func (w *accessTokenContextWrapper) SetHeader(name, value string) { w.inner.SetHeader(name, value) }
+func (w *accessTokenContextWrapper) AppendHeader(name, value string) {
+	w.inner.AppendHeader(name, value)
+}
+
+func (w *accessTokenContextWrapper) BodyWriter() io.Writer {
+	w.flush()
+	return w.inner.BodyWriter()
+}
+
+func appendExposedHeader(current, toAdd string) string {
+	if current == "" {
+		return toAdd
+	}
+	for _, p := range strings.Split(current, ",") {
+		if strings.EqualFold(strings.TrimSpace(p), toAdd) {
+			return current
+		}
+	}
+	return current + ", " + toAdd
 }
 
 func injectCookieHeader(r *http.Request, cookieName, signedCookieVal string) {

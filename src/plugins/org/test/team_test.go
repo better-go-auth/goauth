@@ -11,6 +11,8 @@ import (
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
+	"github.com/better-go-auth/goauth/src/plugins/bearer"
+	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
 	"github.com/better-go-auth/goauth/src/plugins/org"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
@@ -51,11 +53,15 @@ func setupTeamsEnvWithDB(t *testing.T, db *gorm.DB, cfg orgconfig.OrgConfig) (*h
 			Secret:         "secret-key-32-chars-long-for-test!",
 			TrustedOrigins: []string{"http://127.0.0.1:*", "http://localhost:*"},
 		},
-		Plugins: []plugin.Plugin{orgPlugin},
+		Plugins: []plugin.Plugin{
+			bearer.New(bearerconfig.DefaultConfig()),
+			orgPlugin,
+		},
 	})
 	require.NoError(t, err)
 
 	env := &helpers.TestEnv{
+		Options:    auth.Options(),
 		DB:         db,
 		Auth:       auth,
 		HumaAPI:    api,
