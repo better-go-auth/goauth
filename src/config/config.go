@@ -63,6 +63,7 @@ type AuthConfig struct {
 	Account           AccountOptions
 	Verification      VerificationOptions
 	RateLimit         RateLimitOptions
+	Security          SecurityConfig
 
 	GoAuth GoAuthConfig
 }

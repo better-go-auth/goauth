@@ -237,6 +237,12 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 			}
 		}
 	}
+
+	// Register operation-level security policy middleware after transport plugins (so bearer and
+	// access-token resolve credentials first) and before domain plugins / core routes snapshot middlewares.
+	origins := origin.New(opts.AuthConfig)
+	api.UseMiddleware(humaadapter.SecurityMiddleware(opts.AuthConfig, sessionMgr, cookieMgr, origins))
+
 	// 1b. Init all remaining plugins
 	for _, p := range opts.Plugins {
 		if p != nil && !isTransportPlugin(p.ID()) {
@@ -263,7 +269,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// Register after plugins so plugin middlewares (like bearer) wrap all routes
 	humaadapter.RegisterRoutes(api, humaadapter.Deps{
 		Conf: opts.AuthConfig, Auth: authService, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver,
-		Origins: origin.New(opts.AuthConfig),
+		Origins: origins,
 	})
 
 	return &GoAuth{

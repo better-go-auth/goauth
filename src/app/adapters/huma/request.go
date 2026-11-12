@@ -10,6 +10,7 @@ import (
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/providers/origin"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -68,27 +69,7 @@ func (h *handler) clientIP(req *http.Request) string {
 // too, using Fetch Metadata, and cross-site navigations are blocked.
 func (h *handler) originCheck(formCSRF bool) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		switch ctx.Method() {
-		case http.MethodGet, http.MethodHead, http.MethodOptions:
-			next(ctx)
-			return
-		}
-		// disableOriginCheck alone also disables the CSRF check, for compatibility with better-auth
-		if h.Conf.Advanced.DisableCSRFCheck || h.Conf.Advanced.DisableOriginCheck {
-			next(ctx)
-			return
-		}
-		if authHeader := ctx.Header("Authorization"); strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-			o := ctx.Header("Origin")
-			if o == "" {
-				o = ctx.Header("Referer")
-			}
-			if o == "" {
-				next(ctx)
-				return
-			}
-		}
-		if err := h.validateOrigin(ctx, formCSRF); err != nil {
+		if err := OriginError(ctx, h.Conf, h.Origins, formCSRF); err != nil {
 			writeError(ctx, err)
 			return
 		}
@@ -96,7 +77,31 @@ func (h *handler) originCheck(formCSRF bool) func(huma.Context, func(huma.Contex
 	}
 }
 
-func (h *handler) validateOrigin(ctx huma.Context, formCSRF bool) *autherr.AuthError {
+// OriginError validates Origin/Referer headers on mutating requests when CSRF/origin checks are enabled.
+func OriginError(ctx huma.Context, conf config.AuthConfig, origins *origin.Checker, formCSRF bool) *autherr.AuthError {
+	// 1. Skip safe read/preflight HTTP methods
+	switch ctx.Method() {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return nil
+	}
+	// 2. disableOriginCheck alone also disables the CSRF check, for compatibility with better-auth
+	if conf.Advanced.DisableCSRFCheck || conf.Advanced.DisableOriginCheck {
+		return nil
+	}
+	// 3. Non-browser Bearer requests without Origin/Referer bypass cookie CSRF checks
+	if authHeader := ctx.Header("Authorization"); strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		o := ctx.Header("Origin")
+		if o == "" {
+			o = ctx.Header("Referer")
+		}
+		if o == "" {
+			return nil
+		}
+	}
+	return validateOrigin(ctx, origins, formCSRF)
+}
+
+func validateOrigin(ctx huma.Context, origins *origin.Checker, formCSRF bool) *autherr.AuthError {
 	req := requestOf(ctx.Context())
 	var hasCookies bool
 	if req != nil {
@@ -132,7 +137,7 @@ func (h *handler) validateOrigin(ctx huma.Context, formCSRF bool) *autherr.AuthE
 	if o == "" || o == "null" {
 		return autherr.ErrMissingOrNullOrigin
 	}
-	if !h.Origins.IsTrusted(o, false) {
+	if origins != nil && !origins.IsTrusted(o, false) {
 		return autherr.ErrInvalidOrigin
 	}
 	return nil

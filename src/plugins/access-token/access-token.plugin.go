@@ -2,37 +2,28 @@ package accesstoken
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"io"
-	"mime/multipart"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 
-	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	constant "github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
-	"github.com/better-go-auth/goauth/src/providers/cookies"
-	"github.com/better-go-auth/goauth/src/providers/idgen"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
-	"github.com/better-go-auth/goauth/src/providers/token"
 	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -365,235 +356,6 @@ func (p *Plugin) HTTPMiddleware(authCfg ...config.AuthConfig) func(http.Handler)
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
-	cm := cookies.New(authCfg)
-	cookieName := cm.Name(cookies.CookieSessionToken)
-	accessSecret := p.sessionConf.JWT.AccessSecret
-	if accessSecret == "" && authCfg.Secret != "" {
-		accessSecret = config.DeriveKey(authCfg.Secret, "goauth-access")
-	}
-	if accessSecret == "" {
-		accessSecret = authCfg.Secret
-	}
-
-	return func(ctx huma.Context, next func(huma.Context)) {
-		authHeader := ctx.Header("Authorization")
-		if authHeader == "" {
-			authHeader = ctx.Header("authorization")
-		}
-
-		var refreshedTokenCtx huma.Context
-		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-			raw := strings.TrimSpace(authHeader[7:])
-			// if the raw is a jwt token verify and attach the session with the request
-			if raw != "" && strings.Count(raw, ".") == 2 {
-				// 1. Verify access JWT
-				claims, err := jwttoken.ValidateAccessToken(raw, accessSecret)
-				if err == nil && claims != nil && claims.SessionID != "" {
-					// Preserve original token org/team claims to detect session mutations after handler runs
-					tokenOrgID := claims.ActiveOrgId
-					tokenOrgRole := claims.ActiveOrgRole
-					tokenTeamID := claims.ActiveTeamId
-
-					// 2. Revocation check + live session lookup (cache fast-path with DB fallback)
-					sessWithUsr, sessToken := p.resolveLiveSessionByID(ctx.Context(), claims.SessionID, true)
-					// put the session user in the context
-					if sessWithUsr != nil {
-						tok := sessToken
-						if tok == "" {
-							tok = sessWithUsr.Session.Token
-						}
-
-						// Layer 1 fix: Sync JWT claims with live session active org/role/team
-						// so subsequent requests with an older JWT immediately reflect session state.
-						syncClaimsFromSession(claims, &sessWithUsr.Session)
-
-						// Attach to context
-						stdCtx := ctx.Context()
-						stdCtx = humaadapter.WithSession(stdCtx, sessWithUsr)
-						stdCtx = humaadapter.WithBearerToken(stdCtx, tok)
-						stdCtx = context.WithValue(stdCtx, constant.CtxClaims.Str(), *claims)
-						stdCtx = context.WithValue(stdCtx, constant.CTXUser_ID.Str(), claims.UserID)
-						if claims.ActiveOrgId != "" {
-							stdCtx = context.WithValue(stdCtx, constant.CTXCompany_ID.Str(), claims.ActiveOrgId)
-						}
-						ctx = huma.WithContext(ctx, stdCtx)
-						// add token from the session to cookie
-						if idgen.IsToken(tok) {
-							signedCookieVal := cm.Signed(tok)
-							if r, _ := safeHumagoUnwrap(ctx); r != nil {
-								injectCookieHeader(r, cookieName, signedCookieVal)
-							}
-						}
-
-						// Layer 2 fix: If this request mutates active org/role/team (e.g. SetActiveOrganization / SetActiveTeam),
-						// mint a fresh access JWT and return it in the set-auth-token response header before writing headers.
-						if p.sessionSvc != nil {
-							sessionID := claims.SessionID
-							innerCtx := ctx
-							wrapped := &accessTokenContextWrapper{
-								inner: innerCtx,
-								onBeforeWrite: func() {
-									latest, _ := p.resolveLiveSessionByID(innerCtx.Context(), sessionID, false)
-									if latest == nil {
-										return
-									}
-									curOrgID := derefStr(latest.Session.ActiveOrganizationID)
-									curOrgRole := derefStr(latest.Session.ActiveOrganizationRole)
-									curTeamID := derefStr(latest.Session.ActiveTeamID)
-									if curOrgID == tokenOrgID && curOrgRole == tokenOrgRole && curTeamID == tokenTeamID {
-										return
-									}
-									tokens, tokErr := p.sessionSvc.Tokens(&latest.Session, latest.User.Role)
-									if tokErr != nil || tokens == nil || tokens.AccessToken == "" {
-										return
-									}
-									innerCtx.SetHeader("set-auth-token", tokens.AccessToken)
-									curExp := innerCtx.Header("Access-Control-Expose-Headers")
-									innerCtx.SetHeader("Access-Control-Expose-Headers", appendExposedHeader(curExp, "set-auth-token"))
-									if _, hw := safeHumagoUnwrap(innerCtx); hw != nil {
-										hw.Header().Set("set-auth-token", tokens.AccessToken)
-										hwExp := hw.Header().Get("Access-Control-Expose-Headers")
-										hw.Header().Set("Access-Control-Expose-Headers", appendExposedHeader(hwExp, "set-auth-token"))
-									}
-								},
-							}
-							refreshedTokenCtx = wrapped
-						}
-					}
-				}
-			}
-		}
-
-		if refreshedTokenCtx != nil {
-			next(refreshedTokenCtx)
-			if w, ok := refreshedTokenCtx.(*accessTokenContextWrapper); ok {
-				w.flush()
-			}
-			return
-		}
-		next(ctx)
-	}
-}
-// resolveLiveSessionByID after a jwt token is verified, gets the token by session.id and checks if it is revoked
-func (p *Plugin) resolveLiveSessionByID(ctx context.Context, sessionID string, populateCache bool) (*dtos.SessionWithUser, string) {
-	// Step 1: Reject blacklisted sessions
-	if p.secStorage != nil {
-		if _, exists, _ := p.secStorage.Get(ctx, sec_storage.RevokedSessionPrefix+sessionID); exists {
-			return nil, ""
-		}
-	}
-	// Step 2: Fast-path via sid: -> token cache index
-	if p.sessionSvc != nil {
-		if cached, _ := p.sessionSvc.GetBySID(ctx, sessionID); cached != nil {
-			return cached, cached.Session.Token
-		}
-	}
-	// Step 3: Fallback to DB session lookup
-	if p.repos == nil {
-		return nil, ""
-	}
-	sess, err := p.repos.FindSessionByID(ctx, sessionID)
-	if err != nil || sess == nil || !sess.ExpiresAt.After(time.Now()) {
-		return nil, ""
-	}
-	var sessWithUsr *dtos.SessionWithUser
-	if p.sessionMgr != nil {
-		sessWithUsr, _ = p.sessionMgr.Get(ctx, sess.Token)
-	}
-	if sessWithUsr == nil {
-		u, err := p.repos.FindUserByID(ctx, sess.UserID)
-		if err == nil && u != nil {
-			sessWithUsr = &dtos.SessionWithUser{
-				Session: dtos.SessionFromModel(sess),
-				User:    dtos.UserFromModel(u),
-			}
-		}
-	}
-	if sessWithUsr != nil && populateCache {
-		ttl := time.Until(sess.ExpiresAt)
-		if ttl > 0 {
-			if p.sessionSvc != nil {
-				p.sessionSvc.BackfillSidIndex(ctx, sess.ID, sess.Token, ttl)
-			} else if p.secStorage != nil {
-				_ = p.secStorage.Set(ctx, SidPrefix+sess.ID, sess.Token, ttl)
-			}
-		}
-	}
-	return sessWithUsr, sess.Token
-}
-
-func syncClaimsFromSession(claims *token.CustomClaims, sess *dtos.SessionData) {
-	if claims == nil || sess == nil {
-		return
-	}
-	claims.ActiveOrgId = derefStr(sess.ActiveOrganizationID)
-	claims.ActiveOrgRole = derefStr(sess.ActiveOrganizationRole)
-	claims.ActiveTeamId = derefStr(sess.ActiveTeamID)
-}
-
-func derefStr(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
-}
-
-type accessTokenContextWrapper struct {
-	inner         huma.Context
-	onBeforeWrite func()
-	wrote         bool
-}
-
-var _ huma.Context = (*accessTokenContextWrapper)(nil)
-
-func (w *accessTokenContextWrapper) flush() {
-	if !w.wrote {
-		w.wrote = true
-		if w.onBeforeWrite != nil {
-			w.onBeforeWrite()
-		}
-	}
-}
-
-func (w *accessTokenContextWrapper) Unwrap() huma.Context       { return w.inner }
-func (w *accessTokenContextWrapper) Operation() *huma.Operation { return w.inner.Operation() }
-func (w *accessTokenContextWrapper) Context() context.Context   { return w.inner.Context() }
-func (w *accessTokenContextWrapper) TLS() *tls.ConnectionState  { return w.inner.TLS() }
-func (w *accessTokenContextWrapper) Version() huma.ProtoVersion { return w.inner.Version() }
-func (w *accessTokenContextWrapper) Method() string             { return w.inner.Method() }
-func (w *accessTokenContextWrapper) Host() string               { return w.inner.Host() }
-func (w *accessTokenContextWrapper) RemoteAddr() string         { return w.inner.RemoteAddr() }
-func (w *accessTokenContextWrapper) URL() url.URL               { return w.inner.URL() }
-func (w *accessTokenContextWrapper) Param(name string) string   { return w.inner.Param(name) }
-func (w *accessTokenContextWrapper) Query(name string) string   { return w.inner.Query(name) }
-func (w *accessTokenContextWrapper) Header(name string) string  { return w.inner.Header(name) }
-func (w *accessTokenContextWrapper) EachHeader(cb func(name, value string)) {
-	w.inner.EachHeader(cb)
-}
-func (w *accessTokenContextWrapper) BodyReader() io.Reader { return w.inner.BodyReader() }
-func (w *accessTokenContextWrapper) GetMultipartForm() (*multipart.Form, error) {
-	return w.inner.GetMultipartForm()
-}
-
-func (w *accessTokenContextWrapper) SetReadDeadline(t time.Time) error {
-	return w.inner.SetReadDeadline(t)
-}
-func (w *accessTokenContextWrapper) Status() int { return w.inner.Status() }
-func (w *accessTokenContextWrapper) SetStatus(code int) {
-	w.flush()
-	w.inner.SetStatus(code)
-}
-func (w *accessTokenContextWrapper) SetHeader(name, value string) { w.inner.SetHeader(name, value) }
-func (w *accessTokenContextWrapper) AppendHeader(name, value string) {
-	w.inner.AppendHeader(name, value)
-}
-
-func (w *accessTokenContextWrapper) BodyWriter() io.Writer {
-	w.flush()
-	return w.inner.BodyWriter()
 }
 
 func appendExposedHeader(current, toAdd string) string {

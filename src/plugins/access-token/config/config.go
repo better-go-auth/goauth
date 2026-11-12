@@ -3,6 +3,7 @@ package config
 import (
 	"time"
 
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/config"
 )
 
@@ -42,6 +43,17 @@ type AccessTokenConfig struct {
 	// as a global middleware on the Huma API. When false (default), the middleware is only applied to routes
 	// that explicitly include it via Plugin.AuthMiddleware(), keeping core Better Auth endpoints isolated.
 	AutoRegisterMiddleware bool
+
+	// RequireBearerTokenOps lists operation IDs that the access-token middleware must NOT authenticate
+	// using a 3-segment Access JWT. By default, matching requests pass through unauthenticated by
+	// access-token so downstream handlers/cookies/plugins decide; set RejectBlockedAccessTokens to
+	// true to immediately reject them with 401 UNAUTHORIZED.
+	RequireBearerTokenOps []consts.OperationId
+
+	// RejectBlockedAccessTokens controls whether requests carrying a 3-segment Access JWT to an
+	// operation in RequireBearerTokenOps are immediately rejected with 401 UNAUTHORIZED (true)
+	// or simply skipped by access-token authentication and passed through (false, default).
+	RejectBlockedAccessTokens bool
 }
 
 // DefaultAccessTokenConfig returns sensible defaults for the access-token plugin.
