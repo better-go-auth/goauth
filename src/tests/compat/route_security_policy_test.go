@@ -322,3 +322,33 @@ func TestRouteSecurityPolicy_DefaultStrictAndPluginOriginCheck(t *testing.T) {
 	remRes := jwtClient.post(t, "/api/auth/admin/remove-user", map[string]any{"userId": "u1"})
 	require.Equal(t, http.StatusUnauthorized, remRes.Status, string(remRes.Body))
 }
+
+func TestRouteSecurityPolicy_DisabledOps(t *testing.T) {
+	s := setupSecurityPolicyServer(t, config.SecurityConfig{}, nil, func(cfg *config.AuthConfig) {
+		cfg.DisabledOps = []consts.OperationId{
+			humaadapter.OpChangeEmail,
+			humaorg.OrDeleteOrg,
+		}
+	})
+
+	c := newBearerTestClient(s.URL)
+	email := fmt.Sprintf("disabled-ops-%d@example.com", time.Now().UnixNano())
+	up := c.post(t, "/api/auth/sign-up/email", map[string]any{
+		"email":    email,
+		"password": "Password123!",
+		"name":     "Disabled Ops User",
+	})
+	require.Equal(t, http.StatusOK, up.Status, string(up.Body))
+
+	// 1. Unlisted core and plugin routes still work
+	require.Equal(t, http.StatusOK, c.get(t, "/api/auth/get-session").Status)
+	require.Equal(t, http.StatusOK, c.get(t, "/api/auth/organization/list").Status)
+
+	// 2. Disabled core operation returns 404 (not mounted)
+	chgRes := c.post(t, "/api/auth/change-email", map[string]any{"newEmail": "blocked@example.com"})
+	require.Equal(t, http.StatusNotFound, chgRes.Status, string(chgRes.Body))
+
+	// 3. Disabled plugin operation returns 404 (blocked by SecurityMiddleware)
+	delRes := c.do(t, http.MethodDelete, "/api/auth/organization/delete", map[string]any{"organizationId": "org-1"})
+	require.Equal(t, http.StatusNotFound, delRes.Status, string(delRes.Body))
+}

@@ -7,6 +7,8 @@ import (
 	"encoding/hex"
 	"net/http"
 	"time"
+
+	"github.com/better-go-auth/goauth/src/common/consts"
 )
 
 type AuthConfig struct {
@@ -50,6 +52,9 @@ type AuthConfig struct {
 	TrustedOrigins []string
 	// DisabledPaths lists endpoint paths (relative to BasePath) that are not mounted.
 	DisabledPaths []string
+	// DisabledOps lists operation IDs that are disabled (skipped during core route registration
+	// and blocked with 404 Not Found on plugin routes).
+	DisabledOps []consts.OperationId
 	Advanced      Advanced
 
 	cachedSecure       *bool

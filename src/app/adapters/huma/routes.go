@@ -84,8 +84,9 @@ const (
 // RegisterRoutes mounts better-auth's core endpoints under Conf.BasePath.
 func RegisterRoutes(api huma.API, d Deps) {
 	h := &handler{Deps: d}
+	disabledOps := config.OperationSet(d.Conf.DisabledOps)
 	reg := func(op huma.Operation, accessFlag access, register func(huma.Operation)) {
-		if slices.Contains(d.Conf.DisabledPaths, op.Path) {
+		if slices.Contains(d.Conf.DisabledPaths, op.Path) || disabledOps[op.OperationID] {
 			return
 		}
 		op.Path = strings.TrimSuffix(d.Conf.BasePath, "/") + op.Path

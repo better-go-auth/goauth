@@ -10,16 +10,19 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// SecurityMiddleware returns a Huma API middleware that enforces AuthConfig.Security policies
-// across all registered core, plugin, and application operations based on OperationID:
+// SecurityMiddleware returns a Huma API middleware that enforces AuthConfig.DisabledOps and
+// AuthConfig.Security policies across all registered core, plugin, and application operations
+// based on OperationID:
+//   - DisabledOps: blocks disabled operations (including plugin routes) with 404 Not Found
 //   - CheckOriginOnPluginMutations: Origin/Referer CSRF check on mutating cookie requests
 //   - RequireFreshOps: rejects unauthenticated or stale (outside Session.FreshAge) sessions
 func SecurityMiddleware(conf config.AuthConfig, mgr *sessionsvc.Manager, cm *cookies.Manager, origins *origin.Checker) func(ctx huma.Context, next func(huma.Context)) {
+	disabledSet := config.OperationSet(conf.DisabledOps)
 	freshSet := config.OperationSet(conf.Security.RequireFreshOps)
 	checkOrigin := conf.Security.CheckOriginOnPluginMutations
 
 	// Zero-overhead pass-through when no security policies are configured
-	if !checkOrigin && len(freshSet) == 0 {
+	if !checkOrigin && len(disabledSet) == 0 && len(freshSet) == 0 {
 		return func(ctx huma.Context, next func(huma.Context)) { next(ctx) }
 	}
 
@@ -27,6 +30,12 @@ func SecurityMiddleware(conf config.AuthConfig, mgr *sessionsvc.Manager, cm *coo
 		var opID string
 		if op := ctx.Operation(); op != nil {
 			opID = op.OperationID
+		}
+
+		// 0. Block disabled operations (including plugin routes that bypass core RegisterRoutes)
+		if opID != "" && disabledSet[opID] {
+			writeError(ctx, autherr.NotFoundErr("Not Found"))
+			return
 		}
 
 		// 1. Optional global Origin/Referer CSRF check across mutating endpoints (including plugins)
