@@ -101,6 +101,16 @@ it is doing a redundant logic.
   - Implemented [`SecurityMiddleware`](src/app/adapters/huma/security_middleware.go) (wired globally in [`goauth.go`](goauth.go) after transport plugins and before domain plugins/core routes) and `RequireBearerTokenOps` rejection inside [`access_token.plugin.go`](src/plugins/access-token/access_token.plugin.go) `buildMiddleware`.
   - Verified with [`route_security_policy_test.go`](src/tests/compat/route_security_policy_test.go).
 - [x] Verified with Go HTTP handler tests (`TestOrgHandlers_Issues2To6` across SQLite, PostgreSQL, MySQL, `src/app/...`, `src/plugins/...`) and official `better-auth/client` JS compatibility tests + per-domain Go HTTP mirror tests ([`mirror_core_test.go`](src/tests/compat/mirror_core_test.go), [`mirror_bearer_test.go`](src/tests/compat/mirror_bearer_test.go), [`mirror_jwt_test.go`](src/tests/compat/mirror_jwt_test.go), [`mirror_org_test.go`](src/tests/compat/mirror_org_test.go), [`mirror_email_otp_test.go`](src/tests/compat/mirror_email_otp_test.go)).
+- [x] **Multi-Router Huma Adapters & Interactive Docs Initialization (Zero Unwanted Dependencies)**:
+  - Built shared OpenAPI and interactive docs configuration options in [`adapters`](adapters/options.go) (`WithEnableDocs`, `WithDocs`, `WithoutDocs`, `WithTitle`, `WithVersion`, `WithOpenAPIPath`, `WithSchemasPath`, `DocsRendererStoplight`, `DocsRendererScalar`, `DocsRendererSwaggerUI`, `DocsRendererRapiDoc`, `WithDocsRenderer`, `WithScalarDocs`, `WithSwaggerUIDocs`, `WithStoplightDocs`, `WithHumaConfig`, `WithConfigure`, `BuildConfig`) with zero framework dependencies (only depends on `huma/v2`).
+  - Isolated each router adapter into its own subpackage so using one never pulls in the others:
+    - [`adapters/mux`](adapters/mux/mux.go): `New` and `NewWithPrefix` for standard `net/http` ServeMux.
+    - [`adapters/chi`](adapters/chi/chi.go): `New` for Chi v5 routers.
+    - [`adapters/gin`](adapters/gin/gin.go): `New` and `NewWithGroup` for Gin.
+    - [`adapters/fiber`](adapters/fiber/fiber.go): `New` and `NewWithGroup` for Fiber v2.
+  - Added dedicated unit and integration test suites for each subpackage ([`adapters/options_test.go`](adapters/options_test.go), [`adapters/mux/mux_test.go`](adapters/mux/mux_test.go), [`adapters/chi/chi_test.go`](adapters/chi/chi_test.go), [`adapters/gin/gin_test.go`](adapters/gin/gin_test.go), [`adapters/fiber/fiber_test.go`](adapters/fiber/fiber_test.go)) verifying docs/OpenAPI and `goauth.SetupGoAuth` mounting across all routers.
+  - Re-exported constructors and options from root [`router_adapters.go`](router_adapters.go) for direct `goauth.New*` access.
+  - Added unit and integration tests in [`adapters/routers_test.go`](adapters/routers_test.go) verifying OpenAPI and interactive docs generation across all routers, and end-to-end `goauth.SetupGoAuth` mounting on Mux, Chi, Gin, and Fiber.
 
 ## Organization Plugin Fixes & Enhancements (Issues 2–6)
 - [x] **Issue 2 — Expose `ListTeamMembers` HTTP Endpoint & Preload `User`**:
@@ -136,3 +146,13 @@ it is doing a redundant logic.
   - Implemented [`SecurityMiddleware`](src/app/adapters/huma/security_middleware.go) (wired globally in [`goauth.go`](goauth.go) after transport plugins and before domain plugins/core routes) and `RequireBearerTokenOps` rejection inside [`access_token.plugin.go`](src/plugins/access-token/access_token.plugin.go) `buildMiddleware`.
   - Verified with [`route_security_policy_test.go`](src/tests/compat/route_security_policy_test.go).
 - [x] Verified with Go HTTP handler tests (`TestOrgHandlers_Issues2To6` across SQLite, PostgreSQL, MySQL, `src/app/...`, `src/plugins/...`) and official `better-auth/client` JS compatibility tests + per-domain Go HTTP mirror tests ([`mirror_core_test.go`](src/tests/compat/mirror_core_test.go), [`mirror_bearer_test.go`](src/tests/compat/mirror_bearer_test.go), [`mirror_jwt_test.go`](src/tests/compat/mirror_jwt_test.go), [`mirror_org_test.go`](src/tests/compat/mirror_org_test.go), [`mirror_email_otp_test.go`](src/tests/compat/mirror_email_otp_test.go)).
+- [x] **Multi-Router Huma Adapters & Interactive Docs Initialization (Zero Unwanted Dependencies)**:
+  - Built shared OpenAPI and interactive docs configuration options in [`adapters`](adapters/options.go) (`WithEnableDocs`, `WithDocs`, `WithoutDocs`, `WithTitle`, `WithVersion`, `WithOpenAPIPath`, `WithSchemasPath`, `DocsRendererStoplight`, `DocsRendererScalar`, `DocsRendererSwaggerUI`, `DocsRendererRapiDoc`, `WithDocsRenderer`, `WithScalarDocs`, `WithSwaggerUIDocs`, `WithStoplightDocs`, `WithHumaConfig`, `WithConfigure`, `BuildConfig`) with zero framework dependencies (only depends on `huma/v2`).
+  - Isolated each router adapter into its own subpackage so using one never pulls in the others:
+    - [`adapters/mux`](adapters/mux/mux.go): `New` and `NewWithPrefix` for standard `net/http` ServeMux.
+    - [`adapters/chi`](adapters/chi/chi.go): `New` for Chi v5 routers.
+    - [`adapters/gin`](adapters/gin/gin.go): `New` and `NewWithGroup` for Gin.
+    - [`adapters/fiber`](adapters/fiber/fiber.go): `New` and `NewWithGroup` for Fiber v2.
+  - Added dedicated unit and integration test suites for each subpackage ([`adapters/options_test.go`](adapters/options_test.go), [`adapters/mux/mux_test.go`](adapters/mux/mux_test.go), [`adapters/chi/chi_test.go`](adapters/chi/chi_test.go), [`adapters/gin/gin_test.go`](adapters/gin/gin_test.go), [`adapters/fiber/fiber_test.go`](adapters/fiber/fiber_test.go)) verifying docs/OpenAPI and `goauth.SetupGoAuth` mounting across all routers.
+  - Re-exported constructors and options from root [`router_adapters.go`](router_adapters.go) for direct `goauth.New*` access.
+  - Added unit and integration tests in [`adapters/routers_test.go`](adapters/routers_test.go) verifying OpenAPI and interactive docs generation across all routers, and end-to-end `goauth.SetupGoAuth` mounting on Mux, Chi, Gin, and Fiber.
