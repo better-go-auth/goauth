@@ -24,6 +24,7 @@ type SessionCreateOptions struct {
 	ExpiresIn              time.Duration
 	ImpersonatedBy         *string
 	ActiveOrganizationID   *string
+	ActiveOrganizationType *string
 	ID                     string
 	ActiveOrganizationRole *string
 	DeviceToken            string

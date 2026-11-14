@@ -19,6 +19,7 @@ type CustomClaims struct {
 	// Org related claims
 	ActiveOrgRole string         `json:"activeOrgRole"`
 	ActiveOrgId   string         `json:"activeOrgId"`
+	ActiveOrgType string         `json:"activeOrgType,omitempty"`
 	ActiveTeamId  string         `json:"activeTeamId,omitempty"`
 	Data          map[string]any `json:"data,omitempty"`
 	// ExpiresAt as Unix timestamp.

@@ -47,6 +47,9 @@ func (r *SessionClaims) ClaimsFromSession(ctx context.Context, bearer, cookieHea
 	if sw.Session.ActiveOrganizationID != nil {
 		claims.ActiveOrgId = *sw.Session.ActiveOrganizationID
 	}
+	if sw.Session.ActiveOrganizationType != nil {
+		claims.ActiveOrgType = *sw.Session.ActiveOrganizationType
+	}
 	if sw.Session.ActiveTeamID != nil {
 		claims.ActiveTeamId = *sw.Session.ActiveTeamID
 	}

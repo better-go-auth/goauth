@@ -20,12 +20,13 @@ type Session struct {
 	ImpersonatedBy *string `json:"impersonatedBy,omitempty" gorm:"size:255" bun:"impersonated_by"`
 	Impersonator   *User   `json:"-" gorm:"foreignKey:ImpersonatedBy;constraint:OnDelete:CASCADE"`
 	// organization plugin
-	ActiveOrganizationID *string `json:"activeOrganizationId,omitempty" gorm:"size:255" bun:"active_organization_id"`
-	ActiveTeamID         *string `json:"activeTeamId,omitempty"         gorm:"size:255" bun:"active_team_id"`
+	ActiveOrganizationID   *string `json:"activeOrganizationId,omitempty"   gorm:"size:255" bun:"active_organization_id"`
+	ActiveOrganizationType *string `json:"activeOrganizationType,omitempty" gorm:"size:255" bun:"active_organization_type"`
+	ActiveTeamID           *string `json:"activeTeamId,omitempty"           gorm:"size:255" bun:"active_team_id"`
 
 	// ===== goauth fields (not in better-auth) =====
 	// ActiveOrganizationRole caches the member role of ActiveOrganizationID for JWT claims.
-	ActiveOrganizationRole *string    `json:"-"                      bun:"active_organization_role"`
+	ActiveOrganizationRole *string    `json:"-"                        bun:"active_organization_role"`
 	DeviceToken            string     `json:"deviceToken,omitempty"  bun:"device_token"` // push notifications
 	DeviceID               *string    `json:"deviceId,omitempty"     bun:"device_id"`
 	DeviceName             *string    `json:"deviceName,omitempty"   bun:"device_name"`

@@ -14,6 +14,7 @@ type OrgResponse struct {
 	Metadata  *string `json:"metadata"`
 	Status    string  `json:"status"`
 	CreatedBy string  `json:"createdBy"`
+	OrgType   *string `json:"orgType,omitempty"`
 	CreatedAt string  `json:"createdAt"`
 }
 
@@ -58,6 +59,7 @@ func OrgToResponse(o *models.Organization) *OrgResponse {
 		Metadata:  o.Metadata,
 		Status:    string(o.Status),
 		CreatedBy: o.CreatedBy,
+		OrgType:   o.OrgType,
 		CreatedAt: createdAt,
 	}
 }

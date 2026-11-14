@@ -203,6 +203,7 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		Metadata:  input.Metadata,
 		CreatedBy: creatorUserID,
 		Status:    orgStatus,
+		OrgType:   input.OrgType,
 	}
 
 	var created *models.Organization
@@ -377,6 +378,9 @@ func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input
 		if input.Metadata == nil && input.Data.Metadata != nil {
 			input.Metadata = input.Data.Metadata
 		}
+		if input.OrgType == nil && input.Data.OrgType != nil {
+			input.OrgType = input.Data.OrgType
+		}
 	}
 
 	// Step 2: Permission check - requester must be an organization admin/owner
@@ -424,6 +428,9 @@ func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input
 	}
 	if input.Metadata != nil {
 		data["Metadata"] = *input.Metadata
+	}
+	if input.OrgType != nil {
+		data["OrgType"] = input.OrgType
 	}
 	if len(data) == 0 {
 		return s.orgRepo.GetOrgByID(ctx, orgID)
@@ -506,8 +513,11 @@ func (s *OrgService) ListOrganizations(ctx context.Context, userID string) ([]mo
 func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string, orgID *string, userId, role string) (*authdtos.SessionWithUser, error) {
 	var member *models.Member
 	var orgRole *string
+	var orgType *string
+
+	// Step 1: If an orgID is provided, validate existence, status, and user membership
 	if orgID != nil && *orgID != "" {
-		// Verify org exists and is active before allowing it to be set
+		// Step 1a: Verify org exists and is active before allowing it to be set
 		org, err := s.orgRepo.GetOrgByID(ctx, *orgID)
 		if err != nil || org == nil {
 			return nil, orgerrors.ErrOrgNotFound
@@ -521,7 +531,7 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 			return nil, orgerrors.ErrOrgNotActive
 		}
 
-		// user's org role
+		// Step 1b: Verify user is a member of the organization and resolve their role & org type
 		member, err = s.memberRepo.GetMemberByOrgAndUser(ctx, *orgID, userId)
 		if err != nil {
 			return nil, err
@@ -531,16 +541,19 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 		}
 		r := member.Role.Str()
 		orgRole = &r
+		orgType = org.OrgType
 	}
 
+	// Step 2: Build update payload containing ActiveOrganizationID, ActiveOrganizationRole, and ActiveOrganizationType
 	data := map[string]any{
 		"ActiveOrganizationID":   orgID,
 		"ActiveOrganizationRole": orgRole,
+		"ActiveOrganizationType": orgType,
 	}
 
 	var updatedSession *authdtos.SessionWithUser
 
-	// 1. Better-Auth flow: update session via normal session service
+	// Step 3: Better-Auth flow - update session via normal session service (L1 memory / Redis cache + DB)
 	if s.sessionMgr != nil {
 		if sRepo, ok := s.userRepo.(repo_interfaces.ISessionRepo); ok && sessionID != "" {
 			dbSess, err := sRepo.FindSessionByID(ctx, sessionID)
@@ -559,7 +572,7 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 		}
 	}
 
-	// 2. Direct DB fallback
+	// Step 4: Direct DB fallback update if session manager is unavailable
 	if updatedSession == nil {
 		if sRepo, ok := s.userRepo.(repo_interfaces.ISessionRepo); ok && sessionID != "" {
 			sess, err := sRepo.UpdateSession(ctx, sessionID, data)
@@ -573,6 +586,7 @@ func (s *OrgService) SetActiveOrganization(ctx context.Context, sessionID string
 		}
 	}
 
+	// Step 5: Trigger active organization changed hook if configured
 	if s.hooks != nil && orgID != nil && *orgID != "" {
 		_ = s.hooks.TriggerActiveOrgChanged(ctx, userId, *orgID)
 	}
@@ -638,6 +652,7 @@ func (s *OrgService) AdminCreateOrganization(ctx context.Context, requestingAdmi
 		Metadata:  createInput.Metadata,
 		CreatedBy: ownerID,
 		Status:    models.OrgStatusActive,
+		OrgType:   createInput.OrgType,
 	}
 	var created *models.Organization
 	var creatorMember *models.Member

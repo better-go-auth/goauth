@@ -71,7 +71,8 @@ type VerifyPasswordInput struct {
 
 // UpdateSessionInput matches better-auth POST /update-session body.
 type UpdateSessionInput struct {
-	ActiveOrganizationID *string `json:"activeOrganizationId,omitempty"`
+	ActiveOrganizationID   *string `json:"activeOrganizationId,omitempty"`
+	ActiveOrganizationType *string `json:"activeOrganizationType,omitempty"`
 }
 
 // UnlinkAccountInput matches better-auth POST /unlink-account body.

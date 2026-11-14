@@ -156,6 +156,9 @@ func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*models.Aut
 	if s.ActiveOrganizationRole != nil {
 		claims.ActiveOrgRole = *s.ActiveOrganizationRole
 	}
+	if s.ActiveOrganizationType != nil {
+		claims.ActiveOrgType = *s.ActiveOrganizationType
+	}
 	if s.ActiveTeamID != nil {
 		claims.ActiveTeamId = *s.ActiveTeamID
 	}

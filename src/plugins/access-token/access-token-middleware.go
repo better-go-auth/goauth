@@ -62,10 +62,11 @@ func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Contex
 				// 1. Verify access JWT
 				claims, err := jwttoken.ValidateAccessToken(raw, accessSecret)
 				if err == nil && claims != nil && claims.SessionID != "" {
-					// Snapshot the org/role/team claims from the incoming JWT BEFORE Layer 1 syncs them
+					// Snapshot the org/role/type/team claims from the incoming JWT BEFORE Layer 1 syncs them
 					// from the live session, so Layer 2 can later detect if the JWT is out of date.
 					tokenOrgID := claims.ActiveOrgId
 					tokenOrgRole := claims.ActiveOrgRole
+					tokenOrgType := claims.ActiveOrgType
 					tokenTeamID := claims.ActiveTeamId
 
 					// 2. Revocation check + live session lookup (cache fast-path with DB fallback)
@@ -114,11 +115,12 @@ func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Contex
 									if latest == nil {
 										return
 									}
-									// 2. Diff live session state against the incoming JWT's org/role/team snapshot
+									// 2. Diff live session state against the incoming JWT's org/role/type/team snapshot
 									curOrgID := derefStr(latest.Session.ActiveOrganizationID)
 									curOrgRole := derefStr(latest.Session.ActiveOrganizationRole)
+									curOrgType := derefStr(latest.Session.ActiveOrganizationType)
 									curTeamID := derefStr(latest.Session.ActiveTeamID)
-									if curOrgID == tokenOrgID && curOrgRole == tokenOrgRole && curTeamID == tokenTeamID {
+									if curOrgID == tokenOrgID && curOrgRole == tokenOrgRole && curOrgType == tokenOrgType && curTeamID == tokenTeamID {
 										return
 									}
 									// 3. Mint a new Access JWT reflecting the updated session claims
@@ -209,6 +211,7 @@ func syncClaimsFromSession(claims *token.CustomClaims, sess *dtos.SessionData) {
 	}
 	claims.ActiveOrgId = derefStr(sess.ActiveOrganizationID)
 	claims.ActiveOrgRole = derefStr(sess.ActiveOrganizationRole)
+	claims.ActiveOrgType = derefStr(sess.ActiveOrganizationType)
 	claims.ActiveTeamId = derefStr(sess.ActiveTeamID)
 }
 

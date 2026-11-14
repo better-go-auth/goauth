@@ -64,7 +64,7 @@ func (r *SessionRepo) UpsertSession(ctx context.Context, session *models.Session
 	s := &models.Session{}
 	err := gormutil.GetDB(ctx, r.db).Clauses(clause.OnConflict{
 		Columns:   []clause.Column{gormutil.Col(r.db, s, "ID")},
-		DoUpdates: clause.AssignmentColumns(gormutil.ColNames(r.db, s, "Token", "DeviceToken", "ActiveOrganizationID", "ActiveOrganizationRole", "ExpiresAt")),
+		DoUpdates: clause.AssignmentColumns(gormutil.ColNames(r.db, s, "Token", "DeviceToken", "ActiveOrganizationID", "ActiveOrganizationRole", "ActiveOrganizationType", "ExpiresAt")),
 	}).Create(session).Error
 	if err != nil {
 		return nil, fmt.Errorf("gorm/session: upsert: %w", err)

@@ -118,6 +118,7 @@ func (mgr *Manager) Create(ctx context.Context, user *models.User, meta Meta, op
 		ImpersonatedBy:         opt.ImpersonatedBy,
 		ActiveOrganizationID:   opt.ActiveOrganizationID,
 		ActiveOrganizationRole: opt.ActiveOrganizationRole,
+		ActiveOrganizationType: opt.ActiveOrganizationType,
 		DeviceToken:            opt.DeviceToken,
 	}
 
@@ -441,6 +442,8 @@ func setSessionFields(s *dtos.SessionData, data map[string]any) error {
 			s.ActiveOrganizationID = strPtr
 		case "ActiveOrganizationRole":
 			s.ActiveOrganizationRole = strPtr
+		case "ActiveOrganizationType", "ActiveOrgType":
+			s.ActiveOrganizationType = strPtr
 		case "ActiveTeamID":
 			s.ActiveTeamID = strPtr
 		case "DeviceToken":
@@ -466,6 +469,9 @@ func applyPatch(s *dtos.SessionData, patch config.SessionPatch) {
 	}
 	if patch.ActiveOrganizationRole != nil {
 		s.ActiveOrganizationRole = patch.ActiveOrganizationRole
+	}
+	if patch.ActiveOrganizationType != nil {
+		s.ActiveOrganizationType = patch.ActiveOrganizationType
 	}
 	if patch.ActiveTeamID != nil {
 		s.ActiveTeamID = patch.ActiveTeamID

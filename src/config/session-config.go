@@ -140,6 +140,7 @@ func (s Session) StoreInDatabase() bool {
 type SessionPatch struct {
 	ActiveOrganizationID   *string `json:"activeOrganizationId,omitempty"`
 	ActiveOrganizationRole *string `json:"activeOrganizationRole,omitempty"`
+	ActiveOrganizationType *string `json:"activeOrganizationType,omitempty"`
 	ActiveTeamID           *string `json:"activeTeamId,omitempty"`
 	DeviceToken            *string `json:"deviceToken,omitempty"`
 	DeviceID               *string `json:"deviceId,omitempty"`
@@ -152,6 +153,9 @@ func (sp SessionPatch) ToMap() map[string]any {
 	m := map[string]any{}
 	if sp.ActiveOrganizationID != nil { m["ActiveOrganizationID"] = sp.ActiveOrganizationID }
 	if sp.ActiveOrganizationRole != nil { m["ActiveOrganizationRole"] = sp.ActiveOrganizationRole }
+	if sp.ActiveOrganizationType != nil {
+		m["ActiveOrganizationType"] = sp.ActiveOrganizationType
+	}
 	if sp.ActiveTeamID != nil { m["ActiveTeamID"] = sp.ActiveTeamID }
 	if sp.DeviceToken != nil { m["DeviceToken"] = *sp.DeviceToken }
 	if sp.DeviceID != nil { m["DeviceID"] = sp.DeviceID }

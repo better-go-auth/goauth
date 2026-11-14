@@ -230,6 +230,7 @@ func (r *Repos) UpsertSession(ctx context.Context, session *models.Session) (*mo
 	existing.DeviceToken = session.DeviceToken
 	existing.ActiveOrganizationID = session.ActiveOrganizationID
 	existing.ActiveOrganizationRole = session.ActiveOrganizationRole
+	existing.ActiveOrganizationType = session.ActiveOrganizationType
 	existing.ExpiresAt = session.ExpiresAt
 	existing.UpdatedAt = time.Now().UTC()
 	return session, nil

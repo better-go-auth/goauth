@@ -96,6 +96,7 @@ func PrepareLegacyColumns(db *gorm.DB) error {
 		for _, c := range [][2]string{
 			{"active_org_id", "active_organization_id"},
 			{"org_role_id", "active_organization_role"},
+			{"active_org_type", "active_organization_type"},
 		} {
 			if m.HasColumn(session, c[0]) && !m.HasColumn(session, c[1]) {
 				if err := m.RenameColumn(session, c[0], c[1]); err != nil {

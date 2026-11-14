@@ -54,6 +54,7 @@ func ValidateToken(tokenStr string, signingKey string) (*token.CustomClaims, err
 			// multi tenancy support
 			ActiveOrgId:   claims.ActiveOrgID,
 			ActiveOrgRole: claims.ActiveOrgRole,
+			ActiveOrgType: claims.ActiveOrgType,
 			ActiveTeamId:  claims.ActiveTeamID,
 		}, nil
 	}
@@ -101,6 +102,7 @@ func SignWithExpiry(signingKey string, claims *token.CustomClaims, expiryMinutes
 		Type:          claims.Type,
 		ActiveOrgID:   claims.ActiveOrgId,
 		ActiveOrgRole: claims.ActiveOrgRole,
+		ActiveOrgType: claims.ActiveOrgType,
 		ActiveTeamID:  claims.ActiveTeamId,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtClaims)
@@ -147,6 +149,7 @@ type jwtClaims struct {
 	Type          string `json:"typ,omitempty"`
 	ActiveOrgID   string `json:"activeOrgId,omitempty"`
 	ActiveOrgRole string `json:"activeOrgRole,omitempty"`
+	ActiveOrgType string `json:"activeOrgType,omitempty"`
 	ActiveTeamID  string `json:"activeTeamId,omitempty"`
 }
 
@@ -167,6 +170,7 @@ func (m *JWTManager) GenerateToken(_ context.Context, claims token.CustomClaims)
 		Role:          claims.Role,
 		ActiveOrgID:   claims.ActiveOrgId,
 		ActiveOrgRole: claims.ActiveOrgRole,
+		ActiveOrgType: claims.ActiveOrgType,
 		ActiveTeamID:  claims.ActiveTeamId,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwtClaims)
@@ -198,6 +202,7 @@ func (m *JWTManager) ValidateToken(ctx context.Context, tokenStr string) (*token
 			// multi tenancy support
 			ActiveOrgId:   claims.ActiveOrgID,
 			ActiveOrgRole: claims.ActiveOrgRole,
+			ActiveOrgType: claims.ActiveOrgType,
 			ActiveTeamId:  claims.ActiveTeamID,
 		}, nil
 	}

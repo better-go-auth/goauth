@@ -62,6 +62,7 @@ type SessionData struct {
 	ImpersonatedBy         *string `json:"impersonatedBy,omitempty"`
 	ActiveOrganizationID   *string `json:"activeOrganizationId,omitempty"`
 	ActiveOrganizationRole *string `json:"activeOrganizationRole,omitempty"`
+	ActiveOrganizationType *string `json:"activeOrganizationType,omitempty"`
 
 	// Role         string  `json:"role,omitempty"`//TODO: role usually don't exist on the session: it is on the user
 	ActiveTeamID *string `json:"activeTeamId,omitempty"`
@@ -120,6 +121,7 @@ func SessionFromModel(s *models.Session) SessionData {
 		ImpersonatedBy:         s.ImpersonatedBy,
 		ActiveOrganizationID:   s.ActiveOrganizationID,
 		ActiveOrganizationRole: s.ActiveOrganizationRole,
+		ActiveOrganizationType: s.ActiveOrganizationType,
 		ActiveTeamID:           s.ActiveTeamID,
 		Token:                  PublicToken(s),
 		CreatedAt:              Time(s.CreatedAt),

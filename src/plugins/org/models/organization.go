@@ -28,6 +28,8 @@ type Organization struct {
 	Status OrgStatus `json:"status" gorm:"not null;default:active" bun:"status,notnull,default:active"`
 	// CreatedBy is the creator and initial owner; empty for organizations created by better-auth.
 	CreatedBy string `json:"createdBy" gorm:"index" bun:"created_by"`
+	// OrgType is the organization type or category (e.g. personal, business, enterprise).
+	OrgType *string `json:"orgType,omitempty" gorm:"size:255" bun:"org_type"`
 
 	// Sessions only declares the session.activeOrganizationId foreign key.
 	Sessions []coremodels.Session `json:"-" gorm:"foreignKey:ActiveOrganizationID;constraint:OnDelete:SET NULL"`
