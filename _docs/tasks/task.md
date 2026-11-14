@@ -109,8 +109,12 @@ it is doing a redundant logic.
     - [`adapters/gin`](adapters/gin/gin.go): `New` and `NewWithGroup` for Gin.
     - [`adapters/fiber`](adapters/fiber/fiber.go): `New` and `NewWithGroup` for Fiber v2.
   - Added dedicated unit and integration test suites for each subpackage ([`adapters/options_test.go`](adapters/options_test.go), [`adapters/mux/mux_test.go`](adapters/mux/mux_test.go), [`adapters/chi/chi_test.go`](adapters/chi/chi_test.go), [`adapters/gin/gin_test.go`](adapters/gin/gin_test.go), [`adapters/fiber/fiber_test.go`](adapters/fiber/fiber_test.go)) verifying docs/OpenAPI and `goauth.SetupGoAuth` mounting across all routers.
-  - Re-exported constructors and options from root [`router_adapters.go`](router_adapters.go) for direct `goauth.New*` access.
-  - Added unit and integration tests in [`adapters/routers_test.go`](adapters/routers_test.go) verifying OpenAPI and interactive docs generation across all routers, and end-to-end `goauth.SetupGoAuth` mounting on Mux, Chi, Gin, and Fiber.
+- [x] **Project Documentation (`readme.md`)**:
+  - Documented what Better Go Auth is, architectural design principles, and 100% Better Auth wire compatibility.
+  - Added installation instructions and quickstart code example.
+  - Documented isolated router adapters (`net/http`, `Chi`, `Gin`, `Fiber`) and interactive OpenAPI documentation renderers.
+  - Documented current feature set, plugin suite, and compatibility matrix against Better Auth (TypeScript).
+  - Outlined planned roadmap (OAuth 2.0 / Social, Passkeys / WebAuthn, 2FA / TOTP, Magic Link, Phone SMS, Custom Fields, Multi-ORM Bun/sqlc).
 
 ## Organization Plugin Fixes & Enhancements (Issues 2–6)
 - [x] **Issue 2 — Expose `ListTeamMembers` HTTP Endpoint & Preload `User`**:
@@ -154,5 +158,9 @@ it is doing a redundant logic.
     - [`adapters/gin`](adapters/gin/gin.go): `New` and `NewWithGroup` for Gin.
     - [`adapters/fiber`](adapters/fiber/fiber.go): `New` and `NewWithGroup` for Fiber v2.
   - Added dedicated unit and integration test suites for each subpackage ([`adapters/options_test.go`](adapters/options_test.go), [`adapters/mux/mux_test.go`](adapters/mux/mux_test.go), [`adapters/chi/chi_test.go`](adapters/chi/chi_test.go), [`adapters/gin/gin_test.go`](adapters/gin/gin_test.go), [`adapters/fiber/fiber_test.go`](adapters/fiber/fiber_test.go)) verifying docs/OpenAPI and `goauth.SetupGoAuth` mounting across all routers.
-  - Re-exported constructors and options from root [`router_adapters.go`](router_adapters.go) for direct `goauth.New*` access.
-  - Added unit and integration tests in [`adapters/routers_test.go`](adapters/routers_test.go) verifying OpenAPI and interactive docs generation across all routers, and end-to-end `goauth.SetupGoAuth` mounting on Mux, Chi, Gin, and Fiber.
+- [x] **Project Documentation (`readme.md`)**:
+  - Documented what Better Go Auth is, architectural design principles, and 100% Better Auth wire compatibility.
+  - Added installation instructions and quickstart code example.
+  - Documented isolated router adapters (`net/http`, `Chi`, `Gin`, `Fiber`) and interactive OpenAPI documentation renderers.
+  - Documented current feature set, plugin suite, and compatibility matrix against Better Auth (TypeScript).
+  - Outlined planned roadmap (OAuth 2.0 / Social, Passkeys / WebAuthn, 2FA / TOTP, Magic Link, Phone SMS, Custom Fields, Multi-ORM Bun/sqlc).

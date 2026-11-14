@@ -1,11 +1,255 @@
+# Better Go Auth (`goauth`)
 
+[![Go Reference](https://pkg.go.dev/badge/github.com/better-go-auth/goauth.svg)](https://pkg.go.dev/github.com/better-go-auth/goauth)
+[![Go Version](https://img.shields.io/badge/go-%3E%3D1.24-blue.svg)](https://golang.org)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-> git tag -a v1.1.1 -m "Release version 1.0"
-> git push origin --tags
+A high-performance, modular Go authentication framework engineered for native wire and database compatibility with [Better Auth](https://github.com/better-auth/better-auth) (TypeScript).
 
-- .
+---
 
-> git tag      // to list tags
+## Overview
 
-> git tag v0.0.1
-> git push origin v1.0
+**Better Go Auth (`goauth`)** provides an idiomatic, strongly-typed Go implementation of the Better Auth specification. It allows backend developers to power applications using the official TypeScript [`better-auth/client`](https://better-auth.com), `@better-auth/expo`, and frontend SDKs while running on a blazing-fast, compiled Go backend.
+
+### Why `goauth`?
+
+- **100% Better Auth Wire Compatibility**: Endpoints, JSON response shapes, status codes, and error structures (`{"code": "...", "message": "..."}`) match Better Auth exactly. Frontend clients work without changes.
+- **Shared Session & Cookie Interoperability**: Compatible HMAC-signed session cookies and Argon2id password hashes allow seamless co-existence or migration between TypeScript and Go services sharing the same database and secret.
+- **Framework-Agnostic Router Adapters**: Native support for standard `net/http` (`ServeMux`), `Chi`, `Gin`, and `Fiber v2`. Isolated subpackages ensure importing one router never pulls in dependencies for the others.
+- **OpenAPI & Interactive Docs Built-In**: First-class OpenAPI 3.1 generation via Huma with zero-configuration documentation UIs (Stoplight Elements, Scalar, Swagger UI, RapiDoc).
+- **Multi-Database & Multi-ORM Ready**: Production-tested across SQLite, PostgreSQL, and MySQL using GORM, with clean repository interfaces designed for Bun, sqlc, and `database/sql`.
+- **Enterprise Plugin Ecosystem**: Built-in plugins for Organizations (multi-tenancy, teams, dynamic RBAC), Platform Administration, Opaque Bearer Tokens, JWT/JWKS, and Email OTP.
+
+---
+
+## Quickstart
+
+### 1. Installation
+
+```bash
+go get github.com/better-go-auth/goauth
+```
+
+Install only the router adapter your project uses:
+
+```bash
+# For standard net/http (no external router dependencies):
+go get github.com/better-go-auth/goauth/adapters/mux
+
+# Or for Chi:
+go get github.com/better-go-auth/goauth/adapters/chi
+
+# Or for Gin:
+go get github.com/better-go-auth/goauth/adapters/gin
+
+# Or for Fiber v2:
+go get github.com/better-go-auth/goauth/adapters/fiber
+```
+
+### 2. Basic Example (`net/http` ServeMux)
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+
+	"github.com/better-go-auth/goauth"
+	"github.com/better-go-auth/goauth/adapters"
+	muxadapter "github.com/better-go-auth/goauth/adapters/mux"
+	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/plugins/bearer"
+	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
+
+func main() {
+	// 1. Initialize Database
+	db, err := gorm.Open(sqlite.Open("auth.db"), &gorm.Config{})
+	if err != nil {
+		log.Fatalf("failed to connect database: %v", err)
+	}
+
+	// 2. Initialize Router & OpenAPI / Docs
+	mux := http.NewServeMux()
+	api := muxadapter.New(mux,
+		adapters.WithTitle("My Auth API"),
+		adapters.WithVersion("1.0.0"),
+		adapters.WithScalarDocs("/docs"), // Interactive Scalar API documentation
+	)
+
+	// 3. Setup Better Go Auth
+	_, err = goauth.SetupGoAuth(context.Background(), api, goauth.GoAuthOptions{
+		AuthConfig: config.AuthConfig{
+			AppName:  "My Go App",
+			BaseURL:  "http://localhost:8080",
+			BasePath: "/api/auth",
+			Secret:   "your-at-least-32-characters-long-secret-key!",
+		},
+		Conn: db,
+		Plugins: []goauth.Plugin{
+			bearer.New(bearerconfig.DefaultConfig()), // Opaque bearer token support
+		},
+	})
+	if err != nil {
+		log.Fatalf("failed to initialize goauth: %v", err)
+	}
+
+	log.Println("Auth server running on :8080. Docs at http://localhost:8080/docs")
+	http.ListenAndServe(":8080", mux)
+}
+```
+
+---
+
+## Router Adapters
+
+Each router adapter lives in an isolated subpackage so your application only imports the framework it actually uses:
+
+### Gin
+```go
+import (
+	"github.com/better-go-auth/goauth/adapters"
+	ginadapter "github.com/better-go-auth/goauth/adapters/gin"
+	"github.com/gin-gonic/gin"
+)
+
+engine := gin.Default()
+api := ginadapter.New(engine, adapters.WithScalarDocs("/docs"))
+```
+
+### Chi
+```go
+import (
+	"github.com/better-go-auth/goauth/adapters"
+	chiadapter "github.com/better-go-auth/goauth/adapters/chi"
+	"github.com/go-chi/chi/v5"
+)
+
+router := chi.NewRouter()
+api := chiadapter.New(router, adapters.WithSwaggerUIDocs("/docs"))
+```
+
+### Fiber v2
+```go
+import (
+	"github.com/better-go-auth/goauth/adapters"
+	fiberadapter "github.com/better-go-auth/goauth/adapters/fiber"
+	"github.com/gofiber/fiber/v2"
+)
+
+app := fiber.New()
+api := fiberadapter.New(app, adapters.WithDocs("/docs"))
+```
+
+---
+
+## Interactive Documentation & OpenAPI
+
+`goauth` integrates with Huma v2 to automatically generate OpenAPI 3.1 specifications (`/openapi.json` and `/openapi.yaml`) and interactive browser documentation:
+
+- `adapters.WithStoplightDocs("/docs")`: Stoplight Elements UI (default).
+- `adapters.WithScalarDocs("/docs")`: Modern, responsive Scalar UI.
+- `adapters.WithSwaggerUIDocs("/docs")`: Classic Swagger UI.
+- `adapters.WithEnableDocs(bool, path...)`: Dynamically toggle docs (e.g. enable in staging, disable in production).
+- `adapters.WithoutDocs()`: Completely disables documentation endpoints.
+
+---
+
+## Implemented Features
+
+### Core Authentication & Sessions
+- **Email & Password Authentication**: Standard sign-up, sign-in, email verification, password reset, and password updates.
+- **Session Management**: Multi-device sessions, session revocation (`/revoke-session`, `/revoke-sessions`, `/revoke-other-sessions`), session updates, and sliding-window expiration.
+- **Cookie Cache Tier**: Sub-millisecond session validation using cryptographic HMAC-signed cookie cache, reducing database lookups on authenticated requests.
+- **Account Management**: Multiple credential account linking, unlinking, and user deletion with dependency cleanup.
+
+### Security & Hardening
+- **Route Security Policies**:
+  - `RequireFreshOps`: Re-authentication freshness enforcement on high-risk operations (e.g. email change, password update, account deletion, org deletion).
+  - `RequireBearerTokenOps`: Restricts sensitive endpoints to genuine sessions/bearer tokens, rejecting short-lived Access JWTs with configurable pass-through or rejection.
+  - `DisabledOps` & `DisabledPaths`: Mount-level or middleware-level operation/route disabling.
+- **CSRF & Origin Protection**: Origin and Referer validation on mutating requests across core and plugin routes (`CheckOriginOnPluginMutations`).
+- **Secondary Storage Blacklists**: Redis and in-memory cache abstractions for revoked sessions and rate limits.
+
+### Official Plugins
+
+| Plugin | Package | Description |
+|---|---|---|
+| **Organization** | `src/plugins/org` | Multi-tenancy, org creation/approval, member invitations, team scoping, self-service leave, admin search, and two-tier dynamic RBAC with sub-microsecond L1 memory caching. |
+| **Admin** | `src/plugins/admin` | User management, platform role assignment (`admin`/`user`), user ban/unban, user impersonation, and admin user removal. |
+| **Bearer** | `src/plugins/bearer` | HMAC-signed opaque bearer tokens (`<token>.<sig>`) for mobile, CLI, and non-cookie clients with strict signature validation (`RequireSignature`). |
+| **Access-Token** | `src/plugins/access-token` | Short-lived Access JWT + refresh token flow with live claim synchronization (Layer 1) and automatic `set-auth-token` header emission on active org/team changes (Layer 2). |
+| **Email OTP** | `src/plugins/email-otp` | Time-sensitive one-time passcodes for sign-in and verification with enumeration defense, rate limiting, and global email verification override. |
+| **JWT / JWKS** | `src/plugins/jwt` | OpenID/OAuth-compatible JWT issuance and public JWKS endpoint (`/.well-known/jwks.json`). |
+
+---
+
+## Better Auth Compatibility Status
+
+| Feature / Domain | Better Auth (TS) | Better Go Auth | Status |
+|---|:---:|:---:|:---:|
+| **Core Endpoints (`/sign-up`, `/sign-in`, `/get-session`, etc.)** | Supported | Supported | Verified with `better-auth/client` |
+| **Session Cookies (`better-auth.session_token`)** | Supported | Supported | Full Interoperability |
+| **Password Hashes (Argon2id)** | Supported | Supported | Full Interoperability |
+| **Organization & Teams Plugin** | Supported | Supported | Verified Parity |
+| **Admin Plugin** | Supported | Supported | Verified Parity |
+| **Bearer Token Plugin** | Supported | Supported | Verified Parity |
+| **Email OTP Plugin** | Supported | Supported | Verified Parity |
+| **JWT & JWKS Plugin** | Supported | Supported | Verified Parity |
+| **Multi-Database Support (SQLite, Postgres, MySQL)** | Supported | Supported | Verified with Testcontainers |
+| **OAuth 2.0 / Social Sign-In** | Supported | *Planned* | In Roadmap |
+| **Passkeys / WebAuthn** | Supported | *Planned* | In Roadmap |
+| **Two-Factor Authentication (2FA / TOTP)** | Supported | *Planned* | In Roadmap |
+| **Magic Link Authentication** | Supported | *Planned* | In Roadmap |
+| **Phone Number (SMS) Authentication** | Supported | *Planned* | In Roadmap |
+| **Custom Database Fields** | Supported | *Planned* | Phase 8 Specification |
+
+---
+
+## Planned Features & Roadmap
+
+1. **OAuth 2.0 & Social Providers**:
+   - Out-of-the-box provider integrations (Google, GitHub, Discord, Apple, Microsoft, etc.) matching Better Auth's social flow and account linking.
+2. **Two-Factor Authentication (2FA / MFA)**:
+   - Time-based One-Time Passwords (TOTP via Google Authenticator, Authy), backup recovery codes, and SMS 2FA.
+3. **Passkeys & WebAuthn**:
+   - Passwordless registration and login via FIDO2/WebAuthn credentials.
+4. **Magic Link**:
+   - Passwordless email sign-in using secure, signed single-use verification links.
+5. **Phone Number Authentication**:
+   - SMS OTP sign-in, phone number verification, and profile management.
+6. **Physical Custom Fields (Phase 8)**:
+   - Dynamic schema migrations and repository serialization for custom fields added to `user`, `session`, and `organization` tables.
+7. **Native Multi-ORM Expansion (Phase 7)**:
+   - Native [Bun](https://bun.uptrace.dev/), [sqlc](https://sqlc.dev/), and standard `database/sql` repository implementations.
+
+---
+
+## Testing
+
+The project maintains comprehensive test coverage across unit, integration, and compatibility suites:
+
+```bash
+# Run all unit tests
+go test ./...
+
+# Run compatibility test suite
+go test -v ./src/tests/compat/...
+
+# Run router adapter tests
+go test -v ./adapters/...
+```
+
+Multi-database integration tests use [testcontainers-go](https://github.com/testcontainers/testcontainers-go) to test against live PostgreSQL and MySQL instances in Docker.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
+
