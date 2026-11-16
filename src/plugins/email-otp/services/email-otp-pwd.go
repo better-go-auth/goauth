@@ -2,12 +2,11 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 )
@@ -28,7 +27,7 @@ func (s *EmailOTPService) RequestEmailChange(ctx context.Context, userID, newEma
 		return ErrUserNotFound
 	}
 	if strings.EqualFold(user.Email, newEmail) {
-		return autherr.Err(http.StatusBadRequest, "SAME_EMAIL", "New email must be different from current email")
+		return ErrEmailIsTheSame
 	}
 
 	// Step 3: If verifyCurrentEmail is required, verify and consume OTP for current email
@@ -42,17 +41,23 @@ func (s *EmailOTPService) RequestEmailChange(ctx context.Context, userID, newEma
 		}
 	}
 
-	// Step 4: Check if new email already belongs to another user
+	// Step 4: A taken address gets the same success answer but no code, so the endpoint can't be used to
+	// probe which emails are registered (better-auth behaviour)
+	identifier := s.changeEmailIdentifier(user.Email, newEmail)
 	existing, err := acceptNotFound(s.repos.FindUserByEmail(ctx, strings.ToLower(newEmail)))
 	if err != nil {
 		return err
 	}
-	if existing != nil && existing.ID != userID {
-		return ErrEmailAlreadyExists
+	if existing != nil {
+		_ = s.repos.DeleteVerificationByIdentifier(ctx, identifier)
+		return nil
+	}
+	if s.config.SendVerificationOTP == nil {
+		return ErrSenderNotConfigured
 	}
 
-	// Step 5: Send change-email OTP to the new email address
-	return s.SendVerificationOTP(ctx, newEmail, emailotpconfig.OTPTypeChangeEmail, req)
+	// Step 5: Send change-email OTP to the new email address, stored under "change-email-otp-<current>-<new>"
+	return s.issueOTP(ctx, identifier, strings.ToLower(newEmail), emailotpconfig.OTPTypeChangeEmail, req)
 }
 
 // ChangeEmail verifies the OTP sent to newEmail and updates the user's email.
@@ -61,22 +66,32 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 	if !s.config.ChangeEmail.Enabled {
 		return nil, ErrChangeEmailDisabled
 	}
-	if !validEmail(newEmail) || otp == "" {
+	if !validEmail(newEmail) {
+		return nil, ErrInvalidEmailAddress
+	}
+	if otp == "" {
 		return nil, ErrInvalidOTP
+	}
+	current, err := s.repos.FindUserByID(ctx, userID)
+	if err != nil || current == nil {
+		return nil, ErrUserNotFoundBadRequest
+	}
+	if strings.EqualFold(current.Email, newEmail) {
+		return nil, ErrEmailIsTheSame
 	}
 
 	// Step 2: Verify OTP against stored value with attempt tracking
-	identifier := s.otpIdentifier(emailotpconfig.OTPTypeChangeEmail, newEmail)
+	identifier := s.changeEmailIdentifier(current.Email, newEmail)
 	if err := s.verifyOTPAttempt(ctx, identifier, otp, false); err != nil {
 		return nil, err
 	}
 
 	// Step 3: Update user email in transaction
 	var updatedUser *models.User
-	err := s.withTx(ctx, func(txCtx context.Context) error {
+	err = s.withTx(ctx, func(txCtx context.Context) error {
 		user, err := s.repos.FindUserByID(txCtx, userID)
 		if err != nil || user == nil {
-			return ErrUserNotFound
+			return ErrUserNotFoundBadRequest
 		}
 
 		// Ensure target email is not already taken by another user
@@ -85,7 +100,14 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 			return err
 		}
 		if existing != nil && existing.ID != userID {
-			return ErrEmailAlreadyExists
+			return ErrEmailAlreadyInUse
+		}
+
+		// config: EmailVerification.BeforeEmailVerification runs before the new address is marked verified
+		if before := s.rootConfig.EmailVerification.BeforeEmailVerification; before != nil {
+			if err := before(*user, config.GetHTTPRequest(txCtx)); err != nil {
+				return err
+			}
 		}
 
 		updated, err := s.repos.UpdateUser(txCtx, userID, map[string]interface{}{
@@ -97,32 +119,8 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 		}
 		updatedUser = updated
 
-		// In Better Auth, for providerId "credential", accountId is the user ID.
-		acc, err := acceptNotFound(s.repos.FindAccountByUserAndProvider(txCtx, userID, models.ProvCredential))
-		if err != nil {
-			return err
-		}
-		if acc != nil {
-			if acc.AccountID != user.ID {
-				_, err = s.repos.UpdateAccount(txCtx, acc.ID, map[string]interface{}{
-					"AccountID": user.ID,
-				})
-				if err != nil {
-					return fmt.Errorf("email-otp: failed to update account: %w", err)
-				}
-			}
-		} else {
-			now := time.Now().UTC()
-			_, err = s.repos.CreateAccount(txCtx, &models.Account{
-				Base:       models.Base{ID: models.NewID(), CreatedAt: now, UpdatedAt: now},
-				UserID:     userID,
-				ProviderID: models.ProvCredential,
-				AccountID:  user.ID,
-			})
-			if err != nil {
-				return fmt.Errorf("email-otp: failed to create account: %w", err)
-			}
-		}
+		// better-auth keeps accounts untouched on an email change (a credential account's accountId is the
+		// user id, not the email), so no account is created or rewritten here
 		// Step 4: Consume OTP upon successful verification
 		_ = s.repos.DeleteVerificationByIdentifier(txCtx, identifier)
 
@@ -130,6 +128,11 @@ func (s *EmailOTPService) ChangeEmail(ctx context.Context, userID, newEmail, otp
 	})
 	if err != nil {
 		return nil, err
+	}
+
+	// config: EmailVerification.AfterEmailVerification
+	if after := s.rootConfig.EmailVerification.AfterEmailVerification; after != nil {
+		_ = after(*updatedUser, config.GetHTTPRequest(ctx))
 	}
 
 	// Step 5: Refresh cached user copy across active sessions so getSession reflects the new email

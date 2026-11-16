@@ -260,6 +260,15 @@ func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWi
 		return &svcint.VerifyEmailResult{Status: true}, nil
 	}
 
+	// check if the new email is already in use by another user (before anything is written, so a
+	// conflict leaves no orphan session behind)
+	existing, err := acceptNotFound(s.repos.FindUserByEmail(ctx, strings.ToLower(updateTo)))
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil && existing.ID != user.ID {
+		return nil, autherr.ErrUserAlreadyExistsUseAnotherEmail
+	}
 	// the email is about to change: make sure there is a session to write the new user into
 	active := current
 	if active == nil {
@@ -268,14 +277,6 @@ func (s *Service) verifyEmailChange(ctx context.Context, current *dtos.SessionWi
 			return nil, autherr.ErrFailedToCreateSession
 		}
 		active = sw
-	}
-	// check if the new email is already in use by another user
-	existing, err := acceptNotFound(s.repos.FindUserByEmail(ctx, strings.ToLower(updateTo)))
-	if err != nil {
-		return nil, err
-	}
-	if existing != nil && existing.ID != user.ID {
-		return nil, autherr.ErrUserAlreadyExistsUseAnotherEmail
 	}
 
 	// change-email-verification: the new address is proven; legacy tokens (no requestType) still need verifying

@@ -34,6 +34,14 @@ type UserDto struct {
 	BanReason  *string    `json:"banReason"      bun:"ban_reason"`
 	BanExpires *time.Time `json:"banExpires"                      bun:"ban_expires"`
 
+	// Phone-number plugin fields (better-auth `phoneNumber` / `phoneNumberVerified`).
+	// PhoneNumber is unique but nullable: users without a phone keep NULL.
+	PhoneNumber         *string `json:"phoneNumber,omitempty"  gorm:"uniqueIndex;size:64" bun:"phone_number,unique"`
+	PhoneNumberVerified bool    `json:"phoneNumberVerified"    gorm:"not null;default:false" bun:"phone_number_verified,default:false"`
+
+	// Two-factor plugin field (better-auth `twoFactorEnabled`).
+	TwoFactorEnabled bool `json:"twoFactorEnabled" gorm:"not null;default:false" bun:"two_factor_enabled,default:false"`
+
 	// ===== goauth fields (not in better-auth) =====
 	FirstName     string              `json:"firstName,omitempty" minLength:"1"`
 	LastName      string              `json:"lastName,omitempty"`

@@ -17,7 +17,14 @@ import (
 // requestContext puts a copy of the request in ctx (for config callbacks via config.GetHTTPRequest),
 // built from huma.Context so it works with every Huma router adapter.
 func (h *handler) requestContext() func(huma.Context, func(huma.Context)) {
+	return RequestContext()
+}
+
+// RequestContext is the exported request-context middleware, shared with plugin routes so
+// config.GetHTTPRequest(ctx) works in every goauth handler.
+func RequestContext() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
+		// always rebuild: transport middlewares (bearer) may have rewritten headers since an earlier copy
 		u := ctx.URL()
 		req := &http.Request{Method: ctx.Method(), URL: &u, Host: ctx.Host(), RemoteAddr: ctx.RemoteAddr(), Header: http.Header{}}
 		ctx.EachHeader(func(name, value string) { req.Header.Add(name, value) })
@@ -40,11 +47,28 @@ func (h *handler) meta(ctx context.Context) svcint.Meta {
 // clientIP follows Advanced.IPAddress: the configured headers in order (default x-forwarded-for),
 // then the connection address. DisableTracking stores no IP.
 func (h *handler) clientIP(req *http.Request) string {
-	conf := h.Conf.Advanced.IPAddress
-	if conf.DisableTracking {
+	return ClientIP(h.Conf, req)
+}
+
+// SessionMeta returns the IP and user agent stored on new sessions, for plugin handlers.
+func SessionMeta(conf config.AuthConfig, ctx context.Context) svcint.Meta {
+	req := requestOf(ctx)
+	if req == nil {
+		return svcint.Meta{}
+	}
+	return svcint.Meta{IPAddress: ClientIP(conf, req), UserAgent: req.Header.Get("User-Agent")}
+}
+
+// ClientIP resolves the client IP following Advanced.IPAddress (exported for plugins and rate limiting).
+func ClientIP(conf config.AuthConfig, req *http.Request) string {
+	if req == nil {
 		return ""
 	}
-	headers := conf.Headers
+	ipConf := conf.Advanced.IPAddress
+	if ipConf.DisableTracking {
+		return ""
+	}
+	headers := ipConf.Headers
 	if len(headers) == 0 {
 		headers = []string{"x-forwarded-for"}
 	}
@@ -68,8 +92,13 @@ func (h *handler) clientIP(req *http.Request) string {
 // come from a trusted Origin/Referer. With formCSRF (sign-in/sign-up) cookieless browser requests are checked
 // too, using Fetch Metadata, and cross-site navigations are blocked.
 func (h *handler) originCheck(formCSRF bool) func(huma.Context, func(huma.Context)) {
+	return OriginCheck(h.Conf, h.Origins, formCSRF)
+}
+
+// OriginCheck is the exported origin/CSRF middleware, shared with plugin routes.
+func OriginCheck(conf config.AuthConfig, origins *origin.Checker, formCSRF bool) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
-		if err := OriginError(ctx, h.Conf, h.Origins, formCSRF); err != nil {
+		if err := OriginError(ctx, conf, origins, formCSRF); err != nil {
 			writeError(ctx, err)
 			return
 		}

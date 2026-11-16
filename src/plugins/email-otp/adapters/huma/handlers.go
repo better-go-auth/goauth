@@ -2,7 +2,6 @@ package humaemailotp
 
 import (
 	"context"
-	"net"
 	"net/http"
 	"strings"
 
@@ -39,37 +38,16 @@ func NewEmailOTPHandler(svc *services.EmailOTPService, cm *cookies.Manager, cfg 
 	}
 }
 
+// meta returns the session IP / user agent, resolved like core sign-in (Advanced.IPAddress headers, a
+// parsed IP instead of the raw X-Forwarded-For list).
 func (h *EmailOTPHandler) meta(ctx context.Context) authint.SessionMeta {
-	req := config.GetHTTPRequest(ctx)
-	if req == nil {
-		return authint.SessionMeta{}
-	}
-	ip := req.Header.Get("X-Forwarded-For")
-	if ip == "" {
-		ip = req.RemoteAddr
-	}
-	return authint.SessionMeta{
-		IPAddress: ip,
-		UserAgent: req.Header.Get("User-Agent"),
-	}
+	return humaadapter.SessionMeta(h.Config, ctx)
 }
 
+// clientIP is the rate-limit key: the same resolved client IP the sessions store.
 func (h *EmailOTPHandler) clientIP(ctx context.Context) string {
-	req := config.GetHTTPRequest(ctx)
-	if req == nil {
-		return "global"
-	}
-	if xff := req.Header.Get("X-Forwarded-For"); xff != "" {
-		parts := strings.Split(xff, ",")
-		if ip := strings.TrimSpace(parts[0]); ip != "" {
-			return ip
-		}
-	}
-	if host, _, err := net.SplitHostPort(req.RemoteAddr); err == nil && host != "" {
-		return host
-	}
-	if req.RemoteAddr != "" {
-		return req.RemoteAddr
+	if ip := humaadapter.ClientIP(h.Config, config.GetHTTPRequest(ctx)); ip != "" {
+		return ip
 	}
 	return "global"
 }
@@ -164,7 +142,7 @@ func (h *EmailOTPHandler) VerifyEmail(ctx context.Context, in *verifyEmailInput)
 		tok := session.Session.Token
 		out.Body.Token = &tok
 		if h.Cookies != nil {
-			out.SetCookie = h.Cookies.SessionCookies(tok, false)
+			out.SetCookie = h.Cookies.SessionCookiesWithData(session, false)
 		}
 	}
 	return out, nil
@@ -195,7 +173,8 @@ func (h *EmailOTPHandler) SignIn(ctx context.Context, in *signInInput) (*signInO
 	// Step 3: Attach session cookie and return session token + user
 	out := &signInOutput{}
 	if h.Cookies != nil {
-		out.SetCookie = h.Cookies.SessionCookies(sw.Session.Token, false)
+		// include session_data when the cookie cache is enabled, like core sign-in
+		out.SetCookie = h.Cookies.SessionCookiesWithData(sw, false)
 	}
 	out.Body.Token = sw.Session.Token
 	out.Body.User = &sw.User
@@ -300,8 +279,9 @@ type requestEmailChangeInput struct {
 	Body dtos.RequestEmailChangeInput
 }
 
+// requestEmailChangeOutput is better-auth's {"success": true}.
 type requestEmailChangeOutput struct {
-	Body dtos.StatusResponse
+	Body dtos.SuccessResponse
 }
 
 func (h *EmailOTPHandler) RequestEmailChange(ctx context.Context, in *requestEmailChangeInput) (*requestEmailChangeOutput, error) {
@@ -320,7 +300,7 @@ func (h *EmailOTPHandler) RequestEmailChange(ctx context.Context, in *requestEma
 		return nil, err
 	}
 	out := &requestEmailChangeOutput{}
-	out.Body.Status = true
+	out.Body.Success = true
 	return out, nil
 }
 
@@ -329,8 +309,10 @@ type changeEmailInput struct {
 	Body dtos.ChangeEmailOTPInput
 }
 
+// changeEmailOutput is better-auth's {"success": true}; the session cookie is rewritten with the new email.
 type changeEmailOutput struct {
-	Body dtos.StatusResponse
+	SetCookie []http.Cookie `header:"Set-Cookie"`
+	Body      dtos.SuccessResponse
 }
 
 func (h *EmailOTPHandler) ChangeEmail(ctx context.Context, in *changeEmailInput) (*changeEmailOutput, error) {
@@ -344,10 +326,17 @@ func (h *EmailOTPHandler) ChangeEmail(ctx context.Context, in *changeEmailInput)
 		return nil, huma.NewError(http.StatusUnauthorized, "Unauthorized")
 	}
 	// Step 3: Verify OTP and update user's email
-	if _, err := h.Service.ChangeEmail(ctx, sw.User.ID, in.Body.NewEmail, in.Body.OTP); err != nil {
+	updated, err := h.Service.ChangeEmail(ctx, sw.User.ID, in.Body.NewEmail, in.Body.OTP)
+	if err != nil {
 		return nil, err
 	}
 	out := &changeEmailOutput{}
-	out.Body.Status = true
+	out.Body.Success = true
+	// Step 4: rewrite the cached session_data cookie with the new email (better-auth setSessionCookie)
+	if h.Cookies != nil && h.Cookies.CookieCacheEnabled() && updated != nil {
+		next := *sw
+		next.User = modeldtos.UserFromModel(updated)
+		out.SetCookie = h.Cookies.SessionCookiesWithData(&next, h.Cookies.DontRemember(in.Cookie))
+	}
 	return out, nil
 }

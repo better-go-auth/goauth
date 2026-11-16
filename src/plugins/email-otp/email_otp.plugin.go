@@ -211,6 +211,8 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	if ictx.SecondaryStorage != nil {
 		p.service.SetSecondaryStorage(ictx.SecondaryStorage)
 	}
+	// OTP sign-up runs the user lifecycle hooks like core sign-up
+	p.service.SetHooks(ictx.Hooks)
 
 	// Step 4: Register lifecycle hook and global verification override sender when enabled
 	p.hookService = &emailOTPHookService{plugin: p}
@@ -227,7 +229,11 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	}
 
 	// Step 5: Construct HTTP handler and mount Huma routes
-	cookieMgr := cookies.New(ictx.Config)
+	// share the core cookie manager so cookie names, attributes and the signing secret always match
+	cookieMgr := ictx.CookieManager
+	if cookieMgr == nil {
+		cookieMgr = cookies.New(ictx.Config)
+	}
 	p.middleware = ictx.MiddleWare
 	p.handler = humaemailotp.NewEmailOTPHandler(p.service, cookieMgr, ictx.Config, ictx.Authenticator)
 

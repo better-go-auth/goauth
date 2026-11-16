@@ -160,3 +160,28 @@ func (c *Manager) AdminSessionToken(cookieHeader string) (string, bool) {
 func (c *Manager) ExpireAdminSessionCookie() http.Cookie {
 	return c.cookie(CookieAdminSession, "", -1)
 }
+
+// Cookie returns a better-auth auth cookie "<prefix>.<base>" with the shared attributes
+// (path, domain, Secure, HttpOnly, SameSite=Lax). maxAge 0 is a browser-session cookie, -1 deletes it.
+func (c *Manager) Cookie(base, value string, maxAge int) http.Cookie {
+	return c.cookie(base, value, maxAge)
+}
+
+// SignedCookie returns an auth cookie whose value is signed with the auth secret (better-auth's setSignedCookie).
+func (c *Manager) SignedCookie(base, value string, maxAge int) http.Cookie {
+	return c.cookie(base, c.signed(value), maxAge)
+}
+
+// ExpireCookie returns a Set-Cookie entry deleting the auth cookie base.
+func (c *Manager) ExpireCookie(base string) http.Cookie {
+	return c.cookie(base, "", -1)
+}
+
+// ReadCookie returns the raw (unsigned) value of auth cookie base from a Cookie request header.
+func (c *Manager) ReadCookie(cookieHeader, base string) (string, bool) {
+	raw, ok := c.read(cookieHeader, base)
+	if !ok {
+		return "", false
+	}
+	return DecodeCookieValue(raw), true
+}

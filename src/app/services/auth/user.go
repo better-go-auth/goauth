@@ -187,6 +187,10 @@ func (s *Service) deleteUserNow(ctx context.Context, userID string) error {
 	if err := s.sessionMgr.DeleteUserSessions(ctx, user.ID); err != nil {
 		return err
 	}
+	// let plugins drop their per-user rows (two-factor secrets, passkeys, ...); best effort like better-auth's cleanup
+	if s.Hooks != nil {
+		_ = s.Hooks.TriggerUserDeleted(ctx, user.ID)
+	}
 	// config: User.DeleteUser.AfterDelete for cleanup in the app (files, audit log, ...)
 	if opts.AfterDelete != nil {
 		return opts.AfterDelete(*user, request(ctx))

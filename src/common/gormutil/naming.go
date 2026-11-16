@@ -19,6 +19,8 @@ var defaultModelMapping = map[string]string{
 	"TeamMember":       "teamMember",
 	"OrganizationRole": "organizationRole",
 	"JWK":              "jwks",
+	"TwoFactor":        "twoFactor",
+	"Passkey":          "passkey",
 }
 
 // NamingStrategy implements schema.Namer with per-model overrides and prefixes

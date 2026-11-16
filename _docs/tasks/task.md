@@ -78,3 +78,14 @@ it is doing a redundant logic.
   - Updated [`OrgService.CreateOrganization`](src/plugins/org/services/serv.org.go), `AdminCreateOrganization`, and `UpdateOrganization` to persist and update `OrgType`.
   - Updated JWT and claims layers ([`token.CustomClaims`](src/providers/token/token.go), [`jwtClaims`](src/providers/token/jwt-token/jwt_managers.go), [`from-claims.go`](src/providers/authenticator/from-claims.go), [`session_claims.go`](src/app/adapters/huma/session_claims.go), and [`access-token`](src/plugins/access-token/access-token-middleware.go) Layer 1 and Layer 2) to sync and diff `ActiveOrgType`.
   - Added automated test in [`org_type_test.go`](src/plugins/org/test/org_type_test.go) verifying org creation with `OrgType`, active org switching, session type synchronization, and session clearing.
+
+## Phase 9: Audit fixes and new better-auth plugins (2026-11-17)
+- [x] Plugin routes now receive the HTTP request in ctx (session IP/user agent, callbacks get the request) via a global request-context middleware.
+- [x] Core fires `BeforeUserCreate` (sign-up) and `UserDeleted` (delete-user) hooks; email change checks for a taken email before creating a session.
+- [x] Email-OTP matches better-auth storage (`<type>-otp-<email>`, `change-email-otp-<old>-<new>`, symmetricEncrypt for "encrypted" with legacy AES-GCM read fallback), `{success:true}` change-email responses, silent success for taken emails, `Invalid OTP` message, 400 USER_NOT_FOUND on check, OTP sign-up without credential account.
+- [x] Shared infra: `pluginkit` (routes, origin/CSRF, session access levels, cookies, sessions, user hooks), `ratelimit` provider (better-auth fixed window, 429 + X-Retry-After), sign-in interceptor hook (`OnAfterSignIn`), user `phoneNumber`/`phoneNumberVerified`/`twoFactorEnabled`, `FindUserByPhoneNumber` repo method.
+- [x] Two-factor plugin (TOTP, OTP, backup codes, trust device) + official client test.
+- [x] Magic-link plugin + official client test.
+- [x] Phone-number plugin + official client test.
+- [x] Passkey (WebAuthn) plugin (go-webauthn) + official `@better-auth/passkey` client test (`src/tests/compat/client-passkey`, run `npm install --legacy-peer-deps` there).
+- [x] Social / OAuth2 plugin (google, github, discord, microsoft, apple, facebook, gitlab, generic OIDC) + official client test.

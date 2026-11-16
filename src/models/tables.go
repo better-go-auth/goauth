@@ -17,6 +17,8 @@ const (
 	ModelTeamMember       = "teamMember"
 	ModelOrganizationRole = "organizationRole"
 	ModelJWKS             = "jwks"
+	ModelTwoFactor        = "twoFactor"
+	ModelPasskey          = "passkey"
 )
 
 var (

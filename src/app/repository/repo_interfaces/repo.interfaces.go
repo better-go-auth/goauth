@@ -15,6 +15,8 @@ type IUserRepo interface {
 	FindUserByID(ctx context.Context, id string) (*models.User, error)
 	// FindUserByEmail fetches a user by email (case-insensitive).
 	FindUserByEmail(ctx context.Context, email string) (*models.User, error)
+	// FindUserByPhoneNumber returns the live user owning phoneNumber (phone-number plugin).
+	FindUserByPhoneNumber(ctx context.Context, phoneNumber string) (*models.User, error)
 	// UpdateUser applies a partial update keyed by Go field name (e.g. "EmailVerified") and returns the updated record.
 	UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error)
 	// DeleteUser soft-deletes a user and frees their email.

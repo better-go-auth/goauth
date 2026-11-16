@@ -259,7 +259,7 @@ func TestEmailOTP_AllowedAttempts_And_Expiry(t *testing.T) {
 	}
 	expiredCode := h.sender.Last().OTP
 	if err := h.db.Model(&models.Verification{}).
-		Where("identifier = ?", "email-otp:sign-in:"+email).
+		Where("identifier = ?", "sign-in-otp-"+email).
 		Update("expires_at", time.Now().Add(-1*time.Minute)).Error; err != nil {
 		t.Fatalf("force expire failed: %v", err)
 	}
@@ -301,7 +301,7 @@ func TestEmailOTP_StoreOTPModes_And_ResendStrategy(t *testing.T) {
 		t.Fatalf("send enc 1 failed: %v", err)
 	}
 	encOtp1 := hEnc.sender.Last().OTP
-	rec, err := hEnc.repos.FindVerificationValue(ctx, "email-otp:sign-in:enc@example.com")
+	rec, err := hEnc.repos.FindVerificationValue(ctx, "sign-in-otp-enc@example.com")
 	if err != nil || rec == nil {
 		t.Fatalf("expected verification record in DB")
 	}
@@ -328,7 +328,7 @@ func TestEmailOTP_StoreOTPModes_And_ResendStrategy(t *testing.T) {
 		t.Fatalf("send hash 1 failed: %v", err)
 	}
 	hashOtp1 := hHash.sender.Last().OTP
-	recHash, err := hHash.repos.FindVerificationValue(ctx, "email-otp:sign-in:hash@example.com")
+	recHash, err := hHash.repos.FindVerificationValue(ctx, "sign-in-otp-hash@example.com")
 	if err != nil || recHash == nil || strings.HasPrefix(recHash.Value, hashOtp1+":") {
 		t.Fatalf("expected hashed value in DB, got: %+v", recHash)
 	}
@@ -354,7 +354,7 @@ func TestEmailOTP_StoreOTPModes_And_ResendStrategy(t *testing.T) {
 		t.Fatalf("send custom failed: %v", err)
 	}
 	customOtp := hCustom.sender.Last().OTP
-	recCustom, _ := hCustom.repos.FindVerificationValue(ctx, "email-otp:sign-in:custom@example.com")
+	recCustom, _ := hCustom.repos.FindVerificationValue(ctx, "sign-in-otp-custom@example.com")
 	if recCustom == nil || !strings.HasPrefix(recCustom.Value, "ENC["+customOtp+"]:") {
 		t.Fatalf("expected custom encrypted DB value, got %+v", recCustom)
 	}

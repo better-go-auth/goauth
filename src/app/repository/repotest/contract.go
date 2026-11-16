@@ -20,6 +20,7 @@ type Factory func(t *testing.T) repo_interfaces.IAuthRepos
 // Run executes the auth repository contract against the implementation built by newRepos.
 func Run(t *testing.T, newRepos Factory) {
 	t.Run("users", func(t *testing.T) { testUsers(t, newRepos(t)) })
+	t.Run("phone numbers", func(t *testing.T) { testPhoneNumbers(t, newRepos(t)) })
 	t.Run("list users", func(t *testing.T) { testListUsers(t, newRepos(t)) })
 	t.Run("sessions", func(t *testing.T) { testSessions(t, newRepos(t)) })
 	t.Run("session queries", func(t *testing.T) { testSessionQueries(t, newRepos(t)) })
@@ -84,6 +85,46 @@ func testUsers(t *testing.T, r repo_interfaces.IAuthRepos) {
 	_, err = r.FindUserByEmail(ctx, "alice@example.com")
 	require.Error(t, err)
 	mustCreateUser(t, r, "alice@example.com") // a deleted user's email is free again
+}
+
+// testPhoneNumbers covers the phone-number plugin columns: exact lookup, uniqueness, clearing and the
+// number being released when the user is deleted.
+func testPhoneNumbers(t *testing.T, r repo_interfaces.IAuthRepos) {
+	ctx := context.Background()
+	phone := "+15550001111"
+
+	// Step 1: users without a phone coexist (NULL is not a duplicate) and are not found by ""
+	a := mustCreateUser(t, r, "a@example.com")
+	b := mustCreateUser(t, r, "b@example.com")
+	_, err := r.FindUserByPhoneNumber(ctx, "")
+	require.Error(t, err)
+
+	// Step 2: set and look up the number
+	updated, err := r.UpdateUser(ctx, a.ID, map[string]interface{}{"PhoneNumber": phone, "PhoneNumberVerified": true})
+	require.NoError(t, err)
+	require.NotNil(t, updated.PhoneNumber)
+	require.Equal(t, phone, *updated.PhoneNumber)
+	require.True(t, updated.PhoneNumberVerified)
+	got, err := r.FindUserByPhoneNumber(ctx, phone)
+	require.NoError(t, err)
+	require.Equal(t, a.ID, got.ID)
+	_, err = r.FindUserByPhoneNumber(ctx, "+15559999999")
+	require.Error(t, err)
+
+	// Step 3: the number is unique
+	_, err = r.UpdateUser(ctx, b.ID, map[string]interface{}{"PhoneNumber": phone})
+	require.Error(t, err, "phone numbers are unique")
+	dup := newUser("c@example.com")
+	dup.PhoneNumber = &phone
+	_, err = r.CreateUser(ctx, dup)
+	require.Error(t, err, "phone numbers are unique on create")
+
+	// Step 4: deleting the user releases the number
+	require.NoError(t, r.DeleteUser(ctx, a.ID))
+	_, err = r.FindUserByPhoneNumber(ctx, phone)
+	require.Error(t, err)
+	_, err = r.UpdateUser(ctx, b.ID, map[string]interface{}{"PhoneNumber": phone})
+	require.NoError(t, err, "a deleted user's number can be reused")
 }
 
 func testListUsers(t *testing.T, r repo_interfaces.IAuthRepos) {

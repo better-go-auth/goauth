@@ -122,6 +122,9 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	}
 	// every route goauth and its plugins register is marked so its errors use the goauth format
 	api = types.WrapAPI(api)
+	// store the *http.Request in ctx for every goauth and plugin route registered below, so plugin handlers
+	// get the client IP / user agent for new sessions and user callbacks receive the request
+	api.UseMiddleware(humaadapter.RequestContext())
 
 	models.SetTableNames(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
 	if opts.Conn != nil {

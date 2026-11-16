@@ -47,6 +47,12 @@ type UserResponse struct {
 	Banned     bool    `json:"banned,omitempty"`
 	BanReason  *string `json:"banReason,omitempty"`
 	BanExpires *Time   `json:"banExpires,omitempty"`
+
+	// Phone-number plugin fields: only present for users that have a phone number.
+	PhoneNumber         *string `json:"phoneNumber,omitempty"`
+	PhoneNumberVerified *bool   `json:"phoneNumberVerified,omitempty"`
+	// Two-factor plugin field: only present once two-factor authentication was enabled.
+	TwoFactorEnabled bool `json:"twoFactorEnabled,omitempty"`
 }
 
 // SessionData is better-auth's core session shape plus the admin/organization plugin fields.
@@ -104,6 +110,13 @@ func UserFromModel(u *models.User) UserResponse {
 		t := Time(*u.BanExpires)
 		out.BanExpires = &t
 	}
+	// phone-number plugin: report the number and its verification state together
+	if u.PhoneNumber != nil && *u.PhoneNumber != "" {
+		phone, verified := *u.PhoneNumber, u.PhoneNumberVerified
+		out.PhoneNumber, out.PhoneNumberVerified = &phone, &verified
+	}
+	// two-factor plugin
+	out.TwoFactorEnabled = u.TwoFactorEnabled
 	return out
 }
 

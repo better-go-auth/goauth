@@ -123,6 +123,12 @@ func (r *Resolver) require(fresh bool) func(huma.Context, func(huma.Context)) {
 	}
 }
 
+// WriteError writes a better-auth {code, message} error from a middleware.
+func WriteError(ctx huma.Context, e *autherr.AuthError) { writeError(ctx, e) }
+
+// Manager returns the session manager behind the resolver.
+func (r *Resolver) Manager() *sessionsvc.Manager { return r.mgr }
+
 func writeError(ctx huma.Context, e *autherr.AuthError) {
 	ctx.SetHeader("Content-Type", "application/json")
 	ctx.SetStatus(e.StatusCode)

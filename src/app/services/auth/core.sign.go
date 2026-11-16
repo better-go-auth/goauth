@@ -89,6 +89,12 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		}
 		u := &models.User{Base: models.Base{ID: models.NewID()}}
 		u.Name, u.Email, u.Image, u.Role = in.Name, email, in.Image, enums.User
+		// plugins may adjust or veto the new user (better-auth's databaseHooks.user.create.before)
+		if s.Hooks != nil {
+			if err := s.Hooks.TriggerBeforeUserCreate(ctx, u); err != nil {
+				return err
+			}
+		}
 		if created, err = s.repos.CreateUser(ctx, u); err != nil {
 			return autherr.ErrFailedToCreateUser
 		}

@@ -1,0 +1,9 @@
+{
+  "name": "compat-client-passkey",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-auth": "1.6.16",
+    "@better-auth/passkey": "1.6.16"
+  }
+}

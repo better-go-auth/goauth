@@ -68,6 +68,9 @@ func (r *Repos) CreateUser(_ context.Context, user *models.User) (*models.User, 
 			return nil, errors.New("memory: user email already exists")
 		}
 	}
+	if r.phoneTaken(user.PhoneNumber, "") {
+		return nil, errors.New("memory: user phone number already exists")
+	}
 	stamp(&user.Base)
 	c := *user
 	r.users[c.ID] = &c
@@ -104,6 +107,32 @@ func (r *Repos) FindUserByEmail(_ context.Context, email string) (*models.User, 
 	return nil, notFound("user")
 }
 
+// FindUserByPhoneNumber returns the live user owning phoneNumber.
+func (r *Repos) FindUserByPhoneNumber(_ context.Context, phoneNumber string) (*models.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, u := range r.users {
+		if u.DeletedAt == nil && phoneNumber != "" && u.PhoneNumber != nil && *u.PhoneNumber == phoneNumber {
+			c := *u
+			return &c, nil
+		}
+	}
+	return nil, notFound("user")
+}
+
+// phoneTaken reports whether another live user already owns phone (unique like the GORM column).
+func (r *Repos) phoneTaken(phone *string, exceptID string) bool {
+	if phone == nil || *phone == "" {
+		return false
+	}
+	for id, u := range r.users {
+		if id != exceptID && u.DeletedAt == nil && u.PhoneNumber != nil && *u.PhoneNumber == *phone {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *Repos) UpdateUser(_ context.Context, id string, data map[string]interface{}) (*models.User, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -116,6 +145,9 @@ func (r *Repos) UpdateUser(_ context.Context, id string, data map[string]interfa
 		return nil, err
 	}
 	next.Email = strings.ToLower(strings.TrimSpace(next.Email))
+	if r.phoneTaken(next.PhoneNumber, id) {
+		return nil, errors.New("memory: user phone number already exists")
+	}
 	next.UpdatedAt = time.Now().UTC()
 	r.users[id] = &next
 	c := next
@@ -132,6 +164,8 @@ func (r *Repos) DeleteUser(_ context.Context, id string) error {
 	now := time.Now().UTC()
 	u.DeletedAt = &now
 	u.Email = models.AnonymizeEmail(id, now)
+	// release the unique phone number so it can be registered again
+	u.PhoneNumber = nil
 	return nil
 }
 

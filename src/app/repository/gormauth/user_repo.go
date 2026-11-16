@@ -83,6 +83,26 @@ func (r *UserRepo) FindUserByEmail(ctx context.Context, email string) (*models.U
 	return &user, nil
 }
 
+// FindUserByPhoneNumber looks up a live user by its exact phone number (phone-number plugin).
+func (r *UserRepo) FindUserByPhoneNumber(ctx context.Context, phoneNumber string) (*models.User, error) {
+	var user models.User
+	if phoneNumber == "" {
+		return nil, loc_errors.NotFoundErr("gorm/user: not found")
+	}
+	// Step 1: Query by phone number and exclude soft-deleted records
+	err := gormutil.GetDB(ctx, r.db).
+		Where(&models.User{UserDto: models.UserDto{PhoneNumber: &phoneNumber}}, "PhoneNumber").
+		Where("deleted_at IS NULL").
+		Take(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, loc_errors.NotFoundErr("gorm/user: not found")
+		}
+		return nil, fmt.Errorf("gorm/user: get by phone number: %w", err)
+	}
+	return &user, nil
+}
+
 func (r *UserRepo) UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error) {
 	var user models.User
 	result := gormutil.GetDB(ctx, r.db).
@@ -108,6 +128,8 @@ func (r *UserRepo) DeleteUser(ctx context.Context, id string) error {
 		Updates(map[string]interface{}{
 			"DeletedAt": now,
 			"Email":     tombstoneEmail,
+			// release the unique phone number so it can be registered again
+			"PhoneNumber": nil,
 		})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/user: delete: %w", result.Error)

@@ -29,16 +29,22 @@ import (
 	"github.com/better-go-auth/goauth/src/models/enums"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
+	"github.com/better-go-auth/goauth/src/plugins"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
 
 var (
-	ErrInvalidOTP          = autherr.Err(http.StatusBadRequest, "INVALID_OTP", "Invalid or expired OTP code")
+	// error codes and messages match better-auth's EMAIL_OTP_ERROR_CODES
+	ErrInvalidOTP          = autherr.Err(http.StatusBadRequest, "INVALID_OTP", "Invalid OTP")
 	ErrOTPExpired          = autherr.Err(http.StatusBadRequest, "OTP_EXPIRED", "OTP expired")
 	ErrTooManyAttempts     = autherr.Err(http.StatusForbidden, "TOO_MANY_ATTEMPTS", "Too many attempts")
 	ErrRateLimitExceeded   = autherr.Err(http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "Rate limit exceeded. Please try again later.")
 	ErrSenderNotConfigured = autherr.Err(http.StatusInternalServerError, "SENDER_NOT_CONFIGURED", "No sendVerificationOTP callback configured")
 	ErrUserNotFound        = autherr.ErrUserNotFound
+	// better-auth answers a missing user with 400 USER_NOT_FOUND on OTP endpoints
+	ErrUserNotFoundBadRequest = autherr.ErrUserNotFound.WithStatus(http.StatusBadRequest)
+	ErrEmailIsTheSame         = autherr.New("EMAIL_IS_THE_SAME", "Email is the same", http.StatusBadRequest)
+	ErrEmailAlreadyInUse      = autherr.New("EMAIL_ALREADY_IN_USE", "Email already in use", http.StatusBadRequest)
 	ErrInvalidEmailAddress = autherr.ErrInvalidEmail
 	ErrPasswordTooShort    = autherr.ErrPasswordTooShort
 	ErrPasswordTooLong     = autherr.ErrPasswordTooLong
@@ -59,6 +65,7 @@ type EmailOTPService struct {
 	passwords  *authcrypto.Passwords
 	txMgr      interfaces.ITransactionManager
 	secStorage sec_storage.SecondaryStorage
+	hooks      plugins.HookRegistry
 
 	rlMu      sync.Mutex
 	rlBuckets map[string]rlBucket
@@ -107,12 +114,24 @@ func (s *EmailOTPService) SetSecondaryStorage(storage sec_storage.SecondaryStora
 	s.secStorage = storage
 }
 
+// SetHooks lets OTP sign-up run the BeforeUserCreate / AfterUserCreate lifecycle hooks like core sign-up.
+func (s *EmailOTPService) SetHooks(hooks plugins.HookRegistry) {
+	s.hooks = hooks
+}
+
 func (s *EmailOTPService) SessionManager() authint.ISessionManager {
 	return s.sessionMgr
 }
 
+// otpIdentifier is better-auth's toOTPIdentifier: "<type>-otp-<email>" (e.g. "sign-in-otp-a@b.co"), so
+// verification rows are interchangeable with a TypeScript better-auth server sharing the database.
 func (s *EmailOTPService) otpIdentifier(otpType emailotpconfig.OTPType, email string) string {
-	return fmt.Sprintf("email-otp:%s:%s", otpType, strings.ToLower(strings.TrimSpace(email)))
+	return fmt.Sprintf("%s-otp-%s", otpType, strings.ToLower(strings.TrimSpace(email)))
+}
+
+// changeEmailIdentifier is better-auth's change-email identifier: "change-email-otp-<current>-<new>".
+func (s *EmailOTPService) changeEmailIdentifier(currentEmail, newEmail string) string {
+	return s.otpIdentifier(emailotpconfig.OTPTypeChangeEmail, strings.ToLower(strings.TrimSpace(currentEmail))+"-"+strings.ToLower(strings.TrimSpace(newEmail)))
 }
 
 func (s *EmailOTPService) generateNumericCode(length int) (string, error) {
@@ -170,7 +189,23 @@ func (s *EmailOTPService) encryptionKey() []byte {
 	return sum[:]
 }
 
+// encryptOTP is better-auth's storeOTP "encrypted": symmetricEncrypt(secret, otp) (XChaCha20-Poly1305, hex).
 func (s *EmailOTPService) encryptOTP(plain string) (string, error) {
+	return authcrypto.SymmetricEncrypt(s.rootConfig.Secret, plain)
+}
+
+// decryptOTP reverses encryptOTP and still reads values written by older goauth versions (AES-GCM, base64url).
+func (s *EmailOTPService) decryptOTP(encoded string) (string, error) {
+	// Step 1: better-auth format first
+	if plain, err := authcrypto.SymmetricDecrypt(s.rootConfig.Secret, encoded); err == nil {
+		return plain, nil
+	}
+	// Step 2: legacy goauth format
+	return s.legacyDecryptOTP(encoded)
+}
+
+// legacyEncryptOTP is the pre-compat AES-GCM format, kept only so tests can produce legacy rows.
+func (s *EmailOTPService) legacyEncryptOTP(plain string) (string, error) {
 	// Step 1: Initialize AES-256-GCM cipher using SHA-256 derived secret key
 	block, err := aes.NewCipher(s.encryptionKey())
 	if err != nil {
@@ -189,7 +224,7 @@ func (s *EmailOTPService) encryptOTP(plain string) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(ciphertext), nil
 }
 
-func (s *EmailOTPService) decryptOTP(encoded string) (string, error) {
+func (s *EmailOTPService) legacyDecryptOTP(encoded string) (string, error) {
 	// Step 1: Decode base64url ciphertext and initialize AES-256-GCM cipher
 	raw, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
@@ -525,6 +560,11 @@ func (s *EmailOTPService) sendVerificationOTP(ctx context.Context, email string,
 		}
 	}
 
+	return s.issueOTP(ctx, identifier, email, otpType, req)
+}
+
+// issueOTP generates (or reuses), stores under identifier and dispatches an OTP for email.
+func (s *EmailOTPService) issueOTP(ctx context.Context, identifier, email string, otpType emailotpconfig.OTPType, req *http.Request) error {
 	// Step 3: Check reuse strategy before generating a fresh OTP
 	if s.config.ResendStrategy == emailotpconfig.ResendStrategyReuse {
 		if reusedCode, ok := s.tryReuseOTP(ctx, identifier); ok {
@@ -570,12 +610,23 @@ func (s *EmailOTPService) sendVerificationOTP(ctx context.Context, email string,
 // CheckVerificationOTP checks an OTP code without consuming it (tracks failed attempts).
 func (s *EmailOTPService) CheckVerificationOTP(ctx context.Context, email, otp string, otpType emailotpconfig.OTPType) error {
 	// Step 1: Validate input email and OTP
-	if !validEmail(email) || otp == "" {
+	if !validEmail(email) {
+		return ErrInvalidEmailAddress
+	}
+	if otp == "" {
 		return ErrInvalidOTP
+	}
+	// Step 2: better-auth only checks codes of registered users (400 USER_NOT_FOUND otherwise)
+	user, err := acceptNotFound(s.repos.FindUserByEmail(ctx, strings.ToLower(email)))
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return ErrUserNotFoundBadRequest
 	}
 	identifier := s.otpIdentifier(otpType, email)
 
-	// Step 2: Validate OTP with attempt tracking without consuming on success
+	// Step 3: Validate OTP with attempt tracking without consuming on success
 	return s.verifyOTPAttempt(ctx, identifier, otp, false)
 }
 
@@ -660,7 +711,7 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 	}
 
 	// Step 3: Load or create user and create authenticated session
-	var user *models.User
+	var user, createdUser *models.User
 	err := s.withTx(ctx, func(txCtx context.Context) error {
 		existingUser, err := acceptNotFound(s.repos.FindUserByEmail(txCtx, strings.ToLower(email)))
 		if err != nil {
@@ -672,10 +723,8 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 			if s.config.DisableSignUp {
 				return ErrInvalidOTP
 			}
+			// better-auth stores the given name or "" (no fallback to the email's local part)
 			displayName := strings.TrimSpace(name)
-			if displayName == "" {
-				displayName = strings.Split(email, "@")[0]
-			}
 			var imgPtr *string
 			if image != "" {
 				imgPtr = &image
@@ -690,17 +739,18 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 					EmailVerified: true,
 				},
 			}
+			// plugins may adjust or veto the user, like core sign-up
+			if s.hooks != nil {
+				if err := s.hooks.TriggerBeforeUserCreate(txCtx, newUser); err != nil {
+					return err
+				}
+			}
+			// better-auth's OTP sign-up creates only the user: no credential account without a password
 			created, err := s.repos.CreateUser(txCtx, newUser)
 			if err != nil {
 				return autherr.ErrFailedToCreateUser
 			}
-			now := time.Now().UTC()
-			_, _ = s.repos.CreateAccount(txCtx, &models.Account{
-				Base:       models.Base{ID: models.NewID(), CreatedAt: now, UpdatedAt: now},
-				UserID:     created.ID,
-				ProviderID: models.ProvCredential,
-				AccountID:  created.ID,
-			})
+			createdUser = created
 			user = created
 		} else {
 			user = existingUser
@@ -727,8 +777,19 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 		return nil, err
 	}
 
+	// Step 5: run after-create hooks once the new user is committed
+	if createdUser != nil && s.hooks != nil {
+		if err := s.hooks.TriggerAfterUserCreate(ctx, createdUser); err != nil {
+			return nil, err
+		}
+	}
+
 	sw, err := s.sessionMgr.Create(ctx, user, meta, sessionsvc.CreateOptions{})
 	if err != nil {
+		// BeforeSessionCreate hooks (e.g. the admin plugin's ban check) keep their own error code
+		if ae := autherr.AsAuthError(err); ae != nil {
+			return nil, ae
+		}
 		return nil, autherr.ErrFailedToCreateSession
 	}
 

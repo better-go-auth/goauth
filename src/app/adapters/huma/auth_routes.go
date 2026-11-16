@@ -7,6 +7,7 @@ import (
 
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/plugins"
 )
 
 type signUpInput struct {
@@ -47,32 +48,58 @@ type signInInput struct {
 	}
 }
 
+// signInBody is better-auth's POST /sign-in/email response.
+type signInBody struct {
+	Redirect bool              `json:"redirect"`
+	Token    string            `json:"token"`
+	URL      *string           `json:"url,omitempty"`
+	User     dtos.UserResponse `json:"user"`
+}
+
 type signInOutput struct {
 	SetCookie []http.Cookie `header:"Set-Cookie"`
 	Location  string        `header:"Location"`
-	Body      struct {
-		Redirect bool              `json:"redirect"`
-		Token    string            `json:"token"`
-		URL      *string           `json:"url,omitempty"`
-		User     dtos.UserResponse `json:"user"`
-	}
+	// Body is a signInBody, or a plugin challenge (e.g. two-factor's {"twoFactorRedirect": true}).
+	Body any
 }
 
 func (h *handler) SignInEmail(ctx context.Context, in *signInInput) (*signInOutput, error) {
+	// Step 1: reject untrusted callback URLs before doing any work
 	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
+	// Step 2: verify the credentials and create the session
 	res, err := h.Auth.SignInEmail(ctx, in.Body.SignInEmailInput, h.meta(ctx))
 	if err != nil {
 		return nil, err
 	}
-	out := &signInOutput{SetCookie: h.Cookies.SessionCookiesWithData(res.Session, res.DontRemember)}
+	// Step 3: let plugins replace the response (two-factor challenge) before any session cookie is written
+	ch, err := h.signInChallenge(ctx, "/sign-in/email", res.Session, res.DontRemember)
+	if err != nil {
+		return nil, err
+	}
+	if ch.Replaces() {
+		return &signInOutput{SetCookie: ch.Cookies, Body: ch.Body}, nil
+	}
+	// Step 4: write the session cookies (plus any cookies an interceptor added, e.g. a rotated
+	// trust_device cookie) and better-auth's {redirect, token, url, user}
+	out := &signInOutput{SetCookie: append(h.Cookies.SessionCookiesWithData(res.Session, res.DontRemember), ch.Extra()...)}
 	if res.Redirect {
 		// better-auth answers 200 with a Location header; the client follows `url`
 		out.Location = *res.URL
 	}
-	out.Body.Redirect, out.Body.Token, out.Body.URL, out.Body.User = res.Redirect, res.Token, res.URL, res.User
+	out.Body = signInBody{Redirect: res.Redirect, Token: res.Token, URL: res.URL, User: res.User}
 	return out, nil
+}
+
+// signInChallenge runs the AfterSignIn interceptors registered by plugins for a completed sign-in.
+func (h *handler) signInChallenge(ctx context.Context, path string, sw *dtos.SessionWithUser, dontRemember bool) (*plugins.SignInChallenge, error) {
+	if h.Auth == nil || h.Auth.Hooks == nil || sw == nil {
+		return nil, nil
+	}
+	return h.Auth.Hooks.TriggerAfterSignIn(ctx, plugins.SignInEvent{
+		Path: path, Session: sw, DontRemember: dontRemember, Request: requestOf(ctx),
+	})
 }
 
 type signOutInput struct {
