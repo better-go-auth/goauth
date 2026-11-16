@@ -8,14 +8,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version-file: "goauth/go.mod" }
+        with: { go-version-file: "go.mod" }
       - name: go vet
-        working-directory: goauth
         run: go vet ./...
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v6
         with:
-          working-directory: goauth
           version: v1.64
   compat:
     runs-on: ubuntu-latest
@@ -36,17 +34,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version-file: "goauth/go.mod" }
+        with: { go-version-file: "go.mod" }
       - uses: actions/setup-node@v4
         with: { node-version: "20" }
       - name: install better-auth client
-        working-directory: goauth/src/tests/compat/client
-        run: npm install --no-audit --no-fund
-      - name: compat tests (sqlite + better-auth/client)
-        working-directory: goauth
-        run: go test ./... -count=1 -run 'TestStatus|TestOfficialBetterAuthClient' -timeout 120s
-      - name: compat tests (postgres + better-auth/client)
-        working-directory: goauth
+        working-directory: src/tests/compat/client
+        # node_modules is a symlink to a sibling project locally; on CI install into a real directory
+        run: rm -f node_modules && npm install --no-audit --no-fund
+      - name: install better-auth passkey client
+        working-directory: src/tests/compat/client-passkey
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+      - name: unit and plugin tests
+        run: go test ./... -count=1 -timeout 600s
+      - name: compat tests (postgres + better-auth clients)
         env:
           TEST_DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"
-        run: go test ./src/tests/compat -count=1 -run 'TestOfficialBetterAuthClient' -timeout 120s
+        # -p 1: every package shares the one Postgres database
+        run: go test ./src/tests/compat/... -p 1 -count=1 -run 'Official' -timeout 300s
