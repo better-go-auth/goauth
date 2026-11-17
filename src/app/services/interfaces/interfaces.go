@@ -101,4 +101,6 @@ type UpdateUserInput struct {
 	Image *string
 	// Fields holds additional user fields keyed by Go field name (e.g. "DisplayName").
 	Fields map[string]any
+	// Body is the raw JSON body, passed to plugins.UserInputEvent hooks (e.g. the username plugin).
+	Body map[string]any
 }

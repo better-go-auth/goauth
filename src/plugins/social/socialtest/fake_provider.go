@@ -1,6 +1,7 @@
 // Package socialtest provides an in-process fake OAuth 2.0 / OpenID Connect provider for testing the social
-// plugin: authorize (redirects back with code + state), token (checks client credentials, redirect_uri and the
-// PKCE S256 code_verifier; refresh_token grant), userinfo and JWKS endpoints, plus id_token signing helpers.
+// and generic-oauth plugins: OIDC discovery, authorize (redirects back with code + state), token (checks client
+// credentials, redirect_uri and the PKCE S256 code_verifier; refresh_token grant), userinfo and JWKS endpoints,
+// plus id_token signing helpers.
 package socialtest
 
 import (
@@ -74,6 +75,15 @@ type Provider struct {
 	refreshCount  int
 	rotateRefresh bool
 	userinfoFail  bool
+	// noIDToken stops issuing id_tokens from the token endpoint (forces the userinfo path).
+	noIDToken bool
+	// authorizeIss is added as the RFC 9207 `iss` parameter of the authorize redirect when set.
+	authorizeIss string
+	// tokenAuth enforces the client authentication method of the token endpoint ("basic", "post" or "").
+	tokenAuth       string
+	lastTokenHeader http.Header
+	discoveryHeader http.Header
+	discoveryCount  int
 }
 
 // New starts a fake provider; it is closed with Close.
@@ -93,6 +103,7 @@ func New(clientID, clientSecret string) *Provider {
 	mux.HandleFunc("/token", p.token)
 	mux.HandleFunc("/userinfo", p.userinfo)
 	mux.HandleFunc("/jwks", p.jwks)
+	mux.HandleFunc("/.well-known/openid-configuration", p.discovery)
 	p.Server = httptest.NewServer(mux)
 	p.Issuer = p.Server.URL
 	return p
@@ -109,6 +120,69 @@ func (p *Provider) AuthorizationEndpoint() string { return p.Server.URL + "/auth
 func (p *Provider) TokenEndpoint() string         { return p.Server.URL + "/token" }
 func (p *Provider) UserInfoEndpoint() string      { return p.Server.URL + "/userinfo" }
 func (p *Provider) JWKSEndpoint() string          { return p.Server.URL + "/jwks" }
+
+// DiscoveryURL is the fake's OpenID Connect discovery document.
+func (p *Provider) DiscoveryURL() string { return p.Server.URL + "/.well-known/openid-configuration" }
+
+// SetIssueIDToken toggles id_tokens in token responses (default true).
+func (p *Provider) SetIssueIDToken(on bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.noIDToken = !on
+}
+
+// SetAuthorizeIssuer makes authorize add iss=<iss> to its redirect ("" = no iss parameter).
+func (p *Provider) SetAuthorizeIssuer(iss string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.authorizeIss = iss
+}
+
+// SetTokenAuthMethod makes the token endpoint accept only "basic" or "post" client authentication
+// ("" accepts both).
+func (p *Provider) SetTokenAuthMethod(m string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.tokenAuth = m
+}
+
+// LastTokenHeader returns the headers of the last token request.
+func (p *Provider) LastTokenHeader() http.Header {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.lastTokenHeader
+}
+
+// DiscoveryCount is the number of discovery document requests.
+func (p *Provider) DiscoveryCount() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.discoveryCount
+}
+
+// LastDiscoveryHeader returns the headers of the last discovery request.
+func (p *Provider) LastDiscoveryHeader() http.Header {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.discoveryHeader
+}
+
+func (p *Provider) discovery(w http.ResponseWriter, r *http.Request) {
+	p.mu.Lock()
+	p.discoveryCount++
+	p.discoveryHeader = r.Header.Clone()
+	p.mu.Unlock()
+	writeJSON(w, 200, map[string]any{
+		"issuer":                                p.Issuer,
+		"authorization_endpoint":                p.AuthorizationEndpoint(),
+		"token_endpoint":                        p.TokenEndpoint(),
+		"userinfo_endpoint":                     p.UserInfoEndpoint(),
+		"jwks_uri":                              p.JWKSEndpoint(),
+		"response_types_supported":              []string{"code"},
+		"code_challenge_methods_supported":      []string{"S256"},
+		"token_endpoint_auth_methods_supported": []string{"client_secret_basic", "client_secret_post"},
+	})
+}
 
 // SetRedirectBase makes authorize redirect to base + the redirect_uri's path.
 func (p *Provider) SetRedirectBase(base string) {
@@ -196,7 +270,7 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	p.mu.Lock()
 	p.lastAuthorize = q
-	user, authErr, base := p.user, p.authorizeErr, p.redirectBase
+	user, authErr, base, iss := p.user, p.authorizeErr, p.redirectBase, p.authorizeIss
 	p.mu.Unlock()
 	if q.Get("client_id") != p.ClientID || q.Get("response_type") != "code" || q.Get("redirect_uri") == "" {
 		http.Error(w, "invalid_request", http.StatusBadRequest)
@@ -214,6 +288,9 @@ func (p *Provider) authorize(w http.ResponseWriter, r *http.Request) {
 	// Step 2: redirect back with either an error or a one-time code
 	back := target.Query()
 	back.Set("state", q.Get("state"))
+	if iss != "" {
+		back.Set("iss", iss)
+	}
 	if authErr != "" {
 		back.Set("error", authErr)
 		back.Set("error_description", "The user denied access")
@@ -235,7 +312,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 }
 
 func (p *Provider) clientOK(r *http.Request) bool {
+	p.mu.Lock()
+	method := p.tokenAuth
+	p.mu.Unlock()
 	id, secret, ok := r.BasicAuth()
+	// an enforced method refuses the other one
+	if (method == "basic" && !ok) || (method == "post" && ok) {
+		return false
+	}
 	if !ok {
 		id, secret = r.PostForm.Get("client_id"), r.PostForm.Get("client_secret")
 	}
@@ -250,6 +334,7 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 	}
 	p.mu.Lock()
 	p.lastToken = r.PostForm
+	p.lastTokenHeader = r.Header.Clone()
 	p.mu.Unlock()
 	if !p.clientOK(r) {
 		writeJSON(w, 401, map[string]string{"error": "invalid_client"})
@@ -298,7 +383,7 @@ func (p *Provider) token(w http.ResponseWriter, r *http.Request) {
 // issue mints access (+ refresh) tokens and an id_token for prof.
 func (p *Provider) issue(prof Profile, scope string, withRefresh bool) map[string]any {
 	p.mu.Lock()
-	expiresIn := p.expiresIn
+	expiresIn, noIDToken := p.expiresIn, p.noIDToken
 	at := "at-" + randHex(12)
 	p.access[at] = prof
 	out := map[string]any{"access_token": at, "token_type": "Bearer", "expires_in": expiresIn}
@@ -311,7 +396,9 @@ func (p *Provider) issue(prof Profile, scope string, withRefresh bool) map[strin
 	if scope != "" {
 		out["scope"] = scope
 	}
-	out["id_token"] = p.SignIDToken(prof, "", nil)
+	if !noIDToken {
+		out["id_token"] = p.SignIDToken(prof, "", nil)
+	}
 	return out
 }
 

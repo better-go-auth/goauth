@@ -4,6 +4,7 @@ import (
 	"context"
 
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/middleware"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
@@ -12,6 +13,7 @@ import (
 	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 )
@@ -63,6 +65,64 @@ func (h *AdminHandler) RequireAdmin(ctx context.Context, auth humatypes.AuthHead
 		}
 	}
 	return nil, autherr.ErrForbidden
+}
+
+// RequirePermission authenticates the request and checks the caller has the better-auth admin
+// permission for the route (e.g. {"user": ["list"]}); denied is returned when they don't.
+// Roles come from AdminConfig.EffectiveRoles, so without custom roles every AdminRoles entry
+// keeps full access (backward compatible) while custom roles follow better-auth exactly.
+func (h *AdminHandler) RequirePermission(ctx context.Context, auth humatypes.AuthHeaders, perm access.Request, denied *autherr.AuthError) (*dtos.SessionWithUser, error) {
+	// Step 1: authenticate the caller
+	sessionResp, err := h.Authenticate(ctx, auth)
+	if err != nil {
+		return nil, err
+	}
+	if sessionResp.User.ID == "" {
+		return nil, autherr.ErrUnauthorized
+	}
+	// Step 2: banned users never reach admin routes
+	if sessionResp.User.Banned {
+		return nil, autherr.ErrForbidden
+	}
+	// Step 3: check the route permission against the caller's role(s) / adminUserIds
+	if !h.Config.HasPermission(sessionResp.User.ID, sessionResp.User.Role, perm) {
+		if denied == nil {
+			denied = autherr.ErrForbidden
+		}
+		return nil, denied
+	}
+	return sessionResp, nil
+}
+
+// can reports whether the authenticated caller has perm (used for conditional sub-checks).
+func (h *AdminHandler) can(session *dtos.SessionWithUser, perm access.Request) bool {
+	return h.Config.HasPermission(session.User.ID, session.User.Role, perm)
+}
+
+// checkRolesExist rejects role values that are not configured when custom roles are set
+// (better-auth: `opts.roles && !opts.roles[role]`).
+func (h *AdminHandler) checkRolesExist(role string) error {
+	if !h.Config.CustomRoles() {
+		return nil
+	}
+	for _, r := range access.SplitRoles(role) {
+		if _, ok := h.Config.Roles[r]; !ok {
+			return adminmodels.ErrNotAllowedToSetNonExistentRole
+		}
+	}
+	return nil
+}
+
+// RouteRoles returns, for the active configuration, the role names that pass op's permission
+// check (AdminConfig.AdminRoles without custom roles, else the custom roles granting it).
+// nil means any authenticated user (has-permission, stop-impersonating). Users listed in
+// AdminUserIDs pass regardless of role.
+func (h *AdminHandler) RouteRoles(op consts.OperationId) []string {
+	perm, ok := RoutePermissions[op]
+	if !ok || len(perm) == 0 {
+		return nil
+	}
+	return h.Config.RolesGranting(perm)
 }
 
 // Authenticate delegates authentication to the core authenticate function.

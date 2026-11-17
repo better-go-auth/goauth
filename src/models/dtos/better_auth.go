@@ -53,6 +53,11 @@ type UserResponse struct {
 	PhoneNumberVerified *bool   `json:"phoneNumberVerified,omitempty"`
 	// Two-factor plugin field: only present once two-factor authentication was enabled.
 	TwoFactorEnabled bool `json:"twoFactorEnabled,omitempty"`
+	// Username plugin fields: only present for users that have a username / display username.
+	Username        *string `json:"username,omitempty"`
+	DisplayUsername *string `json:"displayUsername,omitempty"`
+	// Anonymous plugin field: only present (true) for anonymous users.
+	IsAnonymous bool `json:"isAnonymous,omitempty"`
 }
 
 // SessionData is better-auth's core session shape plus the admin/organization plugin fields.
@@ -117,6 +122,17 @@ func UserFromModel(u *models.User) UserResponse {
 	}
 	// two-factor plugin
 	out.TwoFactorEnabled = u.TwoFactorEnabled
+	// username plugin: never report an empty username / display username
+	if u.Username != nil && *u.Username != "" {
+		name := *u.Username
+		out.Username = &name
+	}
+	if u.DisplayUsername != nil && *u.DisplayUsername != "" {
+		display := *u.DisplayUsername
+		out.DisplayUsername = &display
+	}
+	// anonymous plugin
+	out.IsAnonymous = u.IsAnonymous
 	return out
 }
 
@@ -172,7 +188,7 @@ func ToSessionResponse(s *models.Session, u *models.User) *SessionWithUser {
 	if s == nil && u == nil {
 		return nil
 	}
-	
+
 	return &SessionWithUser{
 		Session: SessionFromModel(s),
 		User:    UserFromModel(u),

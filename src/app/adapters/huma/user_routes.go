@@ -108,7 +108,7 @@ type updateUserInput struct {
 
 // UpdateUser maps the JSON body (camelCase) to the service input; additional fields use their Go field names.
 func (h *handler) UpdateUser(ctx context.Context, in *updateUserInput) (*statusOutput, error) {
-	var upd svcint.UpdateUserInput
+	upd := svcint.UpdateUserInput{Body: in.Body}
 	for k, v := range in.Body {
 		switch k {
 		case "name", "image":

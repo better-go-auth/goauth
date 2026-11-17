@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -367,5 +369,64 @@ func TestClearingPhoneNumberResetsVerified(t *testing.T) {
 	}
 	if u.PhoneNumber != nil || u.PhoneNumberVerified {
 		t.Fatalf("phone = %v verified = %v", u.PhoneNumber, u.PhoneNumberVerified)
+	}
+}
+
+// TestVerifyConcurrentGuessesRespectAttemptLimit fires parallel wrong guesses: the attempt counter is a
+// compare-and-swap, so no more than AllowedAttempts of them may be judged (INVALID_OTP).
+func TestVerifyConcurrentGuessesRespectAttemptLimit(t *testing.T) {
+	h := newHarness(t, phoneconfig.PhoneNumberConfig{})
+	phone := "+15550000031"
+	expectOK(t, h.Post(t, "/api/auth/phone-number/send-otp", map[string]any{"phoneNumber": phone}))
+	code := h.sms.code(t, phone)
+	wrong := "000000"
+	if code == wrong {
+		wrong = "111111"
+	}
+	// Step 1: 12 wrong guesses at once
+	var mu sync.Mutex
+	codes := map[string]int{}
+	var wg sync.WaitGroup
+	for i := 0; i < 12; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			var e errBody
+			r := h.Post(t, "/api/auth/phone-number/verify", map[string]any{"phoneNumber": phone, "code": wrong})
+			r.JSON(t, &e)
+			mu.Lock()
+			codes[e.Code]++
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	// Step 2: at most AllowedAttempts (3) guesses were evaluated
+	if codes["INVALID_OTP"] > 3 {
+		t.Fatalf("%d wrong guesses were evaluated, limit is 3 (%v)", codes["INVALID_OTP"], codes)
+	}
+}
+
+// TestVerifyConcurrentCorrectCodeUsedOnce sends the right code in parallel: only one request may use it.
+func TestVerifyConcurrentCorrectCodeUsedOnce(t *testing.T) {
+	h := newHarness(t, signUpConfig())
+	phone := "+15550000032"
+	expectOK(t, h.Post(t, "/api/auth/phone-number/send-otp", map[string]any{"phoneNumber": phone}))
+	code := h.sms.code(t, phone)
+	// Step 1: 8 verifications with the correct code at once
+	var ok int32
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if r := h.Post(t, "/api/auth/phone-number/verify", map[string]any{"phoneNumber": phone, "code": code}); r.Status == http.StatusOK {
+				atomic.AddInt32(&ok, 1)
+			}
+		}()
+	}
+	wg.Wait()
+	// Step 2: exactly one succeeded
+	if ok != 1 {
+		t.Fatalf("%d requests used the same code, want 1", ok)
 	}
 }

@@ -39,7 +39,7 @@ func (h *OrgHandler) GetOrg(ctx context.Context, input *GetOrgInput) (*humatypes
 		}
 	}
 	// Step 2: Verify membership and fetch organization
-	_, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, targetOrgID, rolesFor(OrGetOrg)...)
+	_, orgID, err := h.RequireOrgOp(ctx, input.AuthHeaders, targetOrgID, OrGetOrg)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -52,7 +52,7 @@ func (h *OrgHandler) GetOrg(ctx context.Context, input *GetOrgInput) (*humatypes
 
 func (h *OrgHandler) UpdateOrg(ctx context.Context, input *UpdateOrgInput) (*humatypes.HumaRes[orgdtos.OrgResponse], error) {
 	// Step 1: Verify membership (falling back to session active org if organizationId omitted)
-	session, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrUpdateOrg)...)
+	session, orgID, err := h.RequireOrgOp(ctx, input.AuthHeaders, input.Body.OrganizationID, OrUpdateOrg)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -82,7 +82,7 @@ func (h *OrgHandler) CheckSlug(ctx context.Context, input *CheckSlugInput) (*hum
 }
 
 func (h *OrgHandler) DeleteOrg(ctx context.Context, input *DeleteOrgInput) (*humatypes.SuccessOutput, error) {
-	session, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrDeleteOrg)...)
+	session, _, err := h.RequireOrgOp(ctx, input.AuthHeaders, input.Body.OrganizationID, OrDeleteOrg)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -129,7 +129,7 @@ func (h *OrgHandler) SetActiveOrg(ctx context.Context, input *SetActiveOrgInput)
 	}
 	// Step 3: Verify membership if setting an active org
 	if orgID != nil && *orgID != "" {
-		if _, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, *orgID, rolesFor(OrSetActiveOrg)...); err != nil {
+		if _, _, err := h.RequireOrgOp(ctx, input.AuthHeaders, *orgID, OrSetActiveOrg); err != nil {
 			return nil, humatypes.RespondErr(err)
 		}
 	}

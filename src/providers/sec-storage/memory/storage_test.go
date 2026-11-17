@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

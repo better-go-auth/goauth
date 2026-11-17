@@ -13,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
+	"github.com/better-go-auth/goauth/src/plugins"
 )
 
 // validEmail accepts only a bare address ("a@b.co"), rejecting display-name forms like "Bob <a@b.co>".
@@ -35,6 +36,17 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	if !s.emailPasswordEnabled() || emlpwdCfg.DisableSignUp {
 		return nil, ErrEmailPasswordSignUpDisabled
 	}
+	email := strings.ToLower(in.Email)
+	// the user that will be created; plugins add their body fields to it first (better-auth runs plugin
+	// before-hooks such as the username checks ahead of the endpoint's own validation)
+	u := &models.User{Base: models.Base{ID: models.NewID()}}
+	u.Name, u.Email, u.Image, u.Role = in.Name, email, in.Image, enums.User
+	if s.Hooks != nil {
+		ev := &plugins.UserInputEvent{Path: plugins.UserInputSignUpEmail, Body: in.AdditionalFields, User: u, Request: request(ctx)}
+		if err := s.Hooks.TriggerUserInput(ctx, ev); err != nil {
+			return nil, err
+		}
+	}
 	if !validEmail(in.Email) {
 		return nil, autherr.ErrInvalidEmail
 	}
@@ -50,7 +62,6 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	// the response never contains a session. In that case a duplicate email
 	// gets the same success-looking response as a new one, so attackers can't probe which emails exist.
 	requireVerification := emlpwdCfg.RequireEmailVerification || (emlpwdCfg.AutoSignIn != nil && !*emlpwdCfg.AutoSignIn)
-	email := strings.ToLower(in.Email)
 	// rememberMe=false (explicitly) gives a 1-day session that is never extended
 	dontRemember := in.RememberMe != nil && !*in.RememberMe
 
@@ -87,8 +98,6 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		if err != nil {
 			return err
 		}
-		u := &models.User{Base: models.Base{ID: models.NewID()}}
-		u.Name, u.Email, u.Image, u.Role = in.Name, email, in.Image, enums.User
 		// plugins may adjust or veto the new user (better-auth's databaseHooks.user.create.before)
 		if s.Hooks != nil {
 			if err := s.Hooks.TriggerBeforeUserCreate(ctx, u); err != nil {

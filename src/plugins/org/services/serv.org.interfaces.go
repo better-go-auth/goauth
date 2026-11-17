@@ -8,6 +8,7 @@ import (
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
+	"github.com/better-go-auth/goauth/src/providers/access"
 )
 
 // IOrgService defines the business-logic surface for the org plugin.
@@ -80,6 +81,14 @@ type ITeamService interface {
 	DeleteRole(ctx context.Context, orgID, role, requestingUserID string) error
 	ListRoles(ctx context.Context, orgID, requestingUserID string) ([]models.OrganizationRole, error)
 	HasPermission(ctx context.Context, orgID, role, resource, action string) (bool, error)
+	// HasPermissions mirrors better-auth's organization hasPermission (multi-resource, multi-role).
+	HasPermissions(ctx context.Context, orgID, role string, request access.Request) (bool, error)
+	// GetRoleBy / UpdateRoleBy / DeleteRoleBy mirror better-auth's role CRUD (lookup by name or id).
+	GetRoleBy(ctx context.Context, orgID, roleName, roleID, requestingUserID string) (*models.OrganizationRole, error)
+	UpdateRoleBy(ctx context.Context, orgID, roleName, roleID string, data UpdateRoleData, requestingUserID string) (*models.OrganizationRole, error)
+	DeleteRoleBy(ctx context.Context, orgID, roleName, roleID, requestingUserID string) error
+	// OrgConfig returns the plugin configuration (used by the HTTP layer).
+	OrgConfig() orgconfig.OrgConfig
 	HasOperation(ctx context.Context, orgID, role, operationID string) (bool, error)
 	AuthorizeRole(ctx context.Context, orgID, role string, check AuthCheck) (bool, error)
 }
@@ -98,4 +107,9 @@ func (s *OrgService) TeamsEnabled() bool {
 
 func (s *OrgService) DynamicAccessControlEnabled() bool {
 	return s.Config.DynamicAccessControl != nil && s.Config.DynamicAccessControl.Enabled
+}
+
+// OrgConfig returns the service configuration.
+func (s *OrgService) OrgConfig() orgconfig.OrgConfig {
+	return s.Config
 }

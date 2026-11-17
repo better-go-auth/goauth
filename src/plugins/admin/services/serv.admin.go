@@ -3,17 +3,17 @@ package services
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
 	"time"
 
-	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
-	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/plugins"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 
@@ -24,6 +24,7 @@ import (
 	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
+	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
 
@@ -130,7 +131,9 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 
 	created, err := s.adminRepo.CreateUserWithAccount(ctx, user, hash)
 	if err != nil {
-		return nil, fmt.Errorf("adminsvc: create user: %w", err)
+		// better-auth's admin create-user answers 500 FAILED_TO_CREATE_USER when the insert fails
+		slog.ErrorContext(ctx, "adminsvc: create user failed", "err", err)
+		return nil, autherr.ErrFailedToCreateUser.WithStatus(http.StatusInternalServerError)
 	}
 
 	u := dtos.UserFromModel(created)
@@ -295,33 +298,37 @@ func (s *AdminService) UpdateUser(ctx context.Context, input admindtos.AdminUpda
 	return &u, nil
 }
 
-// HasPermission checks if the given user or role has the requested permissions.
-func (s *AdminService) HasPermission(ctx context.Context, input admindtos.AdminHasPermissionInput, adminUser *dtos.UserResponse) (*admindtos.AdminHasPermissionResponse, error) {
+// HasPermission mirrors better-auth's POST /admin/has-permission (userHasPermission).
+// When sessionUser is set (HTTP calls) its own id/role are checked, exactly like better-auth;
+// userId/role from the input are only used for server-side calls without a session.
+func (s *AdminService) HasPermission(ctx context.Context, input admindtos.AdminHasPermissionInput, sessionUser *dtos.UserResponse) (*admindtos.AdminHasPermissionResponse, error) {
+	// Step 1: accept `permissions` or the deprecated `permission`
 	perms := input.Permissions
 	if len(perms) == 0 && len(input.Permission) > 0 {
 		perms = input.Permission
 	}
 	if len(perms) == 0 {
-		return nil, autherr.New(autherr.BadRequest, "invalid permission check: no permission(s) were passed", http.StatusBadRequest)
+		return nil, autherr.New(autherr.BadRequest, "invalid permission check. no permission(s) were passed.", http.StatusBadRequest)
 	}
 
-	targetRole := input.Role
-	if targetRole == "" && input.UserID != "" {
+	// Step 2: resolve whose permissions to check: session user, else role, else userId lookup
+	var userID, role string
+	switch {
+	case sessionUser != nil:
+		userID, role = sessionUser.ID, sessionUser.Role
+	case input.Role != "":
+		userID, role = input.UserID, input.Role
+	case input.UserID != "":
 		user, err := s.adminRepo.GetUserByID(ctx, input.UserID)
-		if err != nil {
-			return nil, err
+		if err != nil || user == nil {
+			return nil, autherr.New(autherr.BadRequest, "user not found", http.StatusBadRequest)
 		}
-		targetRole = user.Role.S()
-	}
-	if targetRole == "" && adminUser != nil {
-		targetRole = adminUser.Role
-	}
-
-	// Admin role has all permissions
-	isAdmin := enums.HasRole(targetRole, enums.Admin.S()) || targetRole == "admin"
-	if isAdmin {
-		return &admindtos.AdminHasPermissionResponse{Success: true}, nil
+		userID, role = user.ID, user.Role.S()
+	default:
+		return nil, autherr.New(autherr.BadRequest, "user id or role is required", http.StatusBadRequest)
 	}
 
-	return &admindtos.AdminHasPermissionResponse{Success: false}, nil
+	// Step 3: evaluate with the configured roles (better-auth hasPermission)
+	ok := s.adminConfig.HasPermission(userID, role, access.Req(perms))
+	return &admindtos.AdminHasPermissionResponse{Success: ok}, nil
 }

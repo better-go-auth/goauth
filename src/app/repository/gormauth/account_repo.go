@@ -3,9 +3,9 @@ package gormauth
 
 import (
 	"context"
-	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
 	"errors"
 	"fmt"
+	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
 
 	"gorm.io/gorm"
 
@@ -64,6 +64,8 @@ func (r *AccountRepo) FindAccountByUserAndProvider(ctx context.Context, userID s
 	var account models.Account
 	err := gormutil.GetDB(ctx, r.db).
 		Where(&models.Account{UserID: userID, ProviderID: providerID}, "UserID", "ProviderID").
+		// several accounts of one provider may exist: return the oldest (the first one linked)
+		Order(gormutil.OrderBy(r.db, &models.Account{}, "CreatedAt", false)).
 		Take(&account).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

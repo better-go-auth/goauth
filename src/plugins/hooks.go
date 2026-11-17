@@ -50,6 +50,54 @@ func (c *SignInChallenge) Extra() []http.Cookie {
 // SignInInterceptor inspects a completed sign-in; returning a non-nil challenge replaces the response.
 type SignInInterceptor func(ctx context.Context, ev SignInEvent) (*SignInChallenge, error)
 
+// Paths of the core endpoints that fire UserInput hooks.
+const (
+	UserInputSignUpEmail = "/sign-up/email"
+	UserInputUpdateUser  = "/update-user"
+)
+
+// UserInputEvent is fired by core endpoints that write user fields from a request body, before anything is
+// stored. It is goauth's equivalent of a better-auth plugin "before" hook on /sign-up/email and /update-user
+// combined with user.additionalFields: a plugin validates its own body fields and writes them onto the user.
+//
+//   - Sign-up (Path == UserInputSignUpEmail): User is the user about to be created; hooks set their fields on it.
+//   - Update-user (Path == UserInputUpdateUser): Update is the pending update keyed by Go field names
+//     (e.g. "Username"). Fields a hook puts there are trusted and skip update-user's field allowlist.
+type UserInputEvent struct {
+	// Path is the endpoint path relative to BasePath.
+	Path string
+	// Body is the raw JSON request body (read-only).
+	Body map[string]any
+	// User is the new user on sign-up (mutable); nil on update-user.
+	User *models.User
+	// UserID is the signed-in user on update-user; "" on sign-up.
+	UserID string
+	// Update is the pending update-user change set (mutable); nil on sign-up.
+	Update map[string]any
+	// Request is the incoming HTTP request, nil outside HTTP.
+	Request *http.Request
+}
+
+// UserInputHook validates / maps request body fields; a returned error aborts the request unchanged.
+type UserInputHook func(ctx context.Context, ev *UserInputEvent) error
+
+// NewSessionEvent is fired after an endpoint succeeded and its response sets the cookie of a session that was
+// created while handling that request (sign-in, sign-up, OAuth callback, magic link, ...). It mirrors
+// better-auth after-hooks that inspect ctx.context.newSession and the response Set-Cookie header.
+// The request still carries the cookies of the session the client had before (if any).
+type NewSessionEvent struct {
+	// Path is the request path relative to BasePath (e.g. "/sign-up/email").
+	Path string
+	// Session is the session created on this request.
+	Session *dtos.SessionWithUser
+	// Request is the incoming HTTP request.
+	Request *http.Request
+}
+
+// NewSessionHook observes a new session; a returned error replaces the response with that error
+// (the session and any rows the endpoint wrote stay, like a throwing better-auth after-hook).
+type NewSessionHook func(ctx context.Context, ev NewSessionEvent) error
+
 // HookService defines the hook lifecycle methods that a plugin or service can implement.
 // A plugin can implement this interface and register it with the HookRegistry as a whole,
 // instead of binding separate callbacks on init.
@@ -115,6 +163,11 @@ type HookRegistry interface {
 	OnActiveOrgChanged(fn func(ctx context.Context, userID, newOrgID string) error)
 	// OnAfterSignIn registers a sign-in interceptor (e.g. the two-factor challenge).
 	OnAfterSignIn(fn SignInInterceptor)
+	// OnUserInput registers a hook for user fields sent to /sign-up/email and /update-user (e.g. username).
+	OnUserInput(fn UserInputHook)
+	// OnNewSession registers a hook that runs when a response hands out a session created on that request
+	// (e.g. the anonymous plugin linking an anonymous user to the account it signed in to).
+	OnNewSession(fn NewSessionHook)
 
 	// Triggers
 	TriggerBeforeUserCreate(ctx context.Context, user *models.User) error
@@ -126,6 +179,12 @@ type HookRegistry interface {
 	TriggerActiveOrgChanged(ctx context.Context, userID, newOrgID string) error
 	// TriggerAfterSignIn runs the sign-in interceptors in order; the first non-nil challenge wins.
 	TriggerAfterSignIn(ctx context.Context, ev SignInEvent) (*SignInChallenge, error)
+	// TriggerUserInput runs the user input hooks in order; the first error aborts.
+	TriggerUserInput(ctx context.Context, ev *UserInputEvent) error
+	// TriggerNewSession runs the new-session hooks in order; the first error aborts.
+	TriggerNewSession(ctx context.Context, ev NewSessionEvent) error
+	// HasNewSessionHooks reports whether any new-session hook is registered (lets the HTTP layer skip work).
+	HasNewSessionHooks() bool
 
 	// Verification Override allows plugins (e.g. email-otp) to suppress or replace the core default verification email.
 	OverrideEmailVerification()
@@ -153,6 +212,8 @@ type DefaultHookRegistry struct {
 	sessionRevoked      []func(ctx context.Context, session *models.Session) error
 	activeOrgChanged    []func(ctx context.Context, userID, newOrgID string) error
 	afterSignIn         []SignInInterceptor
+	userInput           []UserInputHook
+	newSession          []NewSessionHook
 }
 
 // NewHookRegistry creates a new HookRegistry instance.
@@ -382,4 +443,56 @@ func (h *DefaultHookRegistry) TriggerAfterSignIn(ctx context.Context, ev SignInE
 		}
 	}
 	return nil, nil
+}
+
+func (h *DefaultHookRegistry) OnUserInput(fn UserInputHook) {
+	if fn == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.userInput = append(h.userInput, fn)
+}
+
+func (h *DefaultHookRegistry) TriggerUserInput(ctx context.Context, ev *UserInputEvent) error {
+	// Step 1: copy the hooks so they can run (and query repositories) without holding the lock
+	h.mu.RLock()
+	fns := append([]UserInputHook(nil), h.userInput...)
+	h.mu.RUnlock()
+	// Step 2: run them in registration order; the first error aborts the request
+	for _, fn := range fns {
+		if err := fn(ctx, ev); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (h *DefaultHookRegistry) OnNewSession(fn NewSessionHook) {
+	if fn == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.newSession = append(h.newSession, fn)
+}
+
+func (h *DefaultHookRegistry) HasNewSessionHooks() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.newSession) > 0
+}
+
+func (h *DefaultHookRegistry) TriggerNewSession(ctx context.Context, ev NewSessionEvent) error {
+	// Step 1: copy the hooks so they can run without holding the lock
+	h.mu.RLock()
+	fns := append([]NewSessionHook(nil), h.newSession...)
+	h.mu.RUnlock()
+	// Step 2: run them in registration order; the first error replaces the response
+	for _, fn := range fns {
+		if err := fn(ctx, ev); err != nil {
+			return err
+		}
+	}
+	return nil
 }

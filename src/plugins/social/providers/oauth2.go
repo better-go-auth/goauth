@@ -127,6 +127,9 @@ type CodeExchange struct {
 	ClientSecret   string
 	Authentication TokenAuth
 	Extra          map[string]string
+	// Headers are extra request headers (better-auth's authorizationHeaders); they never override the
+	// client authentication header.
+	Headers map[string]string
 }
 
 // ExchangeCode posts the authorization code to the token endpoint and parses the tokens.
@@ -142,8 +145,11 @@ func ExchangeCode(ctx context.Context, client *http.Client, x CodeExchange) (*OA
 		form.Set("device_id", x.DeviceID)
 	}
 	form.Set("redirect_uri", x.RedirectURI)
-	// Step 2: client authentication
+	// Step 2: extra headers first, then client authentication (so Basic credentials always win)
 	headers := http.Header{}
+	for k, v := range x.Headers {
+		headers.Set(k, v)
+	}
 	if x.Authentication == AuthBasic {
 		headers.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(x.ClientID+":"+x.ClientSecret)))
 	} else {
@@ -253,7 +259,9 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
+	// caller headers replace the defaults (better-auth spreads them over content-type / accept)
 	for k, vs := range headers {
+		req.Header.Del(k)
 		for _, v := range vs {
 			req.Header.Add(k, v)
 		}

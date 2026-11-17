@@ -24,7 +24,7 @@ func (s *OrgService) CreateTeam(ctx context.Context, input dtos.CreateTeamInput,
 	}
 
 	// Step 2: Verify requesting user is an organization admin/owner
-	if !s.isOrgAdmin(ctx, input.OrganizationID, requestingUserID) {
+	if !s.isOrgAdmin(ctx, input.OrganizationID, requestingUserID, "team", "create") {
 		return nil, autherr.ErrForbidden
 	}
 
@@ -129,7 +129,7 @@ func (s *OrgService) UpdateTeam(ctx context.Context, input dtos.UpdateTeamInput,
 	}
 
 	// Step 3: Verify requesting user is an organization admin/owner
-	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
+	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID, "team", "update") {
 		return nil, autherr.ErrForbidden
 	}
 
@@ -188,7 +188,7 @@ func (s *OrgService) DeleteTeam(ctx context.Context, input dtos.DeleteTeamInput,
 	}
 
 	// Step 3: Verify requesting user is an organization admin/owner
-	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
+	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID, "team", "delete") {
 		return autherr.ErrForbidden
 	}
 
@@ -261,7 +261,7 @@ func (s *OrgService) AddTeamMember(ctx context.Context, input dtos.AddTeamMember
 	}
 
 	// Step 3: Verify requesting user is an organization admin/owner
-	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
+	if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID, "member", "update") {
 		return nil, autherr.ErrForbidden
 	}
 
@@ -364,7 +364,7 @@ func (s *OrgService) RemoveTeamMember(ctx context.Context, input dtos.RemoveTeam
 
 	// Step 3: Permission check - user can remove themselves or an org admin/owner can remove
 	if requestingUserID != input.UserID {
-		if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID) {
+		if !s.isOrgAdmin(ctx, team.OrganizationID, requestingUserID, "member", "delete") {
 			return autherr.ErrForbidden
 		}
 	}

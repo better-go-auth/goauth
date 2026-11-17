@@ -183,6 +183,9 @@ func (s *Service) decryptSecret(row *tfmodels.TwoFactor) (string, error) {
 
 func strPtr(v string) *string { return &v }
 
+// maxOTPCASRetries bounds how often an OTP check is retried after losing a compare-and-swap race.
+const maxOTPCASRetries = 10
+
 // ─── Sign-in interception ────────────────────────────────────────────────────
 
 // AfterSignIn is better-auth's two-factor after-hook on /sign-in/email, /sign-in/username and
@@ -320,13 +323,19 @@ func (s *Service) valid(ctx context.Context, p *pending, trustDevice bool) (*Res
 	if !p.isSignIn() {
 		return &Result{Body: tfdtos.TokenUserResponse{Token: strPtr(p.session.Session.Token), User: p.session.User}}, nil
 	}
-	// Step 2: create the session (rememberMe=false is carried by the dont_remember cookie)
+	// Step 2: consume the pending sign-in atomically, so concurrent verifications create one session only
+	consumed, err := pluginkit.AcceptNotFound(s.kit.Repos.ConsumeVerificationValue(ctx, p.identifier))
+	if err != nil {
+		return nil, err
+	}
+	if consumed == nil {
+		return nil, ErrInvalidTwoFactorCookie
+	}
+	// Step 3: create the session (rememberMe=false is carried by the dont_remember cookie)
 	sw, err := s.kit.CreateSession(ctx, p.userModel, p.dontRemember)
 	if err != nil {
 		return nil, err
 	}
-	// Step 3: the pending sign-in is consumed
-	_ = s.kit.Repos.DeleteVerificationByIdentifier(ctx, p.identifier)
 	out := s.sessionCookies(sw, p.dontRemember)
 	out = append(out, s.kit.Cookies.ExpireCookie(TwoFactorCookie))
 	// Step 4: trust this device for TrustDeviceMaxAge
@@ -574,34 +583,46 @@ func (s *Service) VerifyOTP(ctx context.Context, in tfdtos.VerifyCodeInput) (*Re
 	if err != nil {
 		return nil, err
 	}
-	// Step 2: the pending code must exist and be unexpired
+	// Steps 2–4 retry when a concurrent request changed the code row first: the attempt counter is written
+	// with a compare-and-swap, so parallel wrong guesses can't exceed AllowedAttempts.
 	id := otpIdentifier(p.key)
-	rec, err := s.findVerification(ctx, id)
-	if err != nil {
-		return nil, err
-	}
-	if rec == nil || rec.ExpiresAt.Before(s.now()) {
-		if rec != nil {
-			_ = s.kit.Repos.DeleteVerificationByIdentifier(ctx, id)
-		}
-		return nil, ErrOTPHasExpired
-	}
-	stored, counterStr := rec.Value, ""
-	if i := strings.LastIndexByte(rec.Value, ':'); i >= 0 {
-		stored, counterStr = rec.Value[:i], rec.Value[i+1:]
-	}
-	counter, _ := strconv.Atoi(counterStr)
-	// Step 3: too many wrong attempts burns the code
-	if counter >= s.cfg.OTPOptions.AllowedAttempts {
-		_ = s.kit.Repos.DeleteVerificationByIdentifier(ctx, id)
-		return nil, ErrTooManyAttempts
-	}
-	// Step 4: wrong code → count the attempt
-	if !OTPMatches(stored, in.Code, s.secret(), s.cfg.OTPOptions.StoreOTP) {
-		rec.Value = stored + ":" + strconv.Itoa(counter+1)
-		if _, err := s.kit.Repos.UpsertVerificationValue(ctx, rec); err != nil {
+	matched := false
+	for try := 0; try < maxOTPCASRetries && !matched; try++ {
+		// Step 2: the pending code must exist and be unexpired
+		rec, err := s.findVerification(ctx, id)
+		if err != nil {
 			return nil, err
 		}
+		if rec == nil || rec.ExpiresAt.Before(s.now()) {
+			if rec != nil {
+				_ = s.kit.Repos.DeleteVerificationByIdentifier(ctx, id)
+			}
+			return nil, ErrOTPHasExpired
+		}
+		stored, counterStr := rec.Value, ""
+		if i := strings.LastIndexByte(rec.Value, ':'); i >= 0 {
+			stored, counterStr = rec.Value[:i], rec.Value[i+1:]
+		}
+		counter, _ := strconv.Atoi(counterStr)
+		// Step 3: too many wrong attempts burns the code
+		if counter >= s.cfg.OTPOptions.AllowedAttempts {
+			_ = s.kit.Repos.DeleteVerificationByIdentifier(ctx, id)
+			return nil, ErrTooManyAttempts
+		}
+		// Step 4: wrong code → count the attempt (retry the check when another request counted first)
+		if !OTPMatches(stored, in.Code, s.secret(), s.cfg.OTPOptions.StoreOTP) {
+			swapped, err := s.kit.Repos.UpdateVerificationValue(ctx, rec.ID, rec.Value, stored+":"+strconv.Itoa(counter+1))
+			if err != nil {
+				return nil, err
+			}
+			if !swapped {
+				continue
+			}
+			return nil, ErrInvalidCode
+		}
+		matched = true
+	}
+	if !matched {
 		return nil, ErrInvalidCode
 	}
 	// Step 5: OTP used to turn 2FA on for a signed-in user

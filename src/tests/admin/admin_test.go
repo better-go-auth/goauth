@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
@@ -155,8 +156,9 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 	t.Run("03e Has Permission", func(t *testing.T) {
 		permInput := admindtos.AdminHasPermissionInput{
 			UserID: managedUserID,
+			// better-auth admin role statements: "list" is granted ("read" does not exist)
 			Permissions: map[string][]string{
-				"user": {"read"},
+				"user": {"list"},
 			},
 		}
 		resp, body := env.PostJSON("/api/auth/admin/has-permission", permInput, adminAuthHeader)
@@ -249,6 +251,20 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 		}
 	})
 
+	t.Run("Impersonate Admin Is Blocked", func(t *testing.T) {
+		// the managed user holds the admin role (03/03b): better-auth's default admin role lacks
+		// user:impersonate-admins, so impersonation is refused
+		resp, body := env.PostJSON("/api/auth/admin/impersonate-user", admindtos.AdminImpersonateUserInput{UserID: managedUserID}, adminAuthHeader)
+		if resp.StatusCode != http.StatusForbidden || !strings.Contains(body, "YOU_CANNOT_IMPERSONATE_ADMINS") {
+			t.Fatalf("expected 403 YOU_CANNOT_IMPERSONATE_ADMINS, got %d: %s", resp.StatusCode, body)
+		}
+		// demote back to a plain user for the following steps
+		resp, body = env.PostJSON("/api/auth/admin/set-role", admindtos.AdminSetRoleInput{UserID: managedUserID, Role: enums.User}, adminAuthHeader)
+		if !isSuccess(resp.StatusCode) {
+			t.Fatalf("SetRole failed: status %d, body: %s", resp.StatusCode, body)
+		}
+	})
+
 	t.Run("Impersonate User", func(t *testing.T) {
 		impersonateInput := admindtos.AdminImpersonateUserInput{
 			UserID: managedUserID,
@@ -285,4 +301,40 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 			t.Fatalf("RemoveUser failed: status %d, body: %s", resp.StatusCode, body)
 		}
 	})
+}
+
+// TestAdminRemoveUser_ReleasesPhoneNumber checks that admin remove-user frees the unique phone number,
+// like the core delete-user does, so the number can be registered again.
+func TestAdminRemoveUser_ReleasesPhoneNumber(t *testing.T) {
+	env := helpers.SetupTestEnv(t, false)
+	_, rawAuthHeader := setupAdminUser(t, env)
+	adminAuthHeader := helpers.SignedBearerHeader(rawAuthHeader, env.Options.Secret)
+
+	// Step 1: a user owning a phone number
+	phone := "+15550001111"
+	victim := &models.User{UserDto: models.UserDto{FirstName: "Phone", Email: "phone@example.com", PhoneNumber: &phone}}
+	if err := env.DB.Create(victim).Error; err != nil {
+		t.Fatalf("create user: %v", err)
+	}
+
+	// Step 2: the admin removes the user
+	resp, body := env.PostJSON("/api/auth/admin/remove-user", admindtos.AdminRemoveUserInput{UserID: victim.ID}, adminAuthHeader)
+	if !isSuccess(resp.StatusCode) {
+		t.Fatalf("RemoveUser failed: status %d, body: %s", resp.StatusCode, body)
+	}
+
+	// Step 3: the tombstone no longer holds the number
+	var tomb models.User
+	if err := env.DB.Unscoped().Where("id = ?", victim.ID).Take(&tomb).Error; err != nil {
+		t.Fatalf("load tombstone: %v", err)
+	}
+	if tomb.PhoneNumber != nil {
+		t.Fatalf("expected phone number to be released, got %q", *tomb.PhoneNumber)
+	}
+
+	// Step 4: another user can take the number
+	other := &models.User{UserDto: models.UserDto{FirstName: "Other", Email: "other@example.com", PhoneNumber: &phone}}
+	if err := env.DB.Create(other).Error; err != nil {
+		t.Fatalf("phone number should be reusable: %v", err)
+	}
 }

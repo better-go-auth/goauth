@@ -12,7 +12,7 @@ import (
 
 func (h *OrgHandler) InviteMember(ctx context.Context, input *InviteMemberInput) (*humatypes.HumaRes[orgdtos.InvitationResponse], error) {
 	// Step 1: Verify membership and resolve organizationId (falls back to active organization)
-	session, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrInviteMember)...)
+	session, orgID, err := h.RequireOrgOp(ctx, input.AuthHeaders, input.Body.OrganizationID, OrInviteMember)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -42,7 +42,7 @@ func (h *OrgHandler) GetInvitation(ctx context.Context, input *GetInvitationInpu
 	}
 	// Step 3: Visible to the invitee, or to org members who may manage invitations
 	if !h.isInvitee(ctx, session, inv.Email) {
-		if _, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, inv.OrganizationID, rolesFor(OrListInvitations)...); err != nil {
+		if _, _, err := h.RequireOrgOp(ctx, input.AuthHeaders, inv.OrganizationID, OrListInvitations); err != nil {
 			return nil, humatypes.RespondErr(err)
 		}
 	}
@@ -77,7 +77,7 @@ func (h *OrgHandler) CancelInvitation(ctx context.Context, input *HumaInvitation
 		return nil, humatypes.RespondErr(err)
 	}
 
-	sesRes, _, err := h.RequireOrgMember(ctx, input.AuthHeaders, inv.OrganizationID, rolesFor(OrCancelInvitation)...)
+	sesRes, _, err := h.RequireOrgOp(ctx, input.AuthHeaders, inv.OrganizationID, OrCancelInvitation)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -92,7 +92,7 @@ type InvitationResp struct {
 }
 
 func (h *OrgHandler) ListInvitations(ctx context.Context, input *ListInvitationsInput) (*humatypes.HumaRes[InvitationResp], error) {
-	_, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.OrganizationID, rolesFor(OrListInvitations)...)
+	_, orgID, err := h.RequireOrgOp(ctx, input.AuthHeaders, input.OrganizationID, OrListInvitations)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}

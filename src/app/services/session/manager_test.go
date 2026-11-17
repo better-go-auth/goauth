@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/google/uuid"
 	"gorm.io/driver/sqlite"
@@ -241,5 +243,59 @@ func TestStorageWithDatabaseFallsBackAndRecaches(t *testing.T) {
 	}
 	if cached, _ := f.mgr.fromStore(ctx, sw.Session.Token); cached == nil {
 		t.Fatal("session must be re-cached after a database read")
+	}
+}
+
+// plainStore hides the AtomicUpdater capability of the memory store, to exercise the fallback path.
+type plainStore struct{ sec_storage.SecondaryStorage }
+
+// TestActiveIndexAcrossInstances runs two managers (two "processes") on one secondary storage and logs in
+// concurrently through both: the atomic index update must keep every session.
+func TestActiveIndexAcrossInstances(t *testing.T) {
+	f := newFixture(t, config.Session{StoreSessionInDatabase: false, StoreSessionInDatabaseSet: true}, true)
+	ctx := context.Background()
+	// Step 1: a second manager sharing the store but not the in-process mutex
+	other := NewManager(f.mgr.conf, f.mgr.usersRepo, f.mgr.sessionsRepo, f.mgr.secStore, nil)
+	other.now = f.mgr.now
+
+	// Step 2: 20 concurrent logins split across both instances
+	var wg sync.WaitGroup
+	for i := 0; i < 20; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			mgr := f.mgr
+			if i%2 == 1 {
+				mgr = other
+			}
+			if _, err := mgr.Create(ctx, f.user, Meta{}, CreateOptions{}); err != nil {
+				t.Error(err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Step 3: no entry was lost
+	if list := f.mgr.activeList(ctx, f.user.ID); len(list) != 20 {
+		t.Fatalf("active-sessions index has %d entries, want 20", len(list))
+	}
+}
+
+// TestActiveIndexFallbackStore checks the lock-based path for stores without AtomicUpdater.
+func TestActiveIndexFallbackStore(t *testing.T) {
+	f := newFixture(t, config.Session{StoreSessionInDatabase: false, StoreSessionInDatabaseSet: true}, true)
+	ctx := context.Background()
+	f.mgr.secStore = plainStore{f.mgr.secStore}
+	// Step 1: two logins are both indexed
+	a, _ := f.mgr.Create(ctx, f.user, Meta{}, CreateOptions{})
+	b, _ := f.mgr.Create(ctx, f.user, Meta{}, CreateOptions{})
+	if list := f.mgr.activeList(ctx, f.user.ID); len(list) != 2 {
+		t.Fatalf("index = %+v", list)
+	}
+	// Step 2: deleting both removes the key
+	_ = f.mgr.Delete(ctx, a.Session.Token)
+	_ = f.mgr.Delete(ctx, b.Session.Token)
+	if ok, _ := f.mgr.secStore.Exists(ctx, activeKey(f.user.ID)); ok {
+		t.Fatal("empty index must be deleted")
 	}
 }

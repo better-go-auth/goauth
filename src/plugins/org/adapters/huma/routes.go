@@ -6,6 +6,7 @@ import (
 	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/models"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
+	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -51,6 +52,14 @@ const (
 	OrAdminUnblockOrg = consts.OperationId("Or-Admin-3-UnblockOrg")
 	OrAdminListOrgs   = consts.OperationId("Or-Admin-4-ListOrgs")
 	OrAdminGetOrg     = consts.OperationId("Or-Admin-5-GetOrg")
+
+	// Access control (better-auth /organization/has-permission and dynamic role CRUD)
+	OrHasPermission = consts.OperationId("Or-25-HasPermission")
+	OrCreateRole    = consts.OperationId("Or-26-CreateRole")
+	OrDeleteRole    = consts.OperationId("Or-27-DeleteRole")
+	OrListRoles     = consts.OperationId("Or-28-ListRoles")
+	OrGetRole       = consts.OperationId("Or-29-GetRole")
+	OrUpdateRole    = consts.OperationId("Or-30-UpdateRole")
 )
 
 var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
@@ -95,6 +104,31 @@ var OrgPermissionsMap = map[consts.OperationId]models.OperationAccessDto{
 	OrAdminUnblockOrg: {AllowedRoles: []string{}, Description: "Unblock/Re-activate Organization"},
 	OrAdminListOrgs:   {AllowedRoles: []string{}, Description: "Admin: List All Organizations"},
 	OrAdminGetOrg:     {AllowedRoles: []string{}, Description: "Admin: Get Organization"},
+
+	// Access control (permission checks done in the service: ac:create/read/update/delete)
+	OrHasPermission: {AllowedRoles: []string{}, Description: "Check Organization Permission"},
+	OrCreateRole:    {AllowedRoles: []string{}, Description: "Create Organization Role"},
+	OrDeleteRole:    {AllowedRoles: []string{}, Description: "Delete Organization Role"},
+	OrListRoles:     {AllowedRoles: []string{}, Description: "List Organization Roles"},
+	OrGetRole:       {AllowedRoles: []string{}, Description: "Get Organization Role"},
+	OrUpdateRole:    {AllowedRoles: []string{}, Description: "Update Organization Role"},
+}
+
+// OrgRoutePermissions maps operations to the better-auth permission the equivalent better-auth
+// endpoint checks (plugins/organization/routes/*). See OrgHandler.RequireOrgOp for how it combines
+// with OrgPermissionsMap.
+var OrgRoutePermissions = map[consts.OperationId]access.Request{
+	OrUpdateOrg:        access.Req(map[string][]string{"organization": {"update"}}),
+	OrDeleteOrg:        access.Req(map[string][]string{"organization": {"delete"}}),
+	OrInviteMember:     access.Req(map[string][]string{"invitation": {"create"}}),
+	OrCancelInvitation: access.Req(map[string][]string{"invitation": {"cancel"}}),
+	OrUpdateMemberRole: access.Req(map[string][]string{"member": {"update"}}),
+	OrRemoveMember:     access.Req(map[string][]string{"member": {"delete"}}),
+	OrCreateTeam:       access.Req(map[string][]string{"team": {"create"}}),
+	OrUpdateTeam:       access.Req(map[string][]string{"team": {"update"}}),
+	OrDeleteTeam:       access.Req(map[string][]string{"team": {"delete"}}),
+	OrAddTeamMember:    access.Req(map[string][]string{"member": {"update"}}),
+	OrRemoveTeamMember: access.Req(map[string][]string{"member": {"delete"}}),
 }
 
 // SetupOrgRoutes registers all organization, invitation, and member endpoints.
@@ -488,4 +522,7 @@ func SetupOrgRoutes(api huma.API, h *OrgHandler) {
 		Tags:        adminTags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.AdminListOrgs)
+
+	// Access control
+	setupAccessControlRoutes(api, h, path)
 }

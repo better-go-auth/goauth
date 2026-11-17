@@ -132,6 +132,36 @@ func (r *VerificationRepo) DeleteExpiredVerifications(ctx context.Context) error
 	return nil
 }
 
+func (r *VerificationRepo) UpdateVerificationValue(ctx context.Context, id, oldValue, newValue string) (bool, error) {
+	if id == "" {
+		return false, nil
+	}
+	// Step 1: UPDATE ... WHERE id = ? AND value = ? is the compare-and-swap
+	res := gormutil.GetDB(ctx, r.db).
+		Model(&models.Verification{}).
+		Where(&models.Verification{Base: models.Base{ID: id}, Value: oldValue}, "ID", "Value").
+		Updates(map[string]interface{}{"Value": newValue, "UpdatedAt": time.Now().UTC()})
+	if res.Error != nil {
+		return false, fmt.Errorf("gorm/verification: update value: %w", res.Error)
+	}
+	// Step 2: no row matched → another request won the race
+	return res.RowsAffected == 1, nil
+}
+
+func (r *VerificationRepo) DeleteVerificationIfValue(ctx context.Context, id, value string) (bool, error) {
+	if id == "" {
+		return false, nil
+	}
+	// DELETE ... WHERE id = ? AND value = ?: only one concurrent caller can delete the row
+	res := gormutil.GetDB(ctx, r.db).
+		Where(&models.Verification{Base: models.Base{ID: id}, Value: value}, "ID", "Value").
+		Delete(&models.Verification{})
+	if res.Error != nil {
+		return false, fmt.Errorf("gorm/verification: delete if value: %w", res.Error)
+	}
+	return res.RowsAffected == 1, nil
+}
+
 func byIdentifier(identifier string) *models.Verification {
 	return &models.Verification{Identifier: identifier}
 }

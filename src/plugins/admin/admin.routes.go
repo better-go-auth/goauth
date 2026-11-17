@@ -1,8 +1,8 @@
 package admin
 
 import (
-	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	"github.com/better-go-auth/goauth/src/common/middleware"
+	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/danielgtaylor/huma/v2"
 )

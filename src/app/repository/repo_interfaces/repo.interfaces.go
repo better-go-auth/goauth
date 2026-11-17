@@ -2,9 +2,9 @@ package repo_interfaces
 
 import (
 	"context"
-	"strings"
 	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
+	"strings"
 )
 
 // IUserRepo defines the repository interface for User persistence.
@@ -17,6 +17,8 @@ type IUserRepo interface {
 	FindUserByEmail(ctx context.Context, email string) (*models.User, error)
 	// FindUserByPhoneNumber returns the live user owning phoneNumber (phone-number plugin).
 	FindUserByPhoneNumber(ctx context.Context, phoneNumber string) (*models.User, error)
+	// FindUserByUsername returns the live user owning username, compared exactly (username plugin).
+	FindUserByUsername(ctx context.Context, username string) (*models.User, error)
 	// UpdateUser applies a partial update keyed by Go field name (e.g. "EmailVerified") and returns the updated record.
 	UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error)
 	// DeleteUser soft-deletes a user and frees their email.
@@ -41,6 +43,13 @@ type IVerificationRepo interface {
 	DeleteVerificationsByValue(ctx context.Context, identifierPrefix, value string) error
 	// DeleteExpiredVerifications removes all expired verification records.
 	DeleteExpiredVerifications(ctx context.Context) error
+	// UpdateVerificationValue atomically replaces the value of verification id, but only while it still
+	// holds oldValue (compare-and-swap). It reports false when another request changed or deleted the row
+	// first, so attempt counters ("code:attempts") can't be lost by concurrent wrong guesses.
+	UpdateVerificationValue(ctx context.Context, id, oldValue, newValue string) (bool, error)
+	// DeleteVerificationIfValue atomically deletes verification id, but only while it still holds value.
+	// It reports false when another request changed or deleted the row first, so a code is used once.
+	DeleteVerificationIfValue(ctx context.Context, id, value string) (bool, error)
 }
 
 // IOAuthAccountRepo defines the repository interface for OAuth Account persistence.

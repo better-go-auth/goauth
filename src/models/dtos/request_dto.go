@@ -14,6 +14,9 @@ type SignUpEmailInput struct {
 	// RememberMe defaults to true; explicit false creates a 1-day session and
 	// sets the dont_remember cookie (Better Auth semantics).
 	RememberMe *bool `json:"rememberMe,omitempty"`
+	// AdditionalFields is the raw JSON body, filled by the HTTP adapter. Plugins read their own fields
+	// from it (e.g. the username plugin's username / displayUsername) through the UserInput hook.
+	AdditionalFields map[string]any `json:"-"`
 }
 
 // SignInEmailInput matches better-auth POST /sign-in/email body.
@@ -112,7 +115,6 @@ type UpdateUserInput struct {
 	Bio         *string `json:"bio,omitempty"`
 	PhoneNumber *string `json:"phoneNumber,omitempty"`
 }
-
 
 // RequestMeta carries HTTP request metadata (IP, user agent) for session creation.
 type RequestMeta struct {

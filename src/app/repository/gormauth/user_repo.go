@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/common/dtos"
 	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	"gorm.io/gorm"
@@ -103,6 +103,26 @@ func (r *UserRepo) FindUserByPhoneNumber(ctx context.Context, phoneNumber string
 	return &user, nil
 }
 
+// FindUserByUsername looks up a live user by its exact (already normalized) username (username plugin).
+func (r *UserRepo) FindUserByUsername(ctx context.Context, username string) (*models.User, error) {
+	var user models.User
+	if username == "" {
+		return nil, loc_errors.NotFoundErr("gorm/user: not found")
+	}
+	// Step 1: Query by username and exclude soft-deleted records
+	err := gormutil.GetDB(ctx, r.db).
+		Where(&models.User{UserDto: models.UserDto{Username: &username}}, "Username").
+		Where("deleted_at IS NULL").
+		Take(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, loc_errors.NotFoundErr("gorm/user: not found")
+		}
+		return nil, fmt.Errorf("gorm/user: get by username: %w", err)
+	}
+	return &user, nil
+}
+
 func (r *UserRepo) UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error) {
 	var user models.User
 	result := gormutil.GetDB(ctx, r.db).
@@ -130,6 +150,8 @@ func (r *UserRepo) DeleteUser(ctx context.Context, id string) error {
 			"Email":     tombstoneEmail,
 			// release the unique phone number so it can be registered again
 			"PhoneNumber": nil,
+			// release the unique username too (username plugin)
+			"Username": nil,
 		})
 	if result.Error != nil {
 		return fmt.Errorf("gorm/user: delete: %w", result.Error)

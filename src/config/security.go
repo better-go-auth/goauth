@@ -10,10 +10,16 @@ type SecurityConfig struct {
 	// Unauthenticated callers receive 401 UNAUTHORIZED; stale sessions receive 403 SESSION_NOT_FRESH.
 	RequireFreshOps []consts.OperationId
 
-	// CheckOriginOnPluginMutations enables Origin/Referer CSRF validation on mutating
-	// (non-GET/HEAD/OPTIONS) cookie-authenticated requests across all Huma routes, including
-	// plugin routes such as org and admin.
+	// CheckOriginOnPluginMutations extends the Origin/Referer CSRF validation of mutating
+	// (non-GET/HEAD/OPTIONS) cookie-authenticated requests to every Huma route, including the
+	// application's own routes outside BasePath. Auth routes under BasePath (core and plugins such as
+	// org, admin and jwt) are always checked, like better-auth's originCheckMiddleware, unless
+	// DisablePluginOriginCheck or Advanced.DisableOriginCheck/DisableCSRFCheck is set.
 	CheckOriginOnPluginMutations bool
+
+	// DisablePluginOriginCheck turns off the default origin check of plugin routes under BasePath.
+	// Core routes keep their own check (Advanced.DisableOriginCheck turns off both).
+	DisablePluginOriginCheck bool
 }
 
 // OperationSet builds an O(1) lookup set from a list of OperationIds, ignoring empty entries.
@@ -41,4 +47,3 @@ func OperationSet(ops ...[]consts.OperationId) map[string]bool {
 	}
 	return set
 }
-

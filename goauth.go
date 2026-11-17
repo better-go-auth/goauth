@@ -10,6 +10,7 @@ import (
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	"github.com/better-go-auth/goauth/src/app/repository/verifycleanup"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
@@ -145,6 +146,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	if repos == nil && opts.Conn != nil {
 		repos = gormauth.NewAuthRepos(opts.Conn, repoOpts...)
 	}
+	// delete expired verifications whenever one is read, like better-auth (opt out with Verification.DisableCleanup)
+	if !opts.Verification.DisableCleanup {
+		repos = verifycleanup.Wrap(repos)
+	}
 
 	// 2. Resolve Migrator
 	migrator := opts.Migrator
@@ -196,12 +201,12 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	pluginMap := make(map[string]plugin.Plugin)
 	authenticate := authenticator.NewDefaultAuthenticator(opts.Secret, repos)
 	initCtx := &plugin.InitContext{
-		Ctx:            ctx,
-		Api:            api,
-		Config:         opts.AuthConfig,
-		TxManager:      txManager,
-		SessionManager: sessionMgr,
-		IAuthSvc:       authService,
+		Ctx:              ctx,
+		Api:              api,
+		Config:           opts.AuthConfig,
+		TxManager:        txManager,
+		SessionManager:   sessionMgr,
+		IAuthSvc:         authService,
 		IAuthRepos:       repos,
 		MiddleWare:       mdlWare,
 		Authenticator:    authenticate,
@@ -215,6 +220,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// Phase 1: Initialize plugins (transport/middleware plugins first so global middlewares wrap all plugin routes)
 	isTransportPlugin := func(id string) bool {
 		return id == "bearer" || id == "access-token" || id == "jwt"
+	}
+	// plugins whose after-hook middleware (pluginkit.UseAfterHook) must wrap every domain plugin route
+	isAfterHookPlugin := func(id string) bool {
+		return id == "multi-session" || id == "one-time-token"
 	}
 	initPlugin := func(p plugin.Plugin) error {
 		if p == nil {
@@ -245,10 +254,23 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// access-token resolve credentials first) and before domain plugins / core routes snapshot middlewares.
 	origins := origin.New(opts.AuthConfig)
 	api.UseMiddleware(humaadapter.SecurityMiddleware(opts.AuthConfig, sessionMgr, cookieMgr, origins))
+	// fire plugins' OnNewSession hooks when a response hands out a session created on that request
+	// (e.g. anonymous account linking); registered before any domain plugin or core route is mounted
+	api.UseMiddleware(humaadapter.NewSessionHooks(opts.AuthConfig, hooks, cookieMgr))
 
-	// 1b. Init all remaining plugins
+	// 1b. Init response after-hook plugins (multi-session, one-time-token) before the other domain plugins,
+	// so their Huma middlewares observe every plugin route regardless of the order in opts.Plugins
 	for _, p := range opts.Plugins {
-		if p != nil && !isTransportPlugin(p.ID()) {
+		if p != nil && isAfterHookPlugin(p.ID()) {
+			if err := initPlugin(p); err != nil {
+				return nil, err
+			}
+		}
+	}
+
+	// 1c. Init all remaining plugins
+	for _, p := range opts.Plugins {
+		if p != nil && !isTransportPlugin(p.ID()) && !isAfterHookPlugin(p.ID()) {
 			if err := initPlugin(p); err != nil {
 				return nil, err
 			}
@@ -276,12 +298,12 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	})
 
 	return &GoAuth{
-		options:            opts,
-		plugins:            pluginMap,
-		hooks:              hooks,
+		options: opts,
+		plugins: pluginMap,
+		hooks:   hooks,
 		//middlewares
 		// middleWare:         *mdlWare,
-		middlewareInt:      mdlWare,
+		middlewareInt: mdlWare,
 		//middleware
 		revocationStore:    memRevocation,
 		transactionManager: txManager,
@@ -292,6 +314,36 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		sessionResolver:    resolver,
 		cookies:            cookieMgr,
 	}, nil
+}
+
+// StartCleanup deletes expired sessions and expired verifications every interval until ctx is cancelled.
+// Expired verifications are already purged on read (unless Verification.DisableCleanup); this ticker is for
+// long-running servers that also want rows nobody reads again (abandoned codes, expired sessions) removed.
+func (g *GoAuth) StartCleanup(ctx context.Context, interval time.Duration) {
+	go func() {
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				g.cleanupOnce(ctx)
+			}
+		}
+	}()
+}
+
+// cleanupOnce runs one cleanup pass: expired sessions, then expired verifications.
+func (g *GoAuth) cleanupOnce(ctx context.Context) {
+	// Step 1: expired session rows
+	if err := g.sessions.CleanupExpired(ctx); err != nil {
+		slog.Error("goauth: session cleanup failed", "err", err)
+	}
+	// Step 2: expired verification rows
+	if err := g.repositories.DeleteExpiredVerifications(ctx); err != nil {
+		slog.Error("goauth: verification cleanup failed", "err", err)
+	}
 }
 
 // StartSessionCleanup deletes expired sessions every interval until ctx is cancelled.

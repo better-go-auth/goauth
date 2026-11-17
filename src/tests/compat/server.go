@@ -103,6 +103,11 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 		if err != nil {
 			t.Fatalf("compattest: open sqlite: %v", err)
 		}
+		// shared-cache in-memory sqlite answers concurrent writes with "database table is locked" instead of
+		// waiting; one connection serializes statements while requests still interleave between them
+		if sqlDB, err := db.DB(); err == nil {
+			sqlDB.SetMaxOpenConns(1)
+		}
 	}
 
 	compatAtCfg := accesstokenconfig.DefaultAccessTokenConfig()

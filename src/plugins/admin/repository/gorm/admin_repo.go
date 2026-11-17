@@ -307,10 +307,12 @@ func (r *AdminRepo) RemoveUser(ctx context.Context, userID string) error {
 		if err := tx.Where(&models.Account{UserID: userID}, "UserID").Delete(&models.Account{}).Error; err != nil {
 			return fmt.Errorf("delete accounts: %w", err)
 		}
-		// Anonymize email and soft-delete user
+		// Anonymize email, release the unique phone number and soft-delete user
+		// (same tombstone as the core IUserRepo.DeleteUser, so the email and number can be registered again)
 		if err := tx.Model(&models.User{}).Where(userByID(userID), "ID").Updates(map[string]interface{}{
-			"DeletedAt": now,
-			"Email":     tombstoneEmail,
+			"DeletedAt":   now,
+			"Email":       tombstoneEmail,
+			"PhoneNumber": nil,
 		}).Error; err != nil {
 			return fmt.Errorf("delete user: %w", err)
 		}

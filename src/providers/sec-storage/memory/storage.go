@@ -25,7 +25,10 @@ type Store struct {
 	data map[string]entry
 }
 
-var _ sec_storage.SecondaryStorage = (*Store)(nil)
+var (
+	_ sec_storage.SecondaryStorage = (*Store)(nil)
+	_ sec_storage.AtomicUpdater    = (*Store)(nil)
+)
 
 // New creates and returns a new in-memory Store.
 // It is safe for concurrent use by multiple goroutines.
@@ -123,6 +126,33 @@ func (s *Store) Delete(ctx context.Context, key string) error {
 	s.mu.Lock()
 	delete(s.data, key)
 	s.mu.Unlock()
+	return nil
+}
+
+// Update atomically replaces key with fn(current) while holding the store's write lock.
+func (s *Store) Update(ctx context.Context, key string, fn sec_storage.UpdateFunc) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	// Step 1: current value (expired entries count as missing)
+	e, ok := s.data[key]
+	if ok && !e.expiresAt.IsZero() && time.Now().After(e.expiresAt) {
+		ok = false
+	}
+	var cur any
+	if ok {
+		cur = e.value
+	}
+	// Step 2: compute and store (or delete) the next value
+	next, ttl, remove := fn(cur, ok)
+	if remove {
+		delete(s.data, key)
+		return nil
+	}
+	ne := entry{value: next}
+	if ttl > 0 {
+		ne.expiresAt = time.Now().Add(ttl)
+	}
+	s.data[key] = ne
 	return nil
 }
 

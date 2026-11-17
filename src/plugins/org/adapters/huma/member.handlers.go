@@ -13,7 +13,7 @@ import (
 // ─── Member ───────────────────────────────────────────────────────────────────
 
 func (h *OrgHandler) GetMember(ctx context.Context, input *GetMemberInput) (*humatypes.HumaRes[orgdtos.MemberResponse], error) {
-	session, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.OrganizationID, rolesFor(OrGetMember)...)
+	session, orgID, err := h.RequireOrgOp(ctx, input.AuthHeaders, input.OrganizationID, OrGetMember)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -34,7 +34,7 @@ type MemberResp struct {
 }
 
 func (h *OrgHandler) ListMembers(ctx context.Context, input *ListMembersInput) (*humatypes.HumaRes[MemberResp], error) {
-	_, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.OrganizationID, rolesFor(OrListMembers)...)
+	_, orgID, err := h.RequireOrgOp(ctx, input.AuthHeaders, input.OrganizationID, OrListMembers)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -51,7 +51,7 @@ func (h *OrgHandler) ListMembers(ctx context.Context, input *ListMembersInput) (
 
 func (h *OrgHandler) UpdateMemberRole(ctx context.Context, input *UpdateMemberRoleInput) (*humatypes.HumaRes[orgdtos.MemberResponse], error) {
 	// Step 1: Verify membership and resolve organizationId
-	session, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrUpdateMemberRole)...)
+	session, orgID, err := h.RequireOrgOp(ctx, input.AuthHeaders, input.Body.OrganizationID, OrUpdateMemberRole)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -74,7 +74,7 @@ func (h *OrgHandler) UpdateMemberRole(ctx context.Context, input *UpdateMemberRo
 
 func (h *OrgHandler) RemoveMember(ctx context.Context, input *RemoveMemberInput) (*humatypes.SuccessOutput, error) {
 	// Step 1: Verify membership and resolve organizationId
-	sessionResp, orgID, err := h.RequireOrgMember(ctx, input.AuthHeaders, input.Body.OrganizationID, rolesFor(OrRemoveMember)...)
+	sessionResp, orgID, err := h.RequireOrgOp(ctx, input.AuthHeaders, input.Body.OrganizationID, OrRemoveMember)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}

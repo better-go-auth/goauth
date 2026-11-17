@@ -2,16 +2,18 @@ package humaadmin
 
 import (
 	"context"
+	"strings"
 
 	humaauth "github.com/better-go-auth/goauth/src/common/types"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	adminconfig "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 )
 
 // ListUsers handles POST /api/auth/admin/list-users.
 func (h *AdminHandler) ListUsers(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminListUsersInput]) (*humatypes.HumaRes[admindtos.AdminListUsersResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserList, adminconfig.ErrNotAllowedToListUsers)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -25,9 +27,19 @@ func (h *AdminHandler) ListUsers(ctx context.Context, input *humatypes.HumaReqBo
 
 // CreateUser handles POST /api/auth/admin/create-user.
 func (h *AdminHandler) CreateUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminCreateUserInput]) (*humatypes.HumaRes[admindtos.AdminUserWrapperResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserCreate, adminconfig.ErrNotAllowedToCreateUsers)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
+	}
+
+	// Step 2: assigning a role also requires user:set-role, and the role must exist (better-auth)
+	if role := createUserRole(input.Body); role != "" {
+		if !h.can(session, adminconfig.PermUserSetRole) {
+			return nil, humaauth.RespondErr(adminconfig.ErrNotAllowedToChangeRole)
+		}
+		if err := h.checkRolesExist(role); err != nil {
+			return nil, humaauth.RespondErr(err)
+		}
 	}
 
 	user, err := h.Admin.CreateUser(ctx, input.Body, session.User.ID)
@@ -39,8 +51,13 @@ func (h *AdminHandler) CreateUser(ctx context.Context, input *humatypes.HumaReqB
 
 // SetUserRole handles POST /api/auth/admin/set-user-role.
 func (h *AdminHandler) SetUserRole(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminSetUserRoleInput]) (*humatypes.HumaRes[admindtos.AdminSetUserRoleResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserSetRole, adminconfig.ErrNotAllowedToChangeRole)
 	if err != nil {
+		return nil, humaauth.RespondErr(err)
+	}
+
+	// Step 2: with custom roles configured, the new role(s) must exist (better-auth)
+	if err := h.checkRolesExist(input.Body.Role.S()); err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
 
@@ -53,7 +70,7 @@ func (h *AdminHandler) SetUserRole(ctx context.Context, input *humatypes.HumaReq
 
 // SetUserPassword handles POST /api/auth/admin/set-user-password.
 func (h *AdminHandler) SetUserPassword(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminSetUserPasswordInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserSetPassword, adminconfig.ErrNotAllowedToSetUsersPassword)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -66,7 +83,7 @@ func (h *AdminHandler) SetUserPassword(ctx context.Context, input *humatypes.Hum
 
 // RemoveUser handles POST /api/auth/admin/remove-user.
 func (h *AdminHandler) RemoveUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminRemoveUserInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserDelete, adminconfig.ErrNotAllowedToDeleteUsers)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -79,7 +96,7 @@ func (h *AdminHandler) RemoveUser(ctx context.Context, input *humatypes.HumaReqB
 
 // BanUser handles POST /api/auth/admin/ban-user.
 func (h *AdminHandler) BanUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminBanUserInput]) (*humatypes.HumaRes[admindtos.AdminBanUserResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserBan, adminconfig.ErrNotAllowedToBanUsers)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -93,7 +110,7 @@ func (h *AdminHandler) BanUser(ctx context.Context, input *humatypes.HumaReqBody
 
 // UnbanUser handles POST /api/auth/admin/unban-user.
 func (h *AdminHandler) UnbanUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminUnbanUserInput]) (*humatypes.HumaRes[admindtos.AdminUnbanUserResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserBan, adminconfig.ErrNotAllowedToBanUsers)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -113,7 +130,7 @@ type ListUsersQueryInput struct {
 
 // ListUsersQuery handles GET /api/auth/admin/list-users.
 func (h *AdminHandler) ListUsersQuery(ctx context.Context, input *ListUsersQueryInput) (*humatypes.HumaRes[admindtos.AdminListUsersResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserList, adminconfig.ErrNotAllowedToListUsers)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -162,7 +179,7 @@ type GetUserInput struct {
 
 // GetUser handles GET /api/auth/admin/get-user.
 func (h *AdminHandler) GetUser(ctx context.Context, input *GetUserInput) (*humatypes.HumaRes[dtos.UserResponse], error) {
-	_, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	_, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserGet, adminconfig.ErrNotAllowedToGetUser)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -181,8 +198,13 @@ func (h *AdminHandler) GetUser(ctx context.Context, input *GetUserInput) (*humat
 
 // UpdateUser handles POST /api/auth/admin/update-user.
 func (h *AdminHandler) UpdateUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminUpdateUserInput]) (*humatypes.HumaRes[admindtos.AdminUserWrapperResponse], error) {
-	_, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserUpdate, adminconfig.ErrNotAllowedToUpdateUsers)
 	if err != nil {
+		return nil, humaauth.RespondErr(err)
+	}
+
+	// Step 2: field-specific permissions (better-auth adminUpdateUser)
+	if err := h.checkUpdateUserFields(session, input.Body.Data); err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
 
@@ -194,8 +216,9 @@ func (h *AdminHandler) UpdateUser(ctx context.Context, input *humatypes.HumaReqB
 }
 
 // HasPermission handles POST /api/auth/admin/has-permission.
+// Like better-auth, any authenticated user may call it and the session user's own role is checked.
 func (h *AdminHandler) HasPermission(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminHasPermissionInput]) (*humatypes.HumaRes[admindtos.AdminHasPermissionResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.Authenticate(ctx, input.AuthHeaders)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -207,3 +230,60 @@ func (h *AdminHandler) HasPermission(ctx context.Context, input *humatypes.HumaR
 	return humatypes.MakeResPtr(res, 200), nil
 }
 
+// createUserRole returns the role requested by create-user (`role`, or `data.role`).
+func createUserRole(in admindtos.AdminCreateUserInput) string {
+	if in.Role != "" {
+		return in.Role.S()
+	}
+	if r, ok := in.Data["role"]; ok {
+		return roleValue(r)
+	}
+	return ""
+}
+
+// roleValue converts a role JSON value (string or array of strings) to goauth's comma form.
+func roleValue(v any) string {
+	switch r := v.(type) {
+	case string:
+		return r
+	case []any:
+		parts := make([]string, 0, len(r))
+		for _, x := range r {
+			if s, ok := x.(string); ok {
+				parts = append(parts, s)
+			}
+		}
+		return strings.Join(parts, ",")
+	case []string:
+		return strings.Join(r, ",")
+	}
+	return ""
+}
+
+// checkUpdateUserFields applies better-auth's per-field permissions on update-user data:
+// role -> user:set-role, banned/banReason/banExpires -> user:ban, email/emailVerified -> user:set-email.
+func (h *AdminHandler) checkUpdateUserFields(session *dtos.SessionWithUser, data map[string]any) error {
+	has := func(k string) bool { _, ok := data[k]; return ok }
+	// Step 1: role changes
+	if has("role") {
+		if !h.can(session, adminconfig.PermUserSetRole) {
+			return adminconfig.ErrNotAllowedToChangeRole
+		}
+		if err := h.checkRolesExist(roleValue(data["role"])); err != nil {
+			return err
+		}
+	}
+	// Step 2: ban fields
+	if has("banned") || has("banReason") || has("banExpires") {
+		if !h.can(session, adminconfig.PermUserBan) {
+			return adminconfig.ErrNotAllowedToBanUsers
+		}
+	}
+	// Step 3: email fields
+	if has("email") || has("emailVerified") {
+		if !h.can(session, adminconfig.PermUserSetEmail) {
+			return adminconfig.ErrNotAllowedToSetUsersEmail
+		}
+	}
+	return nil
+}

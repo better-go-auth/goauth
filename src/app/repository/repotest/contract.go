@@ -4,6 +4,8 @@ package repotest
 import (
 	"context"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -21,6 +23,7 @@ type Factory func(t *testing.T) repo_interfaces.IAuthRepos
 func Run(t *testing.T, newRepos Factory) {
 	t.Run("users", func(t *testing.T) { testUsers(t, newRepos(t)) })
 	t.Run("phone numbers", func(t *testing.T) { testPhoneNumbers(t, newRepos(t)) })
+	t.Run("usernames", func(t *testing.T) { testUsernames(t, newRepos(t)) })
 	t.Run("list users", func(t *testing.T) { testListUsers(t, newRepos(t)) })
 	t.Run("sessions", func(t *testing.T) { testSessions(t, newRepos(t)) })
 	t.Run("session queries", func(t *testing.T) { testSessionQueries(t, newRepos(t)) })
@@ -125,6 +128,49 @@ func testPhoneNumbers(t *testing.T, r repo_interfaces.IAuthRepos) {
 	require.Error(t, err)
 	_, err = r.UpdateUser(ctx, b.ID, map[string]interface{}{"PhoneNumber": phone})
 	require.NoError(t, err, "a deleted user's number can be reused")
+}
+
+// testUsernames covers the username plugin column: exact lookup, NULL for users without a username,
+// uniqueness and the username being released when the user is deleted.
+func testUsernames(t *testing.T, r repo_interfaces.IAuthRepos) {
+	ctx := context.Background()
+	name := "alice_01"
+
+	// Step 1: users without a username coexist (NULL is not a duplicate) and are not found by ""
+	a := mustCreateUser(t, r, "ua@example.com")
+	b := mustCreateUser(t, r, "ub@example.com")
+	_, err := r.FindUserByUsername(ctx, "")
+	require.Error(t, err)
+
+	// Step 2: set and look up the username (and display username)
+	updated, err := r.UpdateUser(ctx, a.ID, map[string]interface{}{"Username": &name, "DisplayUsername": "Alice_01"})
+	require.NoError(t, err)
+	require.NotNil(t, updated.Username)
+	require.Equal(t, name, *updated.Username)
+	require.NotNil(t, updated.DisplayUsername)
+	require.Equal(t, "Alice_01", *updated.DisplayUsername)
+	got, err := r.FindUserByUsername(ctx, name)
+	require.NoError(t, err)
+	require.Equal(t, a.ID, got.ID)
+	_, err = r.FindUserByUsername(ctx, "ALICE_01")
+	require.Error(t, err, "lookups are exact; the plugin normalizes before querying")
+
+	// Step 3: the username is unique on update and create
+	_, err = r.UpdateUser(ctx, b.ID, map[string]interface{}{"Username": name})
+	require.Error(t, err, "usernames are unique")
+	dup := newUser("uc@example.com")
+	dup.Username = &name
+	_, err = r.CreateUser(ctx, dup)
+	require.Error(t, err, "usernames are unique on create")
+
+	// Step 4: clearing works and deleting the user releases the username
+	_, err = r.UpdateUser(ctx, b.ID, map[string]interface{}{"Username": nil})
+	require.NoError(t, err)
+	require.NoError(t, r.DeleteUser(ctx, a.ID))
+	_, err = r.FindUserByUsername(ctx, name)
+	require.Error(t, err)
+	_, err = r.UpdateUser(ctx, b.ID, map[string]interface{}{"Username": name})
+	require.NoError(t, err, "a deleted user's username can be reused")
 }
 
 func testListUsers(t *testing.T, r repo_interfaces.IAuthRepos) {
@@ -327,6 +373,18 @@ func testAccounts(t *testing.T, r repo_interfaces.IAuthRepos) {
 	require.NoError(t, r.DeleteAccounts(ctx, ""))
 	all, _ = r.FindAccounts(ctx, u.ID)
 	require.Len(t, all, 1, "an empty user id deletes nothing")
+	// like better-auth, one user may link two accounts of the same provider; lookups return the oldest
+	first, err := r.CreateAccount(ctx, &models.Account{UserID: u.ID, AccountID: "gh-a", ProviderID: models.ProvGithub})
+	require.NoError(t, err)
+	time.Sleep(2 * time.Millisecond)
+	_, err = r.CreateAccount(ctx, &models.Account{UserID: u.ID, AccountID: "gh-b", ProviderID: models.ProvGithub})
+	require.NoError(t, err, "a second account of one provider is allowed")
+	got, err = r.FindAccountByUserAndProvider(ctx, u.ID, models.ProvGithub)
+	require.NoError(t, err)
+	require.Equal(t, first.ID, got.ID, "the oldest account is returned")
+	_, err = r.CreateAccount(ctx, &models.Account{UserID: "someone-else", AccountID: "gh-a", ProviderID: models.ProvGithub})
+	require.Error(t, err, "(providerId, accountId) stays unique")
+
 	require.NoError(t, r.DeleteAccounts(ctx, u.ID))
 	all, _ = r.FindAccounts(ctx, u.ID)
 	require.Empty(t, all)
@@ -388,9 +446,63 @@ func testVerifications(t *testing.T, r repo_interfaces.IAuthRepos) {
 		require.NoError(t, err)
 	}
 	require.NoError(t, r.DeleteVerificationsByValue(ctx, "reset-password:", ""), "an empty value deletes nothing")
+	testVerificationCAS(t, r)
 	require.NoError(t, r.DeleteVerificationsByValue(ctx, "reset-password:", "user-1"))
 	for id, kept := range map[string]bool{"reset-password:a": false, "reset-password:b": false, "reset-password:c": true, "delete-account-d": true} {
 		_, err = r.FindVerificationValue(ctx, id)
 		require.Equal(t, kept, err == nil, id)
 	}
+}
+
+// testVerificationCAS checks the compare-and-swap helpers used by "code:attempts" flows.
+func testVerificationCAS(t *testing.T, r repo_interfaces.IAuthRepos) {
+	ctx := context.Background()
+	// Step 1: a fresh code with no attempts
+	v, err := r.UpsertVerificationValue(ctx, &models.Verification{Identifier: "cas-otp", Value: "123456:0", ExpiresAt: time.Now().Add(time.Hour)})
+	require.NoError(t, err)
+
+	// Step 2: swap succeeds only from the current value
+	ok, err := r.UpdateVerificationValue(ctx, v.ID, "123456:0", "123456:1")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = r.UpdateVerificationValue(ctx, v.ID, "123456:0", "123456:1")
+	require.NoError(t, err)
+	require.False(t, ok, "a stale value loses the swap")
+	got, err := r.FindVerificationValue(ctx, "cas-otp")
+	require.NoError(t, err)
+	require.Equal(t, "123456:1", got.Value)
+	require.Equal(t, v.ID, got.ID, "the row keeps its id")
+
+	// Step 3: concurrent increments from the same snapshot: exactly one wins
+	var wins int32
+	var wg sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if ok, err := r.UpdateVerificationValue(ctx, v.ID, "123456:1", "123456:2"); err == nil && ok {
+				atomic.AddInt32(&wins, 1)
+			}
+		}()
+	}
+	wg.Wait()
+	require.EqualValues(t, 1, wins)
+
+	// Step 4: delete-if-value is also guarded by the value
+	ok, err = r.DeleteVerificationIfValue(ctx, v.ID, "123456:1")
+	require.NoError(t, err)
+	require.False(t, ok)
+	ok, err = r.DeleteVerificationIfValue(ctx, v.ID, "123456:2")
+	require.NoError(t, err)
+	require.True(t, ok)
+	ok, err = r.DeleteVerificationIfValue(ctx, v.ID, "123456:2")
+	require.NoError(t, err)
+	require.False(t, ok, "a code can be deleted once")
+	_, err = r.FindVerificationValue(ctx, "cas-otp")
+	require.Error(t, err)
+
+	// Step 5: unknown ids never match
+	ok, err = r.UpdateVerificationValue(ctx, "", "", "x")
+	require.NoError(t, err)
+	require.False(t, ok)
 }

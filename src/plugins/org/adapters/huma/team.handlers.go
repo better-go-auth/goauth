@@ -75,7 +75,7 @@ func (h *OrgHandler) CreateTeam(ctx context.Context, in *CreateTeamInput) (*Team
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrCreateTeam)...)
+	sessionResp, orgID, err := h.RequireOrgOp(ctx, in.AuthHeaders, in.Body.OrganizationID, OrCreateTeam)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -91,7 +91,7 @@ func (h *OrgHandler) UpdateTeam(ctx context.Context, in *UpdateTeamInput) (*Team
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrUpdateTeam)...)
+	sessionResp, orgID, err := h.RequireOrgOp(ctx, in.AuthHeaders, in.Body.OrganizationID, OrUpdateTeam)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -110,7 +110,7 @@ func (h *OrgHandler) DeleteTeam(ctx context.Context, in *DeleteTeamInput) (*huma
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrDeleteTeam)...)
+	sessionResp, orgID, err := h.RequireOrgOp(ctx, in.AuthHeaders, in.Body.OrganizationID, OrDeleteTeam)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -144,7 +144,7 @@ func (h *OrgHandler) AddTeamMember(ctx context.Context, in *AddTeamMemberInput) 
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrAddTeamMember)...)
+	sessionResp, orgID, err := h.RequireOrgOp(ctx, in.AuthHeaders, in.Body.OrganizationID, OrAddTeamMember)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -160,7 +160,7 @@ func (h *OrgHandler) RemoveTeamMember(ctx context.Context, in *RemoveTeamMemberI
 	if !h.Org.TeamsEnabled() {
 		return nil, huma.NewError(http.StatusNotFound, "Teams are not enabled")
 	}
-	sessionResp, orgID, err := h.RequireOrgMember(ctx, in.AuthHeaders, in.Body.OrganizationID, rolesFor(OrRemoveTeamMember)...)
+	sessionResp, orgID, err := h.RequireOrgOp(ctx, in.AuthHeaders, in.Body.OrganizationID, OrRemoveTeamMember)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}

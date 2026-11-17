@@ -136,7 +136,7 @@ type OrgRoleResponse struct {
 	ID             string            `json:"id"`
 	OrganizationID string            `json:"organizationId"`
 	Role           string            `json:"role"`
-	Permission     models.Permission `json:"permission,omitempty"`
+	Permission     models.Permission `json:"permission"`
 	Ops            models.Operations `json:"ops,omitempty"`
 	CreatedAt      string            `json:"createdAt"`
 	UpdatedAt      string            `json:"updatedAt"`

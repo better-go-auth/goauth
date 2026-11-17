@@ -89,3 +89,25 @@ it is doing a redundant logic.
 - [x] Phone-number plugin + official client test.
 - [x] Passkey (WebAuthn) plugin (go-webauthn) + official `@better-auth/passkey` client test (`src/tests/compat/client-passkey`, run `npm install --legacy-peer-deps` there).
 - [x] Social / OAuth2 plugin (google, github, discord, microsoft, apple, facebook, gitlab, generic OIDC) + official client test.
+
+## Phase 9.1: Robustness fixes (`_docs/phases/phase9/01-robustness-and-parity-improvements.md` §1)
+- [x] 1.1 Admin remove-user releases the unique phone number (same tombstone as core delete-user); test in `src/tests/admin/admin_test.go`.
+- [x] 1.2 Expired verifications are purged on every verification read like better-auth (`verifycleanup.Wrap`, opt out with `Verification.DisableCleanup`); `(*GoAuth).StartCleanup(ctx, interval)` deletes expired sessions and verifications on a ticker.
+- [x] 1.3 Atomic OTP attempt counters: `UpdateVerificationValue` (compare-and-swap) and `DeleteVerificationIfValue` on `IVerificationRepo` (GORM + memory + contract tests); email-otp, phone-number and two-factor retry on a lost swap, codes and pending 2FA sign-ins are consumed once.
+- [x] 1.4 `active-sessions-<userId>` index updated atomically across processes through the optional `sec_storage.AtomicUpdater` (Redis WATCH/MULTI, memory lock), JSON format unchanged; lock-based fallback for other stores.
+- [x] 1.5 Origin/CSRF check on by default for every mutating route under BasePath (org, admin, jwt, access-token included); `Security.DisablePluginOriginCheck` opts out, `CheckOriginOnPluginMutations` extends it to the app's own routes.
+- [x] 1.6 Dropped the unique `(user_id, provider_id)` account index (migration drops `idx_user_provider`); `FindAccountByUserAndProvider` returns the oldest account; memory repo enforces `(providerId, accountId)` uniqueness.
+- [x] 1.7 Missing query parameters already answer `400 VALIDATION_ERROR` (regression test added for magic-link); admin create-user and email-otp sign-up return `500 FAILED_TO_CREATE_USER` like better-auth (core sign-up keeps 422).
+- [x] Storage-agnostic plan for dynamic columns (MongoDB, database/sql/Bun/sqlx/pgx, sqlc, Ent, Atlas/goose/golang-migrate) in `_docs/phases/phase9/04-storage-agnostic-schema-and-migrations.md`.
+
+## Phase 9.4: Access control and most-used missing plugins (2026-11-17)
+- [x] `access` (createAccessControl): `src/providers/access` (statements, roles, `Authorize` with better-auth's AND/OR semantics and messages, multi-role `"a,b"`, JSON statements).
+  - Admin: per-route better-auth permissions (`RoutePermissions`), `WithAccessControl`/`WithRoles`/`WithAdminUserIDs`/`WithAllowImpersonatingAdmins`, real `/admin/has-permission`, impersonating admins blocked (`YOU_CANNOT_IMPERSONATE_ADMINS`); without custom roles every `AdminRoles` entry keeps full admin access.
+  - Org: better-auth mode (ac/roles configured or `BetterAuthPermissions`) vs legacy mode (today's rules, DB roles now merged, multi-role); operation-ID access (`Ops`, `HasOperation`, `AuthMethod`, `OrgPermissionsMap`, `"*"`) unchanged; new routes `/organization/has-permission`, `create-role`, `delete-role`, `list-roles`, `get-role`, `update-role`; fixed `RequireOrgMember` passing the role name as an action.
+- [x] Username plugin (`/sign-in/username`, `/is-username-available`, `username`/`displayUsername` validation on sign-up and update-user); user `username` is now nullable + unique (migration turns `''` into NULL).
+- [x] Anonymous plugin (`/sign-in/anonymous`, `/delete-anonymous-user`, `isAnonymous`, account linking with `onLinkAccount`).
+- [x] Multi-session plugin (`/multi-session/list-device-sessions`, `set-active`, `revoke`, `<session_token>_multi-<token>` cookies, sign-out revokes all).
+- [x] One-time-token plugin (`/one-time-token/generate`, `/verify`, plain/hashed/custom storage, single use, `set-ott` header).
+- [x] Generic-OAuth plugin (`/sign-in/oauth2`, `/oauth2/callback/:providerId`, `/oauth2/link`, OIDC discovery, 9 presets), reusing the social plugin's OAuth machinery.
+- [x] Core extension points: `OnUserInput` (sign-up/update-user body fields), `OnNewSession` (core `NewSessionHooks` middleware), `pluginkit.UseAfterHook` (response after-hooks); multi-session and one-time-token are initialized before other domain plugins so their after-hooks wrap every route.
+- [x] Official better-auth client tests for every plugin above (`src/tests/compat/{usernameclient,anonymousclient,multisessionclient,onetimetokenclient,genericoauthclient}`, `TestOfficialBetterAuthClient_Access`).

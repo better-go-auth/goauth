@@ -5,14 +5,15 @@ import (
 	"net/http"
 
 	humaauth "github.com/better-go-auth/goauth/src/common/types"
-	"github.com/better-go-auth/goauth/src/models/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
+	"github.com/better-go-auth/goauth/src/models/dtos"
+	adminconfig "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 )
 
 // ListUserSessions handles POST /api/auth/admin/list-user-sessions.
 func (h *AdminHandler) ListUserSessions(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminListUserSessionsInput]) (*humatypes.HumaRes[admindtos.AdminListUserSessionsResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermSessionList, adminconfig.ErrNotAllowedToListUsersSessions)
 	if err != nil {
 		return nil, humatypes.RespondErr(err)
 	}
@@ -26,7 +27,7 @@ func (h *AdminHandler) ListUserSessions(ctx context.Context, input *humatypes.Hu
 
 // RevokeUserSession handles POST /api/auth/admin/revoke-user-session.
 func (h *AdminHandler) RevokeUserSession(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminRevokeUserSessionInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermSessionRevoke, adminconfig.ErrNotAllowedToRevokeUserSessions)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -39,7 +40,7 @@ func (h *AdminHandler) RevokeUserSession(ctx context.Context, input *humatypes.H
 
 // RevokeUserSessions handles POST /api/auth/admin/revoke-user-sessions.
 func (h *AdminHandler) RevokeUserSessions(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminRevokeUserSessionsInput]) (*humatypes.HumaRes[admindtos.AdminStatusResponse], error) {
-	session, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	session, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermSessionRevoke, adminconfig.ErrNotAllowedToRevokeUserSessions)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -52,7 +53,7 @@ func (h *AdminHandler) RevokeUserSessions(ctx context.Context, input *humatypes.
 
 // ImpersonateUser handles POST /api/auth/admin/impersonate-user.
 func (h *AdminHandler) ImpersonateUser(ctx context.Context, input *humatypes.HumaReqBody[admindtos.AdminImpersonateUserInput]) (*humatypes.HumaRes[dtos.SessionWithUser], error) {
-	adminSession, err := h.RequireAdmin(ctx, input.AuthHeaders)
+	adminSession, err := h.RequirePermission(ctx, input.AuthHeaders, adminconfig.PermUserImpersonate, adminconfig.ErrNotAllowedToImpersonateUsers)
 	if err != nil {
 		return nil, humaauth.RespondErr(err)
 	}
@@ -68,7 +69,6 @@ func (h *AdminHandler) ImpersonateUser(ctx context.Context, input *humatypes.Hum
 		cookies = h.Cookies.AdminSessionCookies(adminSession.Session.Token, signInResp.Token)
 	}
 
-	
 	// sessionWithUsr:= dtos
 	return humatypes.MakeResPtr(dtos.ToSessionWithUser(signInResp.SessionData, signInResp.User), 200, cookies...), nil
 }

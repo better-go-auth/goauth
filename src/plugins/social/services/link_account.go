@@ -205,7 +205,7 @@ func applyExtraToUser(u *models.User, extra map[string]any) {
 		case "LastName":
 			u.LastName = s
 		case "Username":
-			u.Username = s
+			u.Username = &s
 		case "DisplayName":
 			u.DisplayName = &s
 		case "Bio":

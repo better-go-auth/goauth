@@ -101,36 +101,47 @@ func splitCode(value string) (code string, attempts int, hasAttempts bool) {
 }
 
 // checkCode validates code against the verification row identifier with better-auth's attempt counter.
-// On success the row is left in place; the caller deletes it.
-func (s *PhoneNumberService) checkCode(ctx context.Context, identifier, code string) error {
-	// Step 1: load the newest code for identifier
-	v, err := pluginkit.AcceptNotFound(s.kit.Repos.FindVerificationValue(ctx, identifier))
-	if err != nil {
-		return err
-	}
-	if v == nil {
-		return ErrOTPNotFound
-	}
-	// Step 2: expired codes are reported as such (and kept, like better-auth)
-	if v.ExpiresAt.Before(s.now()) {
-		return ErrOTPExpired
-	}
-	// Step 3: too many wrong attempts → delete the code and lock out
-	stored, attempts, hasAttempts := splitCode(v.Value)
-	if hasAttempts && attempts >= s.cfg.AllowedAttempts {
-		_ = s.kit.Repos.DeleteVerificationByIdentifier(ctx, identifier)
-		return ErrTooManyAttempts
-	}
-	// Step 4: wrong code → count the attempt
-	if stored != code {
-		v.Value = stored + ":" + strconv.Itoa(attempts+1)
-		if _, err := s.kit.Repos.UpsertVerificationValue(ctx, v); err != nil {
-			return err
+// On success the matching row is returned and left in place; the caller deletes it.
+// The attempt counter is written with a compare-and-swap and the check is retried when a concurrent
+// request changed the row first, so parallel wrong guesses can't exceed AllowedAttempts.
+func (s *PhoneNumberService) checkCode(ctx context.Context, identifier, code string) (*models.Verification, error) {
+	for try := 0; try < maxCodeCASRetries; try++ {
+		// Step 1: load the newest code for identifier
+		v, err := pluginkit.AcceptNotFound(s.kit.Repos.FindVerificationValue(ctx, identifier))
+		if err != nil {
+			return nil, err
 		}
-		return ErrInvalidOTP
+		if v == nil {
+			return nil, ErrOTPNotFound
+		}
+		// Step 2: expired codes are reported as such (and kept, like better-auth)
+		if v.ExpiresAt.Before(s.now()) {
+			return nil, ErrOTPExpired
+		}
+		// Step 3: too many wrong attempts → delete the code and lock out
+		stored, attempts, hasAttempts := splitCode(v.Value)
+		if hasAttempts && attempts >= s.cfg.AllowedAttempts {
+			_ = s.kit.Repos.DeleteVerificationByIdentifier(ctx, identifier)
+			return nil, ErrTooManyAttempts
+		}
+		// Step 4: wrong code → count the attempt atomically; retry when another request counted first
+		if stored != code {
+			swapped, err := s.kit.Repos.UpdateVerificationValue(ctx, v.ID, v.Value, stored+":"+strconv.Itoa(attempts+1))
+			if err != nil {
+				return nil, err
+			}
+			if !swapped {
+				continue
+			}
+			return nil, ErrInvalidOTP
+		}
+		return v, nil
 	}
-	return nil
+	return nil, ErrInvalidOTP
 }
+
+// maxCodeCASRetries bounds how often a code check is retried after losing a compare-and-swap race.
+const maxCodeCASRetries = 10
 
 // UpdatePhoneNumber writes a user's phone number. Clearing it (nil) also clears PhoneNumberVerified,
 // like better-auth's databaseHooks.user.update.before registered by the plugin.
@@ -320,11 +331,20 @@ func (s *PhoneNumberService) consumeVerifyCode(ctx context.Context, phoneNumber,
 		// a stored code for the number is dropped all the same
 		return s.kit.Repos.DeleteVerificationByIdentifier(ctx, phoneNumber)
 	}
-	// Step 2: built-in check with the attempt counter, then consume the code
-	if err := s.checkCode(ctx, phoneNumber, code); err != nil {
+	// Step 2: built-in check with the attempt counter
+	v, err := s.checkCode(ctx, phoneNumber, code)
+	if err != nil {
 		return err
 	}
-	return s.kit.Repos.DeleteVerificationByIdentifier(ctx, phoneNumber)
+	// Step 3: consume the code atomically; losing the race means a concurrent request already used it
+	deleted, err := s.kit.Repos.DeleteVerificationIfValue(ctx, v.ID, v.Value)
+	if err != nil {
+		return err
+	}
+	if !deleted {
+		return ErrInvalidOTP
+	}
+	return nil
 }
 
 // verifyUpdate is the updatePhoneNumber branch of Verify.
@@ -438,7 +458,7 @@ func (s *PhoneNumberService) RequestPasswordReset(ctx context.Context, phoneNumb
 func (s *PhoneNumberService) ResetPassword(ctx context.Context, phoneNumber, otp, newPassword string) error {
 	identifier := PasswordResetIdentifier(phoneNumber)
 	// Step 1: check the reset code with the attempt counter
-	if err := s.checkCode(ctx, identifier, otp); err != nil {
+	if _, err := s.checkCode(ctx, identifier, otp); err != nil {
 		return err
 	}
 	// Step 2: the number must belong to a user

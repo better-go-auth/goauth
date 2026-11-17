@@ -6,6 +6,7 @@ import (
 
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
+	"github.com/better-go-auth/goauth/src/providers/access"
 )
 
 // DefaultTeamConfig defines default team settings on organization creation.
@@ -31,13 +32,13 @@ type TeamMemberLimitData struct {
 
 // TeamsConfig mirrors better-auth `organization.teams` options.
 type TeamsConfig struct {
-	Enabled               bool
-	DefaultTeam           *DefaultTeamConfig
-	MaximumTeams          *int
-	MaximumTeamsFn        func(ctx context.Context, data TeamLimitData) (int, error)
-	MaximumMembersPerTeam *int
+	Enabled                 bool
+	DefaultTeam             *DefaultTeamConfig
+	MaximumTeams            *int
+	MaximumTeamsFn          func(ctx context.Context, data TeamLimitData) (int, error)
+	MaximumMembersPerTeam   *int
 	MaximumMembersPerTeamFn func(ctx context.Context, data TeamMemberLimitData) (int, error)
-	AllowRemovingAllTeams bool
+	AllowRemovingAllTeams   bool
 }
 
 // AuthMethod defines the authorization strategy used for dynamic role evaluation.
@@ -142,7 +143,27 @@ type OrgConfig struct {
 	MembershipLimitFn func(ctx context.Context, user *coremodels.User, org *models.Organization) (int, error)
 
 	// Roles defines custom static permissions for roles.
+	// Legacy goauth option (supports "*" wildcards); ignored in better-auth mode (see AccessRoles).
 	Roles map[string]models.Permission
+
+	// AccessControl mirrors better-auth's organization `ac` option (createAccessControl). Setting it
+	// switches permission checks to exact better-auth semantics (see BetterAuthMode) and enables the
+	// INVALID_RESOURCE check on dynamic roles. Default (better-auth mode): DefaultAC.
+	AccessControl *access.AccessControl
+
+	// AccessRoles mirrors better-auth's organization `roles` option (role name -> access.Role).
+	// Setting it switches to better-auth semantics; these roles replace the default owner/admin/member.
+	AccessRoles map[string]access.Role
+
+	// BetterAuthPermissions switches to better-auth semantics with the default owner/admin/member
+	// roles even when neither AccessControl nor AccessRoles is set.
+	//
+	// When false and no AccessControl/AccessRoles are configured (the default), goauth's legacy
+	// rules stay in place so existing setups are not broken: owner bypasses every check, admin may
+	// do everything except organization:delete/update-role, member may only read/list/get, and
+	// Config.Roles (with "*" wildcards) defines extra roles. Dynamic (DB) roles are merged into
+	// those predefined roles and comma-separated multi-role members are supported in both modes.
+	BetterAuthPermissions bool
 
 	// CancelPendingInvitationsOnReInvite cancels existing pending invitations when re-inviting (default: false).
 	CancelPendingInvitationsOnReInvite *bool

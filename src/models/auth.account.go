@@ -7,12 +7,13 @@ import (
 // Account is better-auth's `account` model: one row per sign-in method of a user
 // (providerId "credential" holds the password hash; OAuth providers hold their tokens).
 type Account struct {
-	Base                             // id, createdAt, updatedAt
+	Base // id, createdAt, updatedAt
 	// provider's user id; the user id for "credential"
 	AccountID string `json:"accountId" gorm:"not null;size:255;uniqueIndex:idx_provider_account" bun:"account_id,notnull"`
 	//credential,google, github and etc
-	ProviderID Providers `json:"providerId" gorm:"not null;size:100;uniqueIndex:idx_provider_account;uniqueIndex:idx_user_provider"  bun:"provider_id,notnull"`
-	UserID string `json:"userId" gorm:"not null;size:100;index;uniqueIndex:idx_user_provider"                            bun:"user_id,notnull"`
+	ProviderID Providers `json:"providerId" gorm:"not null;size:100;uniqueIndex:idx_provider_account"  bun:"provider_id,notnull"`
+	// not unique per provider: like better-auth, a user may link several accounts of one provider
+	UserID                string     `json:"userId" gorm:"not null;size:100;index"                            bun:"user_id,notnull"`
 	AccessToken           *string    `json:"accessToken" bun:"access_token"`
 	RefreshToken          *string    `json:"refreshToken" bun:"refresh_token"`
 	IDToken               *string    `json:"idToken" bun:"id_token"`
@@ -39,7 +40,6 @@ const (
 func (p Providers) S() string {
 	return string(p)
 }
-
 
 func TimeNow() time.Time {
 	return time.Now().UTC()

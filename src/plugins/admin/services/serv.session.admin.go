@@ -7,9 +7,10 @@ import (
 	"net/http"
 	"time"
 
-	serv_interfaces"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	adminconfig "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
@@ -86,6 +87,18 @@ func (s *AdminService) ImpersonateUser(ctx context.Context, input admindtos.Admi
 	}
 	if targetUser.Banned {
 		return nil, autherr.ErrUserBanned
+	}
+
+	// Impersonating an admin (admin role or adminUserIds) requires user:impersonate-admins,
+	// unless AllowImpersonatingAdmins is set (better-auth YOU_CANNOT_IMPERSONATE_ADMINS).
+	if s.adminConfig.IsAdminTarget(targetUser.ID, targetUser.Role.S()) && !s.adminConfig.AllowImpersonatingAdmins {
+		callerID, callerRole := "", ""
+		if adminUser != nil {
+			callerID, callerRole = adminUser.ID, adminUser.Role
+		}
+		if !s.adminConfig.HasPermission(callerID, callerRole, adminconfig.PermUserImpersonateAdmins) {
+			return nil, adminconfig.ErrCannotImpersonateAdmins
+		}
 	}
 
 	expiresIn := s.adminConfig.ImpersonationSessionExpiresIn

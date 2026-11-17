@@ -2,6 +2,7 @@ package humaadapter
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -11,7 +12,9 @@ import (
 )
 
 type signUpInput struct {
-	Body struct {
+	// RawBody keeps the full JSON body so plugins can read their own fields (UserInput hooks).
+	RawBody []byte
+	Body    struct {
 		dtos.SignUpEmailInput
 		_ struct{} `json:"-" additionalProperties:"true"`
 	}
@@ -29,7 +32,15 @@ func (h *handler) SignUpEmail(ctx context.Context, in *signUpInput) (*signUpOutp
 	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
-	res, err := h.Auth.SignUpEmail(ctx, in.Body.SignUpEmailInput, h.meta(ctx))
+	// pass the extra body fields (e.g. the username plugin's username) to the service
+	body := in.Body.SignUpEmailInput
+	if len(in.RawBody) > 0 {
+		extra := map[string]any{}
+		if json.Unmarshal(in.RawBody, &extra) == nil {
+			body.AdditionalFields = extra
+		}
+	}
+	res, err := h.Auth.SignUpEmail(ctx, body, h.meta(ctx))
 	if err != nil {
 		return nil, err
 	}

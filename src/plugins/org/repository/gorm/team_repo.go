@@ -198,3 +198,14 @@ func (r *OrganizationRoleRepo) DeleteRole(ctx context.Context, orgID, role strin
 	}
 	return nil
 }
+
+// RenameRole changes the name of an organization role.
+func (r *OrganizationRoleRepo) RenameRole(ctx context.Context, orgID, oldRole, newRole string) error {
+	result := getDB(ctx, r.db).Model(&models.OrganizationRole{}).
+		Where(&models.OrganizationRole{OrganizationID: orgID, Role: oldRole}, "OrganizationID", "Role").
+		Updates(&models.OrganizationRole{Role: newRole})
+	if result.Error != nil {
+		return fmt.Errorf("gorm/org-role: rename: %w", result.Error)
+	}
+	return nil
+}

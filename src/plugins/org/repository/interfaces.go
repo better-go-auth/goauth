@@ -72,22 +72,24 @@ type IOrganizationRoleRepo interface {
 	UpdateRole(ctx context.Context, orgID, role string, permission models.Permission) (*models.OrganizationRole, error)
 	UpdateRoleWithOps(ctx context.Context, orgID, role string, permission models.Permission, ops models.Operations) (*models.OrganizationRole, error)
 	DeleteRole(ctx context.Context, orgID, role string) error
+	// RenameRole changes a role's name within an organization (better-auth update-role data.roleName).
+	RenameRole(ctx context.Context, orgID, oldRole, newRole string) error
 }
 
 // OrgRepositories configures the Org plugin.
 type OrgRepositories struct {
 	// OrgRepo overrides default org repository.
-	 IOrgRepo
+	IOrgRepo
 	// MemberRepo overrides default member repository.
-	 IMemberRepo
+	IMemberRepo
 	// InviteRepo overrides default invitation repository.
-	 IInvitationRepo
-	 // TeamRepo / TeamMemberRepo / OrganizationRoleRepo are opt-in (see OrgConfig).
-	 ITeamRepo
-	 ITeamMemberRepo
-	 IOrganizationRoleRepo
+	IInvitationRepo
+	// TeamRepo / TeamMemberRepo / OrganizationRoleRepo are opt-in (see OrgConfig).
+	ITeamRepo
+	ITeamMemberRepo
+	IOrganizationRoleRepo
 	// Migrator overrides default org migrator.
-	 migration.IMigrator
+	migration.IMigrator
 }
 type IOrgRepos interface {
 	IOrgRepo

@@ -35,7 +35,7 @@ type GetInvitationInput struct {
 }
 
 type (
-	HumaInvitationInput   = humatypes.HumaReqBody[orgdtos.InvitationInput]
+	HumaInvitationInput = humatypes.HumaReqBody[orgdtos.InvitationInput]
 	// RejectInvitationInput = humatypes.HumaReqBody[orgdtos.InvitationInput]
 	// CancelInvitationInput = humatypes.HumaReqBody[orgdtos.InvitationInput]
 )
@@ -90,4 +90,3 @@ type AdminListOrgsInput struct {
 	Limit  int    `query:"limit,omitempty" doc:"Page size (default 50)"`
 	Offset int    `query:"offset,omitempty" doc:"Page offset"`
 }
-

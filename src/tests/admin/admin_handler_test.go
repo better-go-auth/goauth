@@ -2,9 +2,10 @@ package admin_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
-serv_interfaces	"github.com/better-go-auth/goauth/src/app/services/interfaces"
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
@@ -192,6 +193,20 @@ func TestAdminHandler_FullFlow(t *testing.T) {
 	t.Run("10 Impersonate User", func(t *testing.T) {
 		impersonateInput := admindtos.AdminImpersonateUserInput{
 			UserID: managedUserID,
+		}
+		// the managed user is an admin (step 03): impersonating admins needs user:impersonate-admins
+		if _, err := env.AdminHandler.ImpersonateUser(ctx, &humatypes.HumaReqBody[admindtos.AdminImpersonateUserInput]{
+			AuthHeaders: authHeaders,
+			Body:        impersonateInput,
+		}); err == nil || !strings.Contains(err.Error(), "YOU_CANNOT_IMPERSONATE_ADMINS") {
+			t.Fatalf("expected YOU_CANNOT_IMPERSONATE_ADMINS, got %v", err)
+		}
+		// demote back to a plain user, then impersonation is allowed
+		if _, err := env.AdminHandler.SetUserRole(ctx, &humatypes.HumaReqBody[admindtos.AdminSetUserRoleInput]{
+			AuthHeaders: authHeaders,
+			Body:        admindtos.AdminSetUserRoleInput{UserID: managedUserID, Role: enums.User},
+		}); err != nil {
+			t.Fatalf("SetUserRole handler failed: %v", err)
 		}
 		resp, err := env.AdminHandler.ImpersonateUser(ctx, &humatypes.HumaReqBody[admindtos.AdminImpersonateUserInput]{
 			AuthHeaders: authHeaders,

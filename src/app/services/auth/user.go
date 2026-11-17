@@ -7,11 +7,12 @@ import (
 	"strings"
 	"time"
 
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
-	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 )
 
@@ -32,12 +33,34 @@ func (s *Service) UpdateUser(ctx context.Context, current *dtos.SessionWithUser,
 	}
 	// email changes must go through ChangeEmail (verification)
 
+	// plugins validate and map their own body fields first (e.g. the username plugin's
+	// username / displayUsername); the fields they set are trusted and skip the allowlist below
+	pluginFields := map[string]any{}
+	if s.Hooks != nil {
+		ev := &plugins.UserInputEvent{
+			Path: plugins.UserInputUpdateUser, Body: in.Body, UserID: current.User.ID, Update: pluginFields, Request: request(ctx),
+		}
+		if err := s.Hooks.TriggerUserInput(ctx, ev); err != nil {
+			return nil, err
+		}
+	}
 	// the update map is keyed by Go field names, which both repositories understand
 	data := map[string]any{}
+	for k, v := range pluginFields {
+		data[k] = v
+	}
 	for k, v := range in.Fields {
+		// a plugin already handled this field
+		if _, owned := pluginFields[k]; owned {
+			continue
+		}
 		// reject anything outside the allowlist (blocks e.g. {"Role": "admin"})
 		if !updatableUserFields[k] {
 			return nil, autherr.ErrFieldNotAllowed.WithMessage("Field " + k + " is not allowed to be set")
+		}
+		// username is unique and nullable: "" means "no username" and is stored as NULL
+		if str, ok := v.(string); ok && k == "Username" && str == "" {
+			v = nil
 		}
 		data[k] = v
 	}

@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	"github.com/better-go-auth/goauth/src/common/dtos"
 	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
 )
 
@@ -71,6 +71,9 @@ func (r *Repos) CreateUser(_ context.Context, user *models.User) (*models.User, 
 	if r.phoneTaken(user.PhoneNumber, "") {
 		return nil, errors.New("memory: user phone number already exists")
 	}
+	if r.usernameTaken(user.Username, "") {
+		return nil, errors.New("memory: username already exists")
+	}
 	stamp(&user.Base)
 	c := *user
 	r.users[c.ID] = &c
@@ -120,6 +123,32 @@ func (r *Repos) FindUserByPhoneNumber(_ context.Context, phoneNumber string) (*m
 	return nil, notFound("user")
 }
 
+// FindUserByUsername returns the live user owning username (exact match).
+func (r *Repos) FindUserByUsername(_ context.Context, username string) (*models.User, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, u := range r.users {
+		if u.DeletedAt == nil && username != "" && u.Username != nil && *u.Username == username {
+			c := *u
+			return &c, nil
+		}
+	}
+	return nil, notFound("user")
+}
+
+// usernameTaken reports whether another live user already owns username (unique like the GORM column).
+func (r *Repos) usernameTaken(username *string, exceptID string) bool {
+	if username == nil {
+		return false
+	}
+	for id, u := range r.users {
+		if id != exceptID && u.DeletedAt == nil && u.Username != nil && *u.Username == *username {
+			return true
+		}
+	}
+	return false
+}
+
 // phoneTaken reports whether another live user already owns phone (unique like the GORM column).
 func (r *Repos) phoneTaken(phone *string, exceptID string) bool {
 	if phone == nil || *phone == "" {
@@ -148,6 +177,9 @@ func (r *Repos) UpdateUser(_ context.Context, id string, data map[string]interfa
 	if r.phoneTaken(next.PhoneNumber, id) {
 		return nil, errors.New("memory: user phone number already exists")
 	}
+	if r.usernameTaken(next.Username, id) {
+		return nil, errors.New("memory: username already exists")
+	}
 	next.UpdatedAt = time.Now().UTC()
 	r.users[id] = &next
 	c := next
@@ -166,6 +198,8 @@ func (r *Repos) DeleteUser(_ context.Context, id string) error {
 	u.Email = models.AnonymizeEmail(id, now)
 	// release the unique phone number so it can be registered again
 	u.PhoneNumber = nil
+	// release the unique username too (username plugin)
+	u.Username = nil
 	return nil
 }
 
@@ -380,22 +414,34 @@ func (r *Repos) QuerySessions(_ context.Context, filter models.SessionFilter, pa
 func (r *Repos) CreateAccount(_ context.Context, account *models.Account) (*models.Account, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// (providerId, accountId) is unique, like the GORM idx_provider_account index
+	for _, a := range r.accounts {
+		if a.ProviderID == account.ProviderID && a.AccountID == account.AccountID {
+			return nil, errors.New("memory: account already exists for this provider")
+		}
+	}
 	stamp(&account.Base)
 	c := *account
 	r.accounts[c.ID] = &c
 	return account, nil
 }
 
+// findAccount returns the oldest account matching match (deterministic when a user linked several
+// accounts of one provider).
 func (r *Repos) findAccount(match func(*models.Account) bool) (*models.Account, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+	var oldest *models.Account
 	for _, a := range r.accounts {
-		if match(a) {
-			c := *a
-			return &c, nil
+		if match(a) && (oldest == nil || a.CreatedAt.Before(oldest.CreatedAt)) {
+			oldest = a
 		}
 	}
-	return nil, notFound("account")
+	if oldest == nil {
+		return nil, notFound("account")
+	}
+	c := *oldest
+	return &c, nil
 }
 
 func (r *Repos) FindAccountByProviderID(_ context.Context, providerID models.Providers, accountID string) (*models.Account, error) {
@@ -547,6 +593,31 @@ func (r *Repos) DeleteExpiredVerifications(_ context.Context) error {
 		}
 	}
 	return nil
+}
+
+func (r *Repos) UpdateVerificationValue(_ context.Context, id, oldValue, newValue string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// compare-and-swap under the write lock
+	v, ok := r.verifications[id]
+	if !ok || v.Value != oldValue {
+		return false, nil
+	}
+	v.Value = newValue
+	v.UpdatedAt = time.Now().UTC()
+	return true, nil
+}
+
+func (r *Repos) DeleteVerificationIfValue(_ context.Context, id, value string) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	// compare-and-delete under the write lock
+	v, ok := r.verifications[id]
+	if !ok || v.Value != value {
+		return false, nil
+	}
+	delete(r.verifications, id)
+	return true, nil
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

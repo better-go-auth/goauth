@@ -105,7 +105,7 @@ func (s *OrgService) UpdateMemberRole(ctx context.Context, input dtos.UpdateMemb
 
 func (s *OrgService) RemoveMember(ctx context.Context, input dtos.RemoveMemberInput, requestingUserID string) error {
 	// Step 1: Permission check - requester must be an organization admin/owner
-	if !s.isOrgAdmin(ctx, input.OrganizationID, requestingUserID) {
+	if !s.isOrgAdmin(ctx, input.OrganizationID, requestingUserID, "member", "delete") {
 		return autherr.ErrForbidden
 	}
 

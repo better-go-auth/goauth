@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/better-go-auth/goauth/src/providers/access"
 	"strings"
 	"sync"
 	"time"
@@ -358,9 +359,27 @@ func (s *OrgService) CheckSlug(ctx context.Context, slug string) (bool, error) {
 	return true, nil
 }
 
-func (s *OrgService) isOrgAdmin(ctx context.Context, orgID, requestingUserID string) bool {
+// isOrgAdmin reports whether the requester may perform resource:action in orgID.
+// Legacy mode keeps goauth's owner/admin rule and additionally accepts any role (Config.Roles,
+// dynamic DB roles, multi-role strings) granted the permission; better-auth mode checks the
+// permission only (better-auth hasPermission).
+func (s *OrgService) isOrgAdmin(ctx context.Context, orgID, requestingUserID, resource, action string) bool {
+	// Step 1: the requester must be a member of the organization
 	requester, err := s.memberRepo.GetMemberByOrgAndUser(ctx, orgID, requestingUserID)
-	return err == nil && requester != nil && (requester.Role == models.OrgRoleOwner || requester.Role == models.OrgRoleAdmin)
+	if err != nil || requester == nil {
+		return false
+	}
+	// Step 2: legacy owner/admin shortcut (multi-role aware)
+	if !s.Config.BetterAuthMode() {
+		for _, r := range access.SplitRoles(string(requester.Role)) {
+			if r == string(models.OrgRoleOwner) || r == string(models.OrgRoleAdmin) {
+				return true
+			}
+		}
+	}
+	// Step 3: permission check
+	ok, err := s.HasPermission(ctx, orgID, string(requester.Role), resource, action)
+	return err == nil && ok
 }
 
 func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input dtos.UpdateOrgInput, requestingUserID string) (*models.Organization, error) {
@@ -384,7 +403,7 @@ func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input
 	}
 
 	// Step 2: Permission check - requester must be an organization admin/owner
-	if !s.isOrgAdmin(ctx, orgID, requestingUserID) {
+	if !s.isOrgAdmin(ctx, orgID, requestingUserID, "organization", "update") {
 		return nil, autherr.ErrForbidden
 	}
 
@@ -461,7 +480,7 @@ func (s *OrgService) DeleteOrganization(ctx context.Context, orgID, requestingUs
 	}
 
 	// Step 2: Permission check - requester must be an organization admin/owner
-	if !s.isOrgAdmin(ctx, orgID, requestingUserID) {
+	if !s.isOrgAdmin(ctx, orgID, requestingUserID, "organization", "delete") {
 		return autherr.ErrForbidden
 	}
 

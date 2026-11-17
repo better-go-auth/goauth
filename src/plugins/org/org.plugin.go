@@ -16,6 +16,7 @@ import (
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
 	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
+	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/danielgtaylor/huma/v2"
@@ -43,6 +44,20 @@ type Option func(*OrgPlugin)
 func WithSecondaryStorage(storage sec_storage.SecondaryStorage) Option {
 	return func(p *OrgPlugin) {
 		p.secStorage = storage
+	}
+}
+
+// WithAccessControl sets better-auth's organization `ac` option (switches to better-auth permission semantics).
+func WithAccessControl(ac *access.AccessControl) Option {
+	return func(p *OrgPlugin) {
+		p.Config.AccessControl = ac
+	}
+}
+
+// WithRoles sets better-auth's organization `roles` option (switches to better-auth permission semantics).
+func WithRoles(roles map[string]access.Role) Option {
+	return func(p *OrgPlugin) {
+		p.Config.AccessRoles = roles
 	}
 }
 

@@ -31,7 +31,7 @@ type AdminCreateUserInput struct {
 	Email    string                 `json:"email" required:"true" doc:"User email address"`
 	Password string                 `json:"password" required:"true" doc:"User initial password"`
 	Name     string                 `json:"name" required:"true" doc:"User display name"`
-	Role     enums.Role                `json:"role,omitempty" doc:"Role to assign (e.g. user, admin)"`
+	Role     enums.Role             `json:"role,omitempty" doc:"Role to assign (e.g. user, admin)"`
 	Data     map[string]interface{} `json:"data,omitempty" doc:"Additional custom user metadata"`
 }
 
@@ -169,4 +169,3 @@ type AdminHasPermissionResponse struct {
 	Success bool   `json:"success"`
 	Error   string `json:"error,omitempty"`
 }
-

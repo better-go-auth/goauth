@@ -2,6 +2,7 @@ package admin
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/enums"
@@ -12,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	gormadmin "github.com/better-go-auth/goauth/src/plugins/admin/repository/gorm"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"gorm.io/gorm"
 )
@@ -30,6 +32,8 @@ type Plugin struct {
 	basePath     string
 	handler      *humaadmin.AdminHandler
 	authenticate authenticator.AuthenticateFunc
+	// adminRolesSet records an explicit WithAdminRoles call (validated against custom roles)
+	adminRolesSet bool
 }
 
 // Option configures the admin Plugin.
@@ -40,7 +44,37 @@ func WithAdminRoles(roles ...enums.Role) Option {
 	return func(p *Plugin) {
 		if len(roles) > 0 {
 			p.config.AdminRoles = roles
+			p.adminRolesSet = true
 		}
+	}
+}
+
+// WithAccessControl sets better-auth's `ac` option: the statements custom roles are built from.
+func WithAccessControl(ac *access.AccessControl) Option {
+	return func(p *Plugin) {
+		p.config.AccessControl = ac
+	}
+}
+
+// WithRoles sets better-auth's `roles` option. Once set, permission checks use exactly these
+// roles (better-auth semantics) instead of the default admin/user roles.
+func WithRoles(roles map[string]access.Role) Option {
+	return func(p *Plugin) {
+		p.config.Roles = access.Roles(roles)
+	}
+}
+
+// WithAdminUserIDs sets better-auth's `adminUserIds`: users that pass every admin permission check.
+func WithAdminUserIDs(ids ...string) Option {
+	return func(p *Plugin) {
+		p.config.AdminUserIDs = append(p.config.AdminUserIDs, ids...)
+	}
+}
+
+// WithAllowImpersonatingAdmins sets better-auth's `allowImpersonatingAdmins`.
+func WithAllowImpersonatingAdmins(allow bool) Option {
+	return func(p *Plugin) {
+		p.config.AllowImpersonatingAdmins = allow
 	}
 }
 
@@ -90,6 +124,25 @@ func New(repos repository.AdminRepositories, opts ...Option) (*Plugin, error) {
 	}
 	if p.adminRepos.AdminRepo == nil || p.adminRepos.Migrator == nil {
 		return nil, fmt.Errorf("admin plugin: AdminRepo and Migrator are required")
+	}
+	// Like better-auth, explicitly configured admin roles must exist in the custom roles.
+	if p.adminRolesSet && p.config.CustomRoles() {
+		var invalid []string
+		for _, r := range p.config.AdminRoles {
+			found := false
+			for name := range p.config.Roles {
+				if strings.EqualFold(name, r.S()) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				invalid = append(invalid, r.S())
+			}
+		}
+		if len(invalid) > 0 {
+			return nil, fmt.Errorf("admin plugin: invalid admin roles: %s. Admin roles must be defined in the 'roles' configuration", strings.Join(invalid, ", "))
+		}
 	}
 	p.migrator = p.adminRepos.Migrator
 	return p, nil

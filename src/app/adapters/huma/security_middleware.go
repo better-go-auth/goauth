@@ -1,6 +1,8 @@
 package humaadapter
 
 import (
+	"strings"
+
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
@@ -14,15 +16,19 @@ import (
 // AuthConfig.Security policies across all registered core, plugin, and application operations
 // based on OperationID:
 //   - DisabledOps: blocks disabled operations (including plugin routes) with 404 Not Found
-//   - CheckOriginOnPluginMutations: Origin/Referer CSRF check on mutating cookie requests
+//   - Origin/Referer CSRF check on mutating cookie requests under BasePath (core and plugin routes, like
+//     better-auth's originCheckMiddleware); CheckOriginOnPluginMutations extends it to every route and
+//     Security.DisablePluginOriginCheck turns the default off
 //   - RequireFreshOps: rejects unauthenticated or stale (outside Session.FreshAge) sessions
 func SecurityMiddleware(conf config.AuthConfig, mgr *sessionsvc.Manager, cm *cookies.Manager, origins *origin.Checker) func(ctx huma.Context, next func(huma.Context)) {
 	disabledSet := config.OperationSet(conf.DisabledOps)
 	freshSet := config.OperationSet(conf.Security.RequireFreshOps)
-	checkOrigin := conf.Security.CheckOriginOnPluginMutations
+	checkOriginEverywhere := conf.Security.CheckOriginOnPluginMutations
+	checkAuthOrigin := !conf.Security.DisablePluginOriginCheck
+	basePath := strings.TrimRight(conf.BasePath, "/")
 
 	// Zero-overhead pass-through when no security policies are configured
-	if !checkOrigin && len(disabledSet) == 0 && len(freshSet) == 0 {
+	if !checkOriginEverywhere && !checkAuthOrigin && len(disabledSet) == 0 && len(freshSet) == 0 {
 		return func(ctx huma.Context, next func(huma.Context)) { next(ctx) }
 	}
 
@@ -38,8 +44,8 @@ func SecurityMiddleware(conf config.AuthConfig, mgr *sessionsvc.Manager, cm *coo
 			return
 		}
 
-		// 1. Optional global Origin/Referer CSRF check across mutating endpoints (including plugins)
-		if checkOrigin {
+		// 1. Origin/Referer CSRF check on mutating auth endpoints (core and plugins), optionally on every route
+		if checkOriginEverywhere || (checkAuthOrigin && underBasePath(ctx, basePath)) {
 			if err := OriginError(ctx, conf, origins, false); err != nil {
 				writeError(ctx, err)
 				return
@@ -61,6 +67,15 @@ func SecurityMiddleware(conf config.AuthConfig, mgr *sessionsvc.Manager, cm *coo
 
 		next(ctx)
 	}
+}
+
+// underBasePath reports whether the request targets an auth route (BasePath or below).
+func underBasePath(ctx huma.Context, basePath string) bool {
+	if basePath == "" {
+		return true
+	}
+	p := ctx.URL().Path
+	return p == basePath || strings.HasPrefix(p, basePath+"/")
 }
 
 func resolveContextOrCookieSession(ctx huma.Context, mgr *sessionsvc.Manager, cm *cookies.Manager) *dtos.SessionWithUser {
@@ -86,4 +101,3 @@ func resolveContextOrCookieSession(ctx huma.Context, mgr *sessionsvc.Manager, cm
 	}
 	return sw
 }
-

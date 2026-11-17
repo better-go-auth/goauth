@@ -42,20 +42,27 @@ type UserDto struct {
 	// Two-factor plugin field (better-auth `twoFactorEnabled`).
 	TwoFactorEnabled bool `json:"twoFactorEnabled" gorm:"not null;default:false" bun:"two_factor_enabled,default:false"`
 
+	// Username plugin fields (better-auth `username` / `displayUsername`).
+	// Username is unique but nullable: users without a username keep NULL (never "").
+	Username        *string `json:"username,omitempty"        gorm:"uniqueIndex;size:255" bun:"username,unique"`
+	DisplayUsername *string `json:"displayUsername,omitempty" bun:"display_username"`
+
+	// Anonymous plugin field (better-auth `isAnonymous`).
+	IsAnonymous bool `json:"isAnonymous" gorm:"not null;default:false" bun:"is_anonymous,default:false"`
+
 	// ===== goauth fields (not in better-auth) =====
-	FirstName     string              `json:"firstName,omitempty" minLength:"1"`
-	LastName      string              `json:"lastName,omitempty"`
-	Username      string              `json:"username,omitempty"`
-	DisplayName   *string             `json:"displayName,omitempty"  bun:"display_name"`
-	Bio           *string             `json:"bio,omitempty"          bun:"bio"`
-	DateOfBirth   *time.Time          `json:"dateOfBirth,omitempty"  bun:"date_of_birth"`
-	Gender        *string             `json:"gender,omitempty"       bun:"gender"`
-	Locale        string              `json:"locale,omitempty"       gorm:"default:en" bun:"locale,default:en"`
-	Timezone      *string             `json:"timezone,omitempty"     bun:"timezone"`
+	FirstName   string     `json:"firstName,omitempty" minLength:"1"`
+	LastName    string     `json:"lastName,omitempty"`
+	DisplayName *string    `json:"displayName,omitempty"  bun:"display_name"`
+	Bio         *string    `json:"bio,omitempty"          bun:"bio"`
+	DateOfBirth *time.Time `json:"dateOfBirth,omitempty"  bun:"date_of_birth"`
+	Gender      *string    `json:"gender,omitempty"       bun:"gender"`
+	Locale      string     `json:"locale,omitempty"       gorm:"default:en" bun:"locale,default:en"`
+	Timezone    *string    `json:"timezone,omitempty"     bun:"timezone"`
 	// Active        *bool               `json:"active,omitempty"       gorm:"index:idx_users_lookup,priority:4"` // Deprecated: use Banned/BanReason/BanExpires. Kept for migration compat.
 	// AccountStatus enums.AccountStatus `json:"-"` // Deprecated: folded into Banned.
-	LastLoginIP   *string             `json:"lastLoginIP,omitempty"  bun:"last_login_ip"`
-	LastLoginAt   *time.Time          `json:"lastLoginAt,omitempty"`
+	LastLoginIP *string    `json:"lastLoginIP,omitempty"  bun:"last_login_ip"`
+	LastLoginAt *time.Time `json:"lastLoginAt,omitempty"`
 }
 
 func (u *User) GetFullname() string {
@@ -120,8 +127,6 @@ type UserQuery struct {
 // 	q.PaginationInput.PrefixColLike = "first_name"
 // 	return q.UserFilter, q.PaginationInput, &generic.Opt{Preloads: []string{"CompanyRole"}}
 // }
-
-
 
 // type IntUsr interface {
 // 	GetID() string

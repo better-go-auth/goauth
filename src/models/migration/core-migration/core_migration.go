@@ -68,11 +68,28 @@ func (m *GORMMigrator) Migrate(_ context.Context) error {
 	if err != nil {
 		return fmt.Errorf("gorm/migrate-admin: %w", err)
 	}
+	if err := dropUserProviderIndex(m.db); err != nil {
+		return fmt.Errorf("gorm/migrate-admin: %w", err)
+	}
 	if err := caseSensitiveTokens(m.db); err != nil {
 		return fmt.Errorf("gorm/migrate-admin: %w", err)
 	}
 	if err := backfillUserNames(m.db); err != nil {
 		return fmt.Errorf("gorm/migrate-admin: backfill user names: %w", err)
+	}
+	return nil
+}
+
+// dropUserProviderIndex removes the legacy unique index on account (user_id, provider_id). better-auth has no
+// such constraint (a user may link two GitHub identities), so a TypeScript server sharing the database would
+// fail inserts it expects to succeed. No-op once dropped.
+func dropUserProviderIndex(db *gorm.DB) error {
+	m := db.Migrator()
+	account := &models.Account{}
+	if m.HasIndex(account, "idx_user_provider") {
+		if err := m.DropIndex(account, "idx_user_provider"); err != nil {
+			return fmt.Errorf("drop account.idx_user_provider: %w", err)
+		}
 	}
 	return nil
 }
@@ -119,12 +136,31 @@ func PrepareLegacyColumns(db *gorm.DB) error {
 			}
 		}
 	}
+	// username used to be a plain NOT-unique string column where "no username" was stored as "";
+	// it is now nullable + unique (username plugin), so empty values must become NULL before
+	// AutoMigrate creates the unique index (otherwise every second user without a username collides)
+	if err := nullEmptyUsernames(db); err != nil {
+		return err
+	}
 	// identifier used to be unique; better-auth allows duplicates
 	verification := &models.Verification{}
 	if m.HasTable(verification) && m.HasIndex(verification, "idx_auth_verifications_identifier") {
 		if err := m.DropIndex(verification, "idx_auth_verifications_identifier"); err != nil {
 			return fmt.Errorf("drop verification identifier index: %w", err)
 		}
+	}
+	return nil
+}
+
+// nullEmptyUsernames rewrites legacy empty-string usernames to NULL. No-op on new databases or once applied.
+func nullEmptyUsernames(db *gorm.DB) error {
+	m := db.Migrator()
+	user := &models.User{}
+	if !m.HasTable(user) || !m.HasColumn(user, "username") {
+		return nil
+	}
+	if err := db.Model(user).Where("username = ?", "").UpdateColumn("username", nil).Error; err != nil {
+		return fmt.Errorf("null empty user.username: %w", err)
 	}
 	return nil
 }

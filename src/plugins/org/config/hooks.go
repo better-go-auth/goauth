@@ -243,4 +243,3 @@ type OrganizationHooks struct {
 	BeforeRemoveTeamMember func(ctx context.Context, data BeforeRemoveTeamMemberData) error
 	AfterRemoveTeamMember  func(ctx context.Context, data AfterRemoveTeamMemberData) error
 }
-

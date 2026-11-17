@@ -4,14 +4,15 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/better-go-auth/goauth/src/common/logger"
 	"encoding/json"
 	"fmt"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"sort"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
 
 func (mgr *Manager) fromStore(ctx context.Context, tok string) (*dtos.SessionWithUser, error) {
@@ -54,36 +55,62 @@ func (mgr *Manager) activeList(ctx context.Context, userID string) []activeEntry
 // trackActive maintains better-auth's "active-sessions-<userId>" index (sorted by expiry, expired pruned).
 // "active-sessions-<userId>": [{token:"abc", expiresAt:123}, {token:"xyz", expiresAt:456}]
 func (mgr *Manager) trackActive(ctx context.Context, userID, tok string, expiresAt time.Time) {
-	mgr.activeMu.Lock()
-	defer mgr.activeMu.Unlock()
-
-	// 1. prune expired sessions and avoid duplicates
-	nowMs := mgr.now().UnixMilli()
-	list := []activeEntry{}
-	for _, e := range mgr.activeList(ctx, userID) {
-		if e.ExpiresAt > nowMs && e.Token != tok {
-			list = append(list, e)
+	mgr.updateActive(ctx, userID, func(current []activeEntry) []activeEntry {
+		// 1. prune expired sessions and avoid duplicates
+		nowMs := mgr.now().UnixMilli()
+		list := []activeEntry{}
+		for _, e := range current {
+			if e.ExpiresAt > nowMs && e.Token != tok {
+				list = append(list, e)
+			}
 		}
-	}
-	// 2. append the new session entry
-	list = append(list, activeEntry{Token: tok, ExpiresAt: expiresAt.UnixMilli()})
-	// 3. sort and save updated index to secondary storage
-	mgr.saveActive(ctx, userID, list)
+		// 2. append the new session entry
+		return append(list, activeEntry{Token: tok, ExpiresAt: expiresAt.UnixMilli()})
+	})
 }
 
 func (mgr *Manager) untrackActive(ctx context.Context, userID, tok string) {
+	mgr.updateActive(ctx, userID, func(current []activeEntry) []activeEntry {
+		// 1. filter out expired sessions and the specified token to remove
+		nowMs := mgr.now().UnixMilli()
+		list := []activeEntry{}
+		for _, e := range current {
+			if e.ExpiresAt > nowMs && e.Token != tok {
+				list = append(list, e)
+			}
+		}
+		return list
+	})
+}
+
+// updateActive applies mutate to the active-sessions index of userID and saves the result (an empty list
+// deletes the key). Stores implementing sec_storage.AtomicUpdater (memory, Redis) do it atomically across
+// processes; other stores fall back to an in-process lock, where concurrent logins on other instances can
+// still lose entries (last write wins).
+func (mgr *Manager) updateActive(ctx context.Context, userID string, mutate func([]activeEntry) []activeEntry) {
+	// 1. atomic path: the store runs the read-modify-write for us
+	if up, ok := mgr.secStore.(sec_storage.AtomicUpdater); ok {
+		err := up.Update(ctx, activeKey(userID), func(current any, exists bool) (any, time.Duration, bool) {
+			list := mutate(parseActive(current, exists))
+			b, ttl, ok := encodeActive(list)
+			if !ok {
+				return nil, 0, true
+			}
+			return b, ttl, false
+		})
+		if err != nil {
+			logger.ErrorCtx(ctx, "sessions: update active-sessions failed", err, nil)
+			slog.Warn("sessions: update active-sessions failed", "userID", userID, "err", err)
+			incCacheError(ctx)
+		}
+		return
+	}
+
+	// 2. fallback: in-process lock around read → mutate → write
 	mgr.activeMu.Lock()
 	defer mgr.activeMu.Unlock()
-
-	// 1. filter out expired sessions and the specified token to remove
-	nowMs := mgr.now().UnixMilli()
-	list := []activeEntry{}
-	for _, e := range mgr.activeList(ctx, userID) {
-		if e.ExpiresAt > nowMs && e.Token != tok {
-			list = append(list, e)
-		}
-	}
-	// 2. if no active sessions remain, delete the active index key entirely
+	list := mutate(mgr.activeList(ctx, userID))
+	// 3. if no active sessions remain, delete the active index key entirely
 	if len(list) == 0 {
 		if err := mgr.secStore.Delete(ctx, activeKey(userID)); err != nil {
 			logger.ErrorCtx(ctx, "sessions: untrack active-sessions delete failed", err, nil)
@@ -92,22 +119,49 @@ func (mgr *Manager) untrackActive(ctx context.Context, userID, tok string) {
 		}
 		return
 	}
-	// 3. otherwise sort and save the remaining list
+	// 4. otherwise sort and save the list
 	mgr.saveActive(ctx, userID, list)
 }
 
-func (mgr *Manager) saveActive(ctx context.Context, userID string, list []activeEntry) {
+// parseActive decodes a stored active-sessions value.
+func parseActive(v any, exists bool) []activeEntry {
+	raw, isText := asBytes(v)
+	if !exists || !isText {
+		return nil
+	}
+	var list []activeEntry
+	_ = json.Unmarshal(raw, &list)
+	return list
+}
+
+// encodeActive sorts list by expiry and returns its JSON and the TTL of the furthest expiry.
+// ok=false means there is nothing left to store (empty or fully expired list).
+func encodeActive(list []activeEntry) (string, time.Duration, bool) {
+	if len(list) == 0 {
+		return "", 0, false
+	}
 	// 1. sort active session entries ascending by ExpiresAt
 	sort.Slice(list, func(i, j int) bool { return list[i].ExpiresAt < list[j].ExpiresAt })
-	// NOTE: read-modify-write without WATCH/Lua can lose entries under concurrent logins; last-write-wins is acceptable for non-Redis stores.
 	// 2. compute TTL based on the furthest expiration time in the list
 	ttl := time.Until(time.UnixMilli(list[len(list)-1].ExpiresAt))
 	if ttl <= 0 {
+		return "", 0, false
+	}
+	// 3. marshal to JSON
+	b, _ := json.Marshal(list)
+	return string(b), ttl, true
+}
+
+func (mgr *Manager) saveActive(ctx context.Context, userID string, list []activeEntry) {
+	// NOTE: read-modify-write without WATCH/Lua can lose entries under concurrent logins; stores implementing
+	// sec_storage.AtomicUpdater take the atomic path in updateActive instead.
+	// 1. sort, compute TTL and marshal (nothing to save when every entry expired)
+	b, ttl, ok := encodeActive(list)
+	if !ok {
 		return
 	}
-	// 3. marshal to JSON and save to secondary storage
-	b, _ := json.Marshal(list)
-	if err := mgr.secStore.Set(ctx, activeKey(userID), string(b), ttl); err != nil {
+	// 2. save to secondary storage
+	if err := mgr.secStore.Set(ctx, activeKey(userID), b, ttl); err != nil {
 		logger.ErrorCtx(ctx, "sessions: save active-sessions failed", err, nil)
 		slog.Warn("sessions: save active-sessions failed", "userID", userID, "err", err)
 		incCacheError(ctx)

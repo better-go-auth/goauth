@@ -6,9 +6,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/better-go-auth/goauth/src/common/logger"
 	"errors"
 	"fmt"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"maps"
 	"sync"
 	"time"
@@ -57,12 +57,12 @@ func WithClock(fn func() time.Time) ManagerOption { return func(m *Manager) { m.
 // WithGenerateID overrides the ID generator used for new sessions (default idgen.GenerateID).
 func WithGenerateID(fn func() string) ManagerOption { return func(m *Manager) { m.generateID = fn } }
 
-
-
 // WithManagerOptions applies options to an existing Manager (for tests wiring after NewManager).
-func (mgr *Manager) WithOptions(opts ...ManagerOption) { for _, o := range opts { o(mgr) } }
-
-
+func (mgr *Manager) WithOptions(opts ...ManagerOption) {
+	for _, o := range opts {
+		o(mgr)
+	}
+}
 
 // NewManager builds a Manager; store and hooks may be nil.
 func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions repo_interfaces.ISessionRepo, store sec_storage.SecondaryStorage, hooks plugins.HookRegistry, opts ...ManagerOption) *Manager {
@@ -70,7 +70,9 @@ func NewManager(conf config.Session, users repo_interfaces.IUserRepo, sessions r
 		conf.StoreSessionInDatabase = true
 	}
 	mgr := &Manager{usersRepo: users, sessionsRepo: sessions, secStore: store, conf: conf, hooks: hooks, now: time.Now, generateID: idgen.GenerateID}
-	for _, o := range opts { o(mgr) }
+	for _, o := range opts {
+		o(mgr)
+	}
 	if hooks != nil {
 		hooks.OnUserBanned(func(ctx context.Context, userID string, reason *string) error {
 			return mgr.DeleteUserSessions(ctx, userID)
@@ -148,7 +150,10 @@ func (mgr *Manager) Create(ctx context.Context, user *models.User, meta Meta, op
 		mgr.trackActive(ctx, user.ID, tok, s.ExpiresAt)
 	}
 
-	// 9. return the created session
+	// 9. remember the session on the request (after-request hooks such as anonymous account linking)
+	recordNewSession(ctx, swu)
+
+	// 10. return the created session
 	return swu, nil
 }
 

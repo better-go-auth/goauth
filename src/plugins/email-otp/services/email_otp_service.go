@@ -27,9 +27,9 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
+	"github.com/better-go-auth/goauth/src/plugins"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
-	"github.com/better-go-auth/goauth/src/plugins"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
 
@@ -45,11 +45,11 @@ var (
 	ErrUserNotFoundBadRequest = autherr.ErrUserNotFound.WithStatus(http.StatusBadRequest)
 	ErrEmailIsTheSame         = autherr.New("EMAIL_IS_THE_SAME", "Email is the same", http.StatusBadRequest)
 	ErrEmailAlreadyInUse      = autherr.New("EMAIL_ALREADY_IN_USE", "Email already in use", http.StatusBadRequest)
-	ErrInvalidEmailAddress = autherr.ErrInvalidEmail
-	ErrPasswordTooShort    = autherr.ErrPasswordTooShort
-	ErrPasswordTooLong     = autherr.ErrPasswordTooLong
-	ErrEmailAlreadyExists  = autherr.ErrUserAlreadyExistsUseAnotherEmail
-	ErrChangeEmailDisabled = autherr.ErrChangeEmailDisabled
+	ErrInvalidEmailAddress    = autherr.ErrInvalidEmail
+	ErrPasswordTooShort       = autherr.ErrPasswordTooShort
+	ErrPasswordTooLong        = autherr.ErrPasswordTooLong
+	ErrEmailAlreadyExists     = autherr.ErrUserAlreadyExistsUseAnotherEmail
+	ErrChangeEmailDisabled    = autherr.ErrChangeEmailDisabled
 )
 
 type rlBucket struct {
@@ -397,48 +397,61 @@ func (s *EmailOTPService) generateOTPCode(email string, otpType emailotpconfig.O
 }
 
 func (s *EmailOTPService) verifyOTPAttempt(ctx context.Context, identifier, providedOTP string, consumeOnSuccess bool) error {
-	// Step 1: Fetch verification record by identifier
-	rec, err := s.repos.FindVerificationValue(ctx, identifier)
-	if err != nil || rec == nil {
-		return ErrInvalidOTP
-	}
-
-	// Step 2: If expired, clean up record and return ErrOTPExpired
-	if rec.IsExpired() {
-		_ = s.repos.DeleteVerificationByIdentifier(ctx, identifier)
-		return ErrOTPExpired
-	}
-
-	// Step 3: Extract stored OTP value and attempt count; reject if max attempts exceeded
-	storedOTP, attempts := splitOTPValue(rec.Value)
 	allowedAttempts := s.config.AllowedAttempts
 	if allowedAttempts <= 0 {
 		allowedAttempts = 3
 	}
-	if attempts >= allowedAttempts {
-		_ = s.repos.DeleteVerificationByIdentifier(ctx, identifier)
-		return ErrTooManyAttempts
-	}
+	// Every write below is a compare-and-swap on the value read in Step 1. When a concurrent request changed
+	// the row first, the swap fails and the whole check is retried on the fresh row, so each wrong guess is
+	// counted exactly once and a correct code is consumed by one request only.
+	for try := 0; try < maxOTPCASRetries; try++ {
+		// Step 1: Fetch verification record by identifier
+		rec, err := s.repos.FindVerificationValue(ctx, identifier)
+		if err != nil || rec == nil {
+			return ErrInvalidOTP
+		}
 
-	// Step 4: Verify provided OTP against stored OTP
-	ok, err := s.verifyStoredOTPValue(storedOTP, providedOTP)
-	if err != nil || !ok {
-		// Step 5: Increment failed attempt counter while preserving original expiry
-		_, _ = s.repos.UpsertVerificationValue(ctx, &models.Verification{
-			Base:       models.Base{ID: rec.ID},
-			Identifier: identifier,
-			Value:      formatOTPValue(storedOTP, attempts+1),
-			ExpiresAt:  rec.ExpiresAt,
-		})
-		return ErrInvalidOTP
-	}
+		// Step 2: If expired, clean up record and return ErrOTPExpired
+		if rec.IsExpired() {
+			_ = s.repos.DeleteVerificationByIdentifier(ctx, identifier)
+			return ErrOTPExpired
+		}
 
-	// Step 6: Consume OTP immediately if requested
-	if consumeOnSuccess {
-		_ = s.repos.DeleteVerificationByIdentifier(ctx, identifier)
+		// Step 3: Extract stored OTP value and attempt count; reject if max attempts exceeded
+		storedOTP, attempts := splitOTPValue(rec.Value)
+		if attempts >= allowedAttempts {
+			_ = s.repos.DeleteVerificationByIdentifier(ctx, identifier)
+			return ErrTooManyAttempts
+		}
+
+		// Step 4: Verify provided OTP against stored OTP
+		ok, err := s.verifyStoredOTPValue(storedOTP, providedOTP)
+		if err != nil || !ok {
+			// Step 5: Increment failed attempt counter atomically (row id and expiry are preserved)
+			swapped, uerr := s.repos.UpdateVerificationValue(ctx, rec.ID, rec.Value, formatOTPValue(storedOTP, attempts+1))
+			if uerr == nil && !swapped {
+				continue
+			}
+			return ErrInvalidOTP
+		}
+
+		// Step 6: Consume OTP immediately if requested; losing the delete race means another request used it
+		if consumeOnSuccess {
+			deleted, derr := s.repos.DeleteVerificationIfValue(ctx, rec.ID, rec.Value)
+			if derr != nil {
+				return derr
+			}
+			if !deleted {
+				continue
+			}
+		}
+		return nil
 	}
-	return nil
+	return ErrInvalidOTP
 }
+
+// maxOTPCASRetries bounds how often an OTP check is retried after losing a compare-and-swap race.
+const maxOTPCASRetries = 10
 
 // ─── Rate Limiting ────────────────────────────────────────────────────────────
 
@@ -748,7 +761,8 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 			// better-auth's OTP sign-up creates only the user: no credential account without a password
 			created, err := s.repos.CreateUser(txCtx, newUser)
 			if err != nil {
-				return autherr.ErrFailedToCreateUser
+				// a failed insert is a server error in better-auth (500), not core sign-up's 422
+				return autherr.ErrFailedToCreateUser.WithStatus(http.StatusInternalServerError)
 			}
 			createdUser = created
 			user = created
@@ -877,7 +891,9 @@ func (s *EmailOTPService) refreshSessionUser(ctx context.Context, user *models.U
 	if s.sessionMgr == nil || user == nil {
 		return
 	}
-	if r, ok := s.sessionMgr.(interface{ RefreshUser(context.Context, *models.User) }); ok {
+	if r, ok := s.sessionMgr.(interface {
+		RefreshUser(context.Context, *models.User)
+	}); ok {
 		r.RefreshUser(ctx, user)
 	}
 }
