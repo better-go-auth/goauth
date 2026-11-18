@@ -20,7 +20,7 @@ import (
 )
 
 func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
-	cm := cookies.New(authCfg)
+	cm := p.cookieManager(authCfg)
 	cookieName := cm.Name(cookies.CookieSessionToken)
 	accessSecret := p.accessSecretFor(authCfg)
 	bearerOnlySet := config.OperationSet(p.config.RequireBearerTokenOps)

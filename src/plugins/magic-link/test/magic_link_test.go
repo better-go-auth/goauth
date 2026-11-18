@@ -20,6 +20,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	magiclink "github.com/better-go-auth/goauth/src/plugins/magic-link"
 	mlconfig "github.com/better-go-auth/goauth/src/plugins/magic-link/config"
 	compattest "github.com/better-go-auth/goauth/src/tests/compat"
@@ -563,7 +564,7 @@ func TestDisableSignUp(t *testing.T) {
 
 func TestBannedUserRejected(t *testing.T) {
 	e := newEnv(t, mlconfig.MagicLinkConfig{}, nil, func(o *goauth.GoAuthOptions) {
-		p, err := admin.NewWithGorm(o.Conn)
+		p, err := admin.New(adminrepo.AdminRepositories{})
 		if err != nil {
 			t.Fatal(err)
 		}

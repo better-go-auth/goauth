@@ -19,7 +19,7 @@ import (
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 )
 
-orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{
+orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 	Teams: &orgconfig.TeamsConfig{Enabled: true}, // optional
 	InvitaionConfig: orgconfig.InvitaionConfig{
 		SendInvitationEmail: func(ctx context.Context, in orgconfig.SendInvitationInput) error {
@@ -27,7 +27,7 @@ orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{
 			return mailer.Send(in.Email, "https://app.example.com/accept-invitation/"+in.ID)
 		},
 	},
-})
+}})
 
 auth, err := goauth.SetupGoAuth(ctx, api, goauth.GoAuthOptions{
 	Conn:       db,
@@ -36,9 +36,14 @@ auth, err := goauth.SetupGoAuth(ctx, api, goauth.GoAuthOptions{
 })
 ```
 
-The plugin adds the `organization`, `member`, `invitation`, `team`, `teamMember` and `organizationRole`
-tables, plus `activeOrganizationId` (and `activeTeamId` when teams are on) to the session. The
-migration runs during `SetupGoAuth`.
+The plugin declares better-auth's `organization`, `member` and `invitation` tables, `team` and `teamMember`
+when teams are on and `organizationRole` with dynamic access control (plus goauth's own nullable columns),
+and `activeOrganizationId` (and `activeTeamId` when teams are on) on the session. The tables are part of the
+schema registry: goauth's migrator creates them during `SetupGoAuth` (`GoAuth.Migrations.Mode` auto), in
+either column case, `goauth.GenerateSQL` includes them, and the plugin reads and writes them through the
+storage adapter, so it works with any database goauth supports, the memory adapter and `database` / `serial`
+ids. `orgPlugin.Repositories()` gives the repositories (e.g. to store a team from
+`Teams.DefaultTeam.CustomCreateDefaultTeam`).
 
 ## Options
 

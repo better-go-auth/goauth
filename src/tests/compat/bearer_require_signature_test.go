@@ -33,7 +33,7 @@ func TestBearerAndAccessToken_RequireSignatureEnforcement(t *testing.T) {
 		atCfg.AutoRegisterMiddleware = true
 		atCfg.Session.JWT.AccessSecret = "bearer-sig-enforcement-secret-32b!"
 
-		orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{})
+		orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{}})
 		require.NoError(t, err)
 
 		return NewServer(t,

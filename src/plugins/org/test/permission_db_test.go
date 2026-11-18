@@ -9,7 +9,6 @@ import (
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
 	pluginrepos "github.com/better-go-auth/goauth/src/plugins/org/repository"
-	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/google/uuid"
@@ -59,12 +58,12 @@ func TestPermission_DatabaseOperations(t *testing.T) {
 
 		// Step 4: Verify raw database column text in the DB engine
 		var rawJSON string
-		err = db.Raw("SELECT permission FROM organization_roles WHERE id = ?", roleID).Scan(&rawJSON).Error
+		err = db.Model(&orgmodels.OrganizationRole{}).Select("permission").Where("id = ?", roleID).Scan(&rawJSON).Error
 		require.NoError(t, err)
 		require.JSONEq(t, `{"infra":["read","deploy","restart"],"databases":["backup","read"]}`, rawJSON)
 
 		// Step 5: Update via OrganizationRoleRepo
-		roleRepo := orgrepo.NewOrganizationRoleRepo(db)
+		roleRepo := helpers.OrgRepos(t, db).IOrganizationRoleRepo
 		newPerm := orgmodels.Permission{
 			"*":     []string{"read"},
 			"infra": []string{"*"},
@@ -77,7 +76,7 @@ func TestPermission_DatabaseOperations(t *testing.T) {
 		require.False(t, updated.Permission.HasAction("monitoring", "write"))
 
 		// Step 6: Verify updated raw database text
-		err = db.Raw("SELECT permission FROM organization_roles WHERE id = ?", roleID).Scan(&rawJSON).Error
+		err = db.Model(&orgmodels.OrganizationRole{}).Select("permission").Where("id = ?", roleID).Scan(&rawJSON).Error
 		require.NoError(t, err)
 		require.JSONEq(t, `{"*":["read"],"infra":["*"]}`, rawJSON)
 
@@ -133,17 +132,18 @@ func TestPermission_OrgServiceEndToEnd(t *testing.T) {
 				Enabled: true,
 			},
 		}
+		repos := helpers.OrgRepos(t, db)
 		svc := orgsvc.New(
-			orgrepo.NewOrgRepo(db),
-			orgrepo.NewMemberRepo(db),
-			orgrepo.NewInvitationRepo(db),
+			repos.IOrgRepo,
+			repos.IMemberRepo,
+			repos.IInvitationRepo,
 			nil,
 			nil,
 			nil,
 		)
 		svc.Config = cfg
 		svc.SetRepositories(pluginrepos.OrgRepositories{
-			IOrganizationRoleRepo: orgrepo.NewOrganizationRoleRepo(db),
+			IOrganizationRoleRepo: repos.IOrganizationRoleRepo,
 		})
 
 		ctx := context.Background()

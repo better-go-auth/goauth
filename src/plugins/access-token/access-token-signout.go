@@ -46,7 +46,7 @@ func (p *Plugin) accessSecretFor(authCfg config.AuthConfig) string {
 // issued for it stop working before they expire. The access-token / refresh-token cookies are expired in the
 // same response.
 func (p *Plugin) buildSignOutMiddleware(authCfg config.AuthConfig, attrs humaaccesstoken.CookieAttrs) func(ctx huma.Context, next func(huma.Context)) {
-	cm := cookies.New(authCfg)
+	cm := p.cookieManager(authCfg)
 	accessSecret := p.accessSecretFor(authCfg)
 	signOutOp := humaadapter.OpSignOut.Str()
 

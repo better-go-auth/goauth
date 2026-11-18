@@ -239,7 +239,7 @@ func (e *env) challenge(email string, extra ...map[string]any) []string {
 func (e *env) row(userID string) *tfmodels.TwoFactor {
 	e.t.Helper()
 	var rows []tfmodels.TwoFactor
-	if err := e.s.DB.Where("user_id = ?", userID).Find(&rows).Error; err != nil {
+	if err := e.s.DB.Where(&tfmodels.TwoFactor{UserID: userID}).Find(&rows).Error; err != nil {
 		e.t.Fatalf("query twoFactor: %v", err)
 	}
 	if len(rows) == 0 {

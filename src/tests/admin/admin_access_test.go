@@ -16,6 +16,7 @@ import (
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	"github.com/better-go-auth/goauth/src/plugins/bearer"
 	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
 	"github.com/better-go-auth/goauth/src/providers/access"
@@ -30,7 +31,7 @@ func setupAdminAccessEnv(t *testing.T, opts ...admin.Option) *helpers.TestEnv {
 	t.Helper()
 	// Step 1: database + admin plugin with the requested options
 	db := helpers.SetupTestDB(t, helpers.DBTypeSQLite)
-	adminPlugin, err := admin.NewWithGorm(db, opts...)
+	adminPlugin, err := admin.New(adminrepo.AdminRepositories{}, opts...)
 	if err != nil {
 		t.Fatalf("admin plugin: %v", err)
 	}
@@ -260,8 +261,7 @@ func TestAdminAccess_ImpersonateAdmins(t *testing.T) {
 
 // TestAdminAccess_InvalidAdminRoles mirrors better-auth's init-time check.
 func TestAdminAccess_InvalidAdminRoles(t *testing.T) {
-	db := helpers.SetupTestDB(t, helpers.DBTypeSQLite)
-	_, err := admin.NewWithGorm(db, admin.WithAdminRoles("boss"), admin.WithRoles(map[string]access.Role{"admin": access.NewRole(access.Statements{})}))
+	_, err := admin.New(adminrepo.AdminRepositories{}, admin.WithAdminRoles("boss"), admin.WithRoles(map[string]access.Role{"admin": access.NewRole(access.Statements{})}))
 	if err == nil || !strings.Contains(err.Error(), "invalid admin roles") {
 		t.Fatalf("expected invalid admin roles error, got %v", err)
 	}

@@ -12,8 +12,9 @@ import (
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
 	config1 "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
-	gormadmin "github.com/better-go-auth/goauth/src/plugins/admin/repository/gorm"
+	"github.com/better-go-auth/goauth/src/plugins/admin/repository/adapteradmin"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"gorm.io/gorm"
@@ -116,13 +117,17 @@ func WithBasePath(basePath string) Option {
 	}
 }
 
-// NewWithGorm creates a new Admin plugin directly backed by GORM.
-func NewWithGorm(db *gorm.DB, opts ...Option) (*Plugin, error) {
-	repos := gormadmin.NewAdminGormRepos(db)
-	return New(repos, opts...)
+// NewWithGorm creates the Admin plugin. db is not used: the plugin reads and writes users, sessions and
+// accounts through goauth's storage adapter (GoAuthOptions.Conn or adapter-based Repositories).
+//
+// Deprecated: use New(repository.AdminRepositories{}, opts...). NewWithGorm is removed in the next release.
+func NewWithGorm(_ *gorm.DB, opts ...Option) (*Plugin, error) {
+	return New(repository.AdminRepositories{}, opts...)
 }
 
-// New creates a new Admin plugin with the provided repository bundle and options.
+// New creates a new Admin plugin with the provided repository bundle and options. An empty bundle uses the
+// default repository on the storage adapter (built in Init); a custom AdminRepo replaces it, and its
+// Migrator, if any, runs in GoAuth.Migrations.Mode auto.
 func New(repos repository.AdminRepositories, opts ...Option) (*Plugin, error) {
 	p := &Plugin{
 		adminRepos: repos,
@@ -130,9 +135,6 @@ func New(repos repository.AdminRepositories, opts ...Option) (*Plugin, error) {
 	}
 	for _, opt := range opts {
 		opt(p)
-	}
-	if p.adminRepos.AdminRepo == nil || p.adminRepos.Migrator == nil {
-		return nil, fmt.Errorf("admin plugin: AdminRepo and Migrator are required")
 	}
 	// Like better-auth, explicitly configured admin roles must exist in the custom roles.
 	if p.adminRolesSet && p.config.CustomRoles() {
@@ -162,8 +164,16 @@ func (p *Plugin) ID() string {
 }
 
 func (p *Plugin) Init(ictx *plugins.InitContext) error {
+	// Step 1: default repository: users, sessions and accounts through the storage adapter
 	if p.adminRepos.AdminRepo == nil {
-		return fmt.Errorf("admin plugin: AdminRepo is required")
+		if ictx == nil || ictx.Adapter == nil {
+			return fmt.Errorf("admin plugin: a storage adapter (GoAuthOptions.Conn or adapter-based Repositories) or a custom AdminRepo is required")
+		}
+		repo, err := adapteradmin.New(ictx.Adapter, ictx.Schema)
+		if err != nil {
+			return fmt.Errorf("admin plugin: %w", err)
+		}
+		p.adminRepos.AdminRepo = repo
 	}
 
 	svc := adminsvc.NewAdminService(
@@ -187,13 +197,21 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		}
 	}
 
+	// HTTP endpoints through pluginkit (one session resolver and cookie manager, origin check, disabled
+	// routes, rate limit)
 	if ictx != nil && ictx.Api != nil {
-		p.SetupHumaRoutes(ictx.Api, ictx.MiddleWare)
+		kit, err := pluginkit.New(ictx)
+		if err != nil {
+			return fmt.Errorf("admin plugin: %w", err)
+		}
+		p.SetupHumaRoutes(ictx.Api, kit)
 	}
 
 	return nil
 }
 
+// Migrator returns the migrator of a custom repository bundle, else nil: the admin fields are part of the
+// core user and session models, which goauth's migrator manages.
 func (p *Plugin) Migrator() migration.IMigrator {
 	return p.migrator
 }

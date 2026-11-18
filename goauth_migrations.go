@@ -34,15 +34,16 @@ func (e *SchemaMismatchError) Error() string {
 //
 //   - auto: (1) the core GORM bootstrap, only with application-generated ids: the legacy upgrades of older
 //     goauth databases (column renames and merges, dropped indexes, MySQL binary collations) and GORM
-//     AutoMigrate of the core structs, which GORM-based plugins (organization, admin) also migrate through
-//     their relations, so their column types stay GORM's; GoAuthOptions.Migrator replaces this step.
+//     AutoMigrate of the core structs, so the column types of existing databases stay GORM's;
+//     GoAuthOptions.Migrator replaces this step.
 //     (2) the registry migrator: every missing table (plugin SchemaProvider tables, rateLimit, all core
 //     tables when the database creates ids), column (additionalFields) and index. Additive only. It runs
 //     again after the plugins' GORM migrators (see applyRegistry).
 //   - verify: compare the registry with the database; fail with the missing pieces and their SQL.
 //   - off: nothing.
 //
-// Plugins that still migrate GORM structs (Plugin.Migrator) run after their Init, in auto mode only.
+// Third-party plugins that still migrate GORM structs (Plugin.Migrator) run after their Init, in auto mode
+// only; goauth's plugins declare their tables with SchemaProvider.
 func runCoreMigrations(ctx context.Context, opts GoAuthOptions, mode config.MigrationMode, reg *schema.Registry, store adapter.Adapter) error {
 	if mode == config.MigrationsOff {
 		return nil

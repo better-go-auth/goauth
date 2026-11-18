@@ -72,7 +72,7 @@ func newApp(dbPath string, outbox *exkit.Outbox) (*exkit.App, *org.OrgPlugin, er
 		return nil, nil, err
 	}
 	// Step 2: configure the plugin: custom access control, teams, and the invitation email sender
-	orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 		AccessControl: accessControl,
 		AccessRoles:   roles(),
 		Teams:         &orgconfig.TeamsConfig{Enabled: true},
@@ -85,7 +85,7 @@ func newApp(dbPath string, outbox *exkit.Outbox) (*exkit.App, *org.OrgPlugin, er
 		},
 		// OrgNeedsApproval: true would keep new organizations "pending" until a user with the
 		// system role "admin" calls POST /api/auth/admin/organization/approve.
-	})
+	}})
 	if err != nil {
 		return nil, nil, err
 	}

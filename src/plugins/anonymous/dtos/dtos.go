@@ -9,7 +9,11 @@ type SignInAnonymousResponse struct {
 	User  dtos.UserResponse `json:"user"`
 }
 
-// SuccessResponse is {"success": true}.
-type SuccessResponse struct {
+// AnonymousSuccessResponse is {"success": true}. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type AnonymousSuccessResponse struct {
 	Success bool `json:"success"`
 }
+
+// SuccessResponse is AnonymousSuccessResponse (the name earlier goauth versions used).
+type SuccessResponse = AnonymousSuccessResponse

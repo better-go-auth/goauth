@@ -19,7 +19,6 @@ import (
 	jwtplugin "github.com/better-go-auth/goauth/src/plugins/jwt"
 	jwtconfig "github.com/better-go-auth/goauth/src/plugins/jwt/config"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/models"
-	"github.com/better-go-auth/goauth/src/plugins/jwt/repository"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/services"
 	"github.com/golang-jwt/jwt/v5"
 )
@@ -155,7 +154,7 @@ func TestJWTService_PrivateKeysEncryptedForAllAlgs(t *testing.T) {
 			db := setupTestDB(t)
 			cfg := jwtconfig.DefaultConfig()
 			cfg.Jwks.KeyPairConfig = jwtconfig.KeyPairConfig{Alg: alg}
-			svc := services.NewJWTService(cfg, testSecret, "http://localhost:8080", repository.NewGormJwksRepo(db))
+			svc := services.NewJWTService(cfg, testSecret, "http://localhost:8080", newRepo(t, db))
 
 			key, err := svc.CreateKey(context.Background())
 			if err != nil {
@@ -194,7 +193,7 @@ func TestJWTPlugin_UnsupportedAlgRejectedAtInit(t *testing.T) {
 
 func TestJWTService_LegacyEd25519KeyStillWorks(t *testing.T) {
 	db := setupTestDB(t)
-	repo := repository.NewGormJwksRepo(db)
+	repo := newRepo(t, db)
 	ctx := context.Background()
 	svc := services.NewJWTService(jwtconfig.DefaultConfig(), testSecret, "http://localhost:8080", repo)
 
@@ -255,7 +254,7 @@ func TestJWTService_AlgConfusionRejected(t *testing.T) {
 	db := setupTestDB(t)
 	cfg := jwtconfig.DefaultConfig()
 	cfg.Jwks.KeyPairConfig = jwtconfig.KeyPairConfig{Alg: "RS256"}
-	svc := services.NewJWTService(cfg, testSecret, "http://localhost:8080", repository.NewGormJwksRepo(db))
+	svc := services.NewJWTService(cfg, testSecret, "http://localhost:8080", newRepo(t, db))
 	ctx := context.Background()
 	tok, err := svc.SignJWT(ctx, map[string]any{"sub": "x"}, nil)
 	if err != nil {
@@ -277,7 +276,7 @@ func TestJWTService_DefinePayloadNilMap(t *testing.T) {
 	db := setupTestDB(t)
 	cfg := jwtconfig.DefaultConfig()
 	cfg.JWT.DefinePayload = func(any) (map[string]any, error) { return nil, nil }
-	svc := services.NewJWTService(cfg, testSecret, "http://localhost:8080", repository.NewGormJwksRepo(db))
+	svc := services.NewJWTService(cfg, testSecret, "http://localhost:8080", newRepo(t, db))
 	ctx := context.Background()
 
 	session := &dtos.SessionWithUser{}
@@ -297,7 +296,7 @@ func TestJWTService_DefinePayloadNilMap(t *testing.T) {
 
 func TestJWTService_SignJWTOptions(t *testing.T) {
 	db := setupTestDB(t)
-	svc := services.NewJWTService(jwtconfig.DefaultConfig(), testSecret, "http://localhost:8080", repository.NewGormJwksRepo(db))
+	svc := services.NewJWTService(jwtconfig.DefaultConfig(), testSecret, "http://localhost:8080", newRepo(t, db))
 	ctx := context.Background()
 
 	// overrides apply to this token only; a nil payload is an empty one

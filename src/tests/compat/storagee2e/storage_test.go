@@ -11,8 +11,6 @@ import (
 	"github.com/better-go-auth/goauth/src/adapter/gormadapter"
 	"github.com/better-go-auth/goauth/src/adapter/gormadapter/gormtest"
 	"github.com/better-go-auth/goauth/src/config"
-	twofactor "github.com/better-go-auth/goauth/src/plugins/two-factor"
-	tfconfig "github.com/better-go-auth/goauth/src/plugins/two-factor/config"
 	"github.com/better-go-auth/goauth/src/schema"
 	"github.com/better-go-auth/goauth/src/schema/render"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
@@ -155,13 +153,9 @@ func TestDatabaseIDsEndToEnd(t *testing.T) {
 	}
 }
 
-// TestDatabaseIDsRejectGORMPlugins: plugins that still store GORM structs with string ids can't run with
-// database-generated ids.
-func TestDatabaseIDsRejectGORMPlugins(t *testing.T) {
-	db := openDB(t, helpers.DBTypeSQLite, "")
-	_, err := setup(db, func(c *config.AuthConfig) { c.Advanced.Database.IDFormat = config.IDFormatSerial }, twofactor.New(tfconfig.Config{Issuer: "x"}))
-	require.ErrorContains(t, err, "two-factor")
-	_, err = setup(openDB(t, helpers.DBTypeSQLite, ""), func(c *config.AuthConfig) {
+// TestDatabaseIDsRejectGenerateID: a GenerateID function can't be combined with database-generated ids.
+func TestDatabaseIDsRejectGenerateID(t *testing.T) {
+	_, err := setup(openDB(t, helpers.DBTypeSQLite, ""), func(c *config.AuthConfig) {
 		c.Advanced.Database.IDFormat = config.IDFormatSerial
 		c.Advanced.Database.GenerateID = func() string { return "x" }
 	})

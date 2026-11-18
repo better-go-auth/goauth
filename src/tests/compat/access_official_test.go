@@ -10,6 +10,7 @@ import (
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	adminconfig "github.com/better-go-auth/goauth/src/plugins/admin/config"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	bearer "github.com/better-go-auth/goauth/src/plugins/bearer"
 	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
 	"github.com/better-go-auth/goauth/src/plugins/org"
@@ -34,7 +35,7 @@ func TestOfficialBetterAuthClient_Access(t *testing.T) {
 
 	// Step 2: admin plugin with custom roles (better-auth `roles` option)
 	adminAC := access.NewAccessControl(adminconfig.DefaultStatements)
-	adminPlugin, err := admin.NewWithGorm(db,
+	adminPlugin, err := admin.New(adminrepo.AdminRepositories{},
 		admin.WithAccessControl(adminAC),
 		admin.WithRoles(map[string]access.Role{
 			"admin":   adminconfig.AdminAC,
@@ -50,7 +51,7 @@ func TestOfficialBetterAuthClient_Access(t *testing.T) {
 	orgStatements := orgconfig.DefaultStatements.Clone()
 	orgStatements["project"] = []string{"create", "read", "update", "delete"}
 	orgAC := access.NewAccessControl(orgStatements)
-	orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 		DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{Enabled: true},
 		AccessControl:        orgAC,
 		AccessRoles: map[string]access.Role{
@@ -58,7 +59,7 @@ func TestOfficialBetterAuthClient_Access(t *testing.T) {
 			"admin":  orgAC.NewRole(orgconfig.AdminAC.Statements().Merge(access.Statements{"project": {"create", "read", "update"}})),
 			"member": orgAC.NewRole(orgconfig.MemberAC.Statements().Merge(access.Statements{"project": {"read"}})),
 		},
-	})
+	}})
 	if err != nil {
 		t.Fatalf("org plugin: %v", err)
 	}

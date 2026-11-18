@@ -97,7 +97,7 @@ func TestSocialProvidersInCoreConfig(t *testing.T) {
 	}
 	// tokens are encrypted at rest (account.encryptOAuthTokens)
 	var acc models.Account
-	if err := s.DB.Where("provider_id = ?", "fake").First(&acc).Error; err != nil {
+	if err := s.DB.Where(&models.Account{ProviderID: "fake"}).First(&acc).Error; err != nil {
 		t.Fatal(err)
 	}
 	if acc.AccessToken == nil || fake.IsAccessToken(*acc.AccessToken) {

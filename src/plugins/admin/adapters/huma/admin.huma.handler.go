@@ -6,7 +6,6 @@ import (
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/consts"
-	"github.com/better-go-auth/goauth/src/common/middleware"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -14,24 +13,31 @@ import (
 	adminmodels "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	"github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
+	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 // AdminHandler holds admin-domain services and embeds AuthHandler for authentication.
 type AdminHandler struct {
-	Admin      adminsvc.IAdminService
-	Config     adminmodels.AdminConfig
-	Cfg        config.AuthConfig
-	AdminRepo  repository.IAdminRepo
-	MiddleWare *middleware.AuthMiddleware
-	authFn     authenticator.AuthenticateFunc
-	Cookies    *cookies.Manager
+	Admin     adminsvc.IAdminService
+	Config    adminmodels.AdminConfig
+	Cfg       config.AuthConfig
+	AdminRepo repository.IAdminRepo
+	// Kit is the plugin runtime the routes are registered with (session resolver, origin check, disabled
+	// routes, rate limiter, the core cookie manager).
+	Kit    *pluginkit.Kit
+	authFn authenticator.AuthenticateFunc
+	// Cookies is the core cookie manager (Kit.Cookies): same names, attributes and signing secrets as the
+	// session cookies.
+	Cookies *cookies.Manager
 }
 
-// NewAdminHandler creates a new AdminHandler.
-func NewAdminHandler(admin adminsvc.IAdminService, cfg adminmodels.AdminConfig, mdlware *middleware.AuthMiddleware, authFn ...authenticator.AuthenticateFunc) *AdminHandler {
+// NewAdminHandler creates a new AdminHandler. authFn authenticates direct handler calls that carry the
+// credentials in their AuthHeaders instead of going through the HTTP session middleware.
+func NewAdminHandler(admin adminsvc.IAdminService, cfg adminmodels.AdminConfig, kit *pluginkit.Kit, authFn ...authenticator.AuthenticateFunc) *AdminHandler {
 	if len(cfg.AdminRoles) == 0 {
 		cfg.AdminRoles = []enums.Role{enums.Admin}
 	}
@@ -39,12 +45,21 @@ func NewAdminHandler(admin adminsvc.IAdminService, cfg adminmodels.AdminConfig, 
 	if len(authFn) > 0 {
 		af = authFn[0]
 	}
-	return &AdminHandler{
-		Admin:      admin,
-		Config:     cfg,
-		MiddleWare: mdlware,
-		authFn:     af,
+	h := &AdminHandler{Admin: admin, Config: cfg, Kit: kit, authFn: af}
+	if kit != nil {
+		h.Cookies = kit.Cookies
 	}
+	return h
+}
+
+// register mounts an admin endpoint through pluginkit like every other plugin: goauth's one session
+// resolver (401 UNAUTHORIZED without a session), the origin / CSRF check, disabled routes and better-auth's
+// raw JSON bodies. op.Path is relative to BasePath.
+func register[I, O any](api huma.API, h *AdminHandler, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
+	pluginkit.Register(h.Kit, api, pluginkit.Route{
+		OperationID: op.OperationID, Method: op.Method, Path: op.Path, Summary: op.Summary,
+		Description: op.Description, Tags: op.Tags, DefaultStatus: op.DefaultStatus, Access: pluginkit.Session,
+	}, handler)
 }
 
 // RequireAdmin authenticates the request and checks that the user has an authorized admin role.

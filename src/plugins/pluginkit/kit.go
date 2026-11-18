@@ -19,6 +19,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/better-go-auth/goauth/src/adapter"
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
@@ -35,6 +36,7 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/origin"
 	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	"github.com/better-go-auth/goauth/src/schema"
 	"github.com/danielgtaylor/huma/v2"
 	"gorm.io/gorm"
 )
@@ -52,7 +54,16 @@ type Kit struct {
 	Tx        interfaces.ITransactionManager
 	Passwords *authcrypto.Passwords
 	Store     sec_storage.SecondaryStorage
-	DB        *gorm.DB
+	// DB is InitContext.DB.
+	//
+	// Deprecated: plugins read and write their tables through Adapter (InitContext.Adapter); DB is removed
+	// together with InitContext.DB in the next release.
+	DB *gorm.DB
+	// Adapter is the storage adapter over the schema registry (InitContext.Adapter): plugin tables declared
+	// with plugins.SchemaProvider are read and written through it. nil when the app has no adapter.
+	Adapter adapter.Adapter
+	// Schema is the schema registry SetupGoAuth built (InitContext.Schema).
+	Schema *schema.Registry
 	// Limiter is goauth's global rate limiter (InitContext.RateLimiter); Route.RateLimit adds rules to it.
 	Limiter *ratelimit.Limiter
 
@@ -98,6 +109,8 @@ func New(ictx *plugins.InitContext) (*Kit, error) {
 		Passwords:  newPasswords(ictx),
 		Store:      ictx.SecondaryStorage,
 		DB:         ictx.DB,
+		Adapter:    ictx.Adapter,
+		Schema:     ictx.Schema,
 		Limiter:    ictx.RateLimiter,
 		generateID: ictx.GenerateID,
 	}, nil
@@ -135,8 +148,12 @@ type Route struct {
 	Method      string
 	Path        string
 	Summary     string
+	// Description is the OpenAPI operation description.
+	Description string
 	Tags        []string
-	Access      Access
+	// DefaultStatus overrides the success status (Huma's default: 200, 204 without a body).
+	DefaultStatus int
+	Access        Access
 	// FormCSRF applies the sign-in CSRF check (origin required for cookieless browser requests) to
 	// non-Form access levels, e.g. an optional-session endpoint that also signs users in.
 	FormCSRF bool
@@ -187,9 +204,19 @@ func (k *Kit) Middlewares(r Route) huma.Middlewares {
 }
 
 // Register mounts a plugin endpoint with goauth's error format, raw JSON bodies and the access middlewares.
-// Disabled routes are skipped.
+// A path listed in DisabledPaths is not mounted. An operation listed in DisabledOps is mounted hidden and
+// answers 404 Not Found (like the core routes), so another method on the same path doesn't turn the
+// disabled one into a 405.
 func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Context, *I) (*O, error)) {
-	if api == nil || k.Disabled(r) {
+	if api == nil || slices.Contains(k.Conf.DisabledPaths, r.Path) {
+		return
+	}
+	if config.OperationSet(k.Conf.DisabledOps)[r.OperationID] {
+		huma.Register(api, huma.Operation{
+			OperationID: r.OperationID, Method: r.Method, Path: k.Path(r.Path), Hidden: true,
+			Metadata:    map[string]any{types.RawBodyMetaKey: true},
+			Middlewares: huma.Middlewares{disabledRoute},
+		}, handler)
 		return
 	}
 	// a per-route rule becomes a plugin rule of the global limiter (path parameters match one segment)
@@ -205,15 +232,22 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 		r.Access = OptionalSession
 	}
 	huma.Register(api, huma.Operation{
-		OperationID: r.OperationID,
-		Method:      r.Method,
-		Path:        k.Path(r.Path),
-		Summary:     r.Summary,
-		Tags:        r.Tags,
-		Hidden:      r.Hidden,
-		Metadata:    map[string]any{types.RawBodyMetaKey: true},
-		Middlewares: k.Middlewares(r),
+		OperationID:   r.OperationID,
+		Method:        r.Method,
+		Path:          k.Path(r.Path),
+		Summary:       r.Summary,
+		Description:   r.Description,
+		Tags:          r.Tags,
+		DefaultStatus: r.DefaultStatus,
+		Hidden:        r.Hidden,
+		Metadata:      map[string]any{types.RawBodyMetaKey: true},
+		Middlewares:   k.Middlewares(r),
 	}, handler)
+}
+
+// disabledRoute answers every request of a disabled operation with 404 Not Found.
+func disabledRoute(ctx huma.Context, _ func(huma.Context)) {
+	humaadapter.WriteError(ctx, autherr.NotFoundErr("Not Found"))
 }
 
 // requireInHandler wraps handler with the Session / FreshSession check (401 UNAUTHORIZED, 403
@@ -393,12 +427,30 @@ func (k *Kit) CreateUser(ctx context.Context, user *models.User) (*models.User, 
 	return created, nil
 }
 
-// InTx runs fn in a transaction when a transaction manager is configured.
+// InTx runs fn in a transaction: the configured transaction manager, else the storage adapter's
+// transaction (e.g. the memory adapter), else fn directly.
 func (k *Kit) InTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	if k.Tx == nil {
-		return fn(ctx)
+	return TxManager(k.Tx, k.Adapter).Transaction(ctx, fn)
+}
+
+// TxManager returns tx, or the adapter's transactions when tx is nil (an adapter.Adapter has the same
+// Transaction method), or a manager that runs fn without a transaction when both are nil. Plugin services
+// that take an interfaces.ITransactionManager use it so they work without GoAuthOptions.TxManager / Conn.
+func TxManager(tx interfaces.ITransactionManager, store adapter.Adapter) interfaces.ITransactionManager {
+	switch {
+	case tx != nil:
+		return tx
+	case store != nil:
+		return store
 	}
-	return k.Tx.Transaction(ctx, fn)
+	return noTx{}
+}
+
+// noTx runs fn directly (no storage that supports transactions).
+type noTx struct{}
+
+func (noTx) Transaction(ctx context.Context, fn func(ctx context.Context) error) error {
+	return fn(ctx)
 }
 
 // VerifyUserPassword checks password against the user's credential account (better-auth's validatePassword).

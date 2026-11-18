@@ -22,6 +22,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	adminconfig "github.com/better-go-auth/goauth/src/plugins/admin/config"
 	admindtos "github.com/better-go-auth/goauth/src/plugins/admin/dtos"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/danielgtaylor/huma/v2"
@@ -62,7 +63,7 @@ func newApp(dbPath string) (*exkit.App, error) {
 	}
 	// Step 2: the admin plugin with the custom access control and roles. Without WithRoles the plugin
 	// uses better-auth's default roles: "admin" (all admin permissions) and "user" (none).
-	adminPlugin, err := admin.NewWithGorm(db,
+	adminPlugin, err := admin.New(adminrepo.AdminRepositories{},
 		admin.WithAccessControl(ac),
 		admin.WithRoles(roles),
 		// roles that count as admins: impersonating them needs user:impersonate-admins

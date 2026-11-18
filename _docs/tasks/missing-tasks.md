@@ -62,7 +62,7 @@ the stage follows doc 04 §7.
   and anonymous columns out of `models.User`, so apps without a plugin don't get its columns. Output shows
   fields of installed plugins as `false`/`null` instead of omitting them (blocker B10). *(02 step 7, 01 §2.7)*
   – after 2.6
-- [ ] **2.9 Plugins on the adapter** (`InitContext.Adapter`; deprecate `InitContext.DB`): two-factor, passkey,
+- [x] **2.9 Plugins on the adapter** (`InitContext.Adapter`; deprecate `InitContext.DB`): two-factor, passkey,
   jwt, org, admin. *(04 §7 step 6)* – after 2.5
 
 ## Stage 3 – Config and behaviour parity with better-auth (M each)
@@ -104,7 +104,7 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
   breaking release. *(01 §3)*
 - [ ] **3.12 Config compat test:** build `AuthConfig` from a JSON fixture shaped like `BetterAuthOptions` and
   check keys and defaults, so drift is caught in CI. *(audit plan)* – after 3.5–3.10
-- [ ] **3.13 Move older plugins onto `pluginkit`** (org, admin, jwt, access-token): one session resolver, one
+- [x] **3.13 Move older plugins onto `pluginkit`** (org, admin, jwt, access-token): one session resolver, one
   cookie manager, same CSRF/disabled-route/rate-limit handling. *(01 §2.6)*
 - [x] **3.14 Small behaviour differences:** email-otp `request-email-change` needs a fresh session; two-factor
   expired `2fa-*` row handling; social account cookie. *(03 §4)*
@@ -115,7 +115,7 @@ Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
 
 - [x] **4.1 `ColumnCase = camel` + `Fields`/`ModelName` mapping**, with camel the default for new installs only.
   *(camel works end to end and matches better-auth's schema, `src/tests/compat/schemaparity`; the default
-  stays `snake` until the decision below; organization timestamps differ until 2.9)*
+  stays `snake` until the decision below; organization timestamps fixed with 2.9 for new databases)*
   Blocker B1. *(02 step 8, 04 §7 step 9)* – after 2.5
 - [ ] **4.2 Shared-database test:** a TypeScript better-auth server and goauth on one Postgres database; sign up on
   one and sign in on the other, for core and every plugin. *(01 §4.2, phase2 open item)* – after 4.1
@@ -149,7 +149,7 @@ Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
 - [ ] **7.2 MongoDB adapter** with partial unique indexes for nullable unique fields, TTL indexes and ObjectId/UUID
   IDs. *(04 §7 step 8)* – after 2.9
 - [ ] **7.3 Extra schema renderers:** `atlas-hcl`, `ent`, `go`, `prisma`. *(04 §7 step 9)* – after 2.7
-- [ ] **7.4 Plugin repository contract tests** (two-factor, passkey, org) like `repotest`, and fuzz tests for
+- [x] **7.4 Plugin repository contract tests** (two-factor, passkey, org) like `repotest`, and fuzz tests for
   cookie parsing, OAuth state decoding and WebAuthn payloads. *(01 §4.3–4.4)*
 
 ---

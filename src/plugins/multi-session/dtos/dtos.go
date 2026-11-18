@@ -7,7 +7,11 @@ type SessionTokenInput struct {
 	SessionToken string `json:"sessionToken" doc:"The session token"`
 }
 
-// StatusResponse is better-auth's {"status": true}.
-type StatusResponse struct {
+// MultiSessionStatusResponse is better-auth's {"status": true}. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type MultiSessionStatusResponse struct {
 	Status bool `json:"status"`
 }
+
+// StatusResponse is MultiSessionStatusResponse (the name earlier goauth versions used).
+type StatusResponse = MultiSessionStatusResponse

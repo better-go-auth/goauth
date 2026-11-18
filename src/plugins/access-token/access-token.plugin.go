@@ -12,9 +12,7 @@ import (
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 
 	constant "github.com/better-go-auth/goauth/src/common/consts"
-	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
-	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/migration"
@@ -23,7 +21,9 @@ import (
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	jwttoken "github.com/better-go-auth/goauth/src/plugins/access-token/jwttoken"
 	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
+	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -58,6 +58,9 @@ type Plugin struct {
 	IAuthSvc   authint.IAuthService
 	secStorage sec_storage.SecondaryStorage
 	txMgr      interfaces.ITransactionManager
+	// kit is the shared plugin runtime and cookies goauth's one cookie manager (both set by Init)
+	kit        *pluginkit.Kit
+	cookies    *cookies.Manager
 	authConfig config.AuthConfig
 	middleware func(ctx huma.Context, next func(huma.Context))
 }
@@ -152,12 +155,17 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	}
 	p.repos = repos
 
-	// Resolve transaction manager
-	txMgr := ictx.TxManager
-	if txMgr == nil && ictx.DB != nil {
-		txMgr = gormutil.NewGormTxManager(ictx.DB)
+	// Resolve transaction manager (GoAuthOptions.TxManager, else the storage adapter's transactions)
+	p.txMgr = pluginkit.TxManager(ictx.TxManager, ictx.Adapter)
+
+	// Shared plugin runtime: goauth's one cookie manager and session resolver, base path, origin check,
+	// disabled routes
+	kit, err := pluginkit.New(ictx)
+	if err != nil {
+		return fmt.Errorf("access-token plugin: %w", err)
 	}
-	p.txMgr = txMgr
+	p.kit = kit
+	p.cookies = kit.Cookies
 
 	p.sessionMgr = ictx.SessionManager
 
@@ -189,11 +197,9 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.vConf = vConf
 
 	if p.basePath == "" {
-		p.basePath = ictx.Config.BasePath
+		p.basePath = kit.BasePath
 	}
-	if p.basePath == "" {
-		p.basePath = "/api/auth"
-	}
+	kit.BasePath = strings.TrimSuffix(p.basePath, "/")
 
 	if p.passwords == nil {
 		p.passwords = authcrypto.NewPasswords(ictx.Config)
@@ -214,7 +220,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.vSvc = services.NewVerificationService(repos, vConf)
 	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
 	p.sessionSvc.Secret = ictx.Config.Secret
-	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
+	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, p.txMgr, p.passwords, ictx.Hooks)
 	// /signup enforces the same password length bounds as core sign-up
 	p.authSvc.MinPasswordLength = ictx.Config.EmailAndPassword.MinPasswordLength
 	p.authSvc.MaxPasswordLength = ictx.Config.EmailAndPassword.MaxPasswordLength
@@ -273,7 +279,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		// global middleware (when on), so a Bearer JWT that one already resolved is not looked up twice; the
 		// plugin is initialised before the core routes are mounted, so this wraps core sign-out.
 		ictx.Api.UseMiddleware(p.buildSignOutMiddleware(ictx.Config, cookieAttrs))
-		p.SetupHumaRoutes(ictx.Api, ictx.MiddleWare)
+		p.SetupHumaRoutes(ictx.Api, kit)
 	}
 
 	return nil
@@ -458,12 +464,21 @@ func (p *Plugin) Routes() []plugins.RouteDescriptor {
 	return nil
 }
 
-// SetupHumaRoutes registers the plugin routes onto a huma.API instance.
-func (p *Plugin) SetupHumaRoutes(api huma.API, mdlware *middleware.AuthMiddleware) {
-	if p.handler == nil {
+// SetupHumaRoutes registers the plugin routes onto a huma.API instance through kit.
+func (p *Plugin) SetupHumaRoutes(api huma.API, kit *pluginkit.Kit) {
+	if p.handler == nil || kit == nil {
 		return
 	}
-	humaaccesstoken.SetupAccessTokenRoutes(api, p.handler, mdlware, p.basePath)
+	humaaccesstoken.SetupAccessTokenRoutes(api, p.handler, kit)
+}
+
+// cookieManager returns goauth's cookie manager (set by Init), or one for authCfg when the middleware is
+// built before Init.
+func (p *Plugin) cookieManager(authCfg config.AuthConfig) *cookies.Manager {
+	if p.cookies != nil {
+		return p.cookies
+	}
+	return cookies.New(authCfg)
 }
 
 // AccessSecret returns the configured JWT access token signing secret, if any.

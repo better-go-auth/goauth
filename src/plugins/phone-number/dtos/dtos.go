@@ -21,10 +21,14 @@ type SendOTPInput struct {
 	PhoneNumber string `json:"phoneNumber" doc:"Phone number to send OTP. Eg: \"+1234567890\""`
 }
 
-// MessageResponse is {"message": "code sent"}.
-type MessageResponse struct {
+// PhoneNumberMessageResponse is {"message": "code sent"}. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type PhoneNumberMessageResponse struct {
 	Message string `json:"message"`
 }
+
+// MessageResponse is PhoneNumberMessageResponse (the name earlier goauth versions used).
+type MessageResponse = PhoneNumberMessageResponse
 
 // VerifyInput is the body of POST /phone-number/verify. Extra fields are accepted (additional user fields).
 type VerifyInput struct {
@@ -53,7 +57,11 @@ type ResetPasswordInput struct {
 	NewPassword string `json:"newPassword" doc:"The new password."`
 }
 
-// StatusResponse is {"status": true}.
-type StatusResponse struct {
+// PhoneNumberStatusResponse is {"status": true}. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type PhoneNumberStatusResponse struct {
 	Status bool `json:"status"`
 }
+
+// StatusResponse is PhoneNumberStatusResponse (the name earlier goauth versions used).
+type StatusResponse = PhoneNumberStatusResponse

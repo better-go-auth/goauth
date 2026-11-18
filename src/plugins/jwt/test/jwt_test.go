@@ -12,6 +12,9 @@ import (
 	"time"
 
 	goauth "github.com/better-go-auth/goauth"
+	"github.com/better-go-auth/goauth/src/adapter/gormadapter"
+	"github.com/better-go-auth/goauth/src/adapter/gormadapter/gormtest"
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/plugins"
 	bearer "github.com/better-go-auth/goauth/src/plugins/bearer"
@@ -22,6 +25,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/jwt/repository"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/services"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
+	"github.com/better-go-auth/goauth/src/schema"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/google/uuid"
@@ -32,6 +36,18 @@ import (
 
 const testSecret = "jwt-plugin-test-secret-012345678901234567890"
 
+// jwksRegistry is goauth's schema registry with the jwt plugin's jwks table.
+func jwksRegistry(t *testing.T) *schema.Registry {
+	t.Helper()
+	reg, err := goauth.Schema(goauth.GoAuthOptions{Plugins: []plugins.Plugin{jwtplugin.New(jwtconfig.JWTConfig{})}})
+	if err != nil {
+		t.Fatalf("schema: %v", err)
+	}
+	return reg
+}
+
+// setupTestDB creates the jwks table with goauth's migrator on a fresh SQLite database (GORM names follow
+// the registry, so raw GORM queries on models.JWK hit the same table).
 func setupTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:jwttest_%s?mode=memory&cache=shared", uuid.NewString())),
@@ -39,15 +55,28 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	if err != nil {
 		t.Fatalf("sqlite open: %v", err)
 	}
-	if err := db.AutoMigrate(&models.JWK{}); err != nil {
+	reg := jwksRegistry(t)
+	db.Config.NamingStrategy = gormutil.NewNamingStrategy("", nil, gormutil.WithRegistry(reg))
+	if err := gormtest.Migrate(db, reg); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
 	return db
 }
 
+// newRepo returns the jwks repository on db (through the GORM adapter, like SetupGoAuth).
+func newRepo(t *testing.T, db *gorm.DB) repository.IJwksRepo {
+	t.Helper()
+	reg := jwksRegistry(t)
+	repo, err := repository.New(gormadapter.New(db, reg), reg)
+	if err != nil {
+		t.Fatalf("repository: %v", err)
+	}
+	return repo
+}
+
 func TestJWTService_Unit(t *testing.T) {
 	db := setupTestDB(t)
-	repo := repository.NewGormJwksRepo(db)
+	repo := newRepo(t, db)
 	cfg := jwtconfig.DefaultConfig()
 	cfg.JWT.Issuer = "http://localhost:8080"
 	cfg.JWT.Audience = "http://localhost:8080"
@@ -142,7 +171,7 @@ func setupFullServer(t *testing.T, jwtCfg jwtconfig.JWTConfig) (*httptest.Server
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("JWT Plugin Full Test", "1.0.0"))
 
-	jwtPlug := jwtplugin.New(jwtCfg, jwtplugin.WithDB(db))
+	jwtPlug := jwtplugin.New(jwtCfg)
 	bearerPlug := bearer.New(bearerconfig.DefaultConfig())
 
 	_, err = goauth.SetupGoAuth(context.Background(), api, goauth.GoAuthOptions{

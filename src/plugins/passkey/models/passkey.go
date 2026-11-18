@@ -1,10 +1,19 @@
 // Package models holds the passkey plugin's database model (better-auth's `passkey` table).
 package models
 
-import "time"
+import (
+	"time"
 
-// Passkey is better-auth's `passkey` model. The struct name maps to the "passkey" table through
-// gormutil's naming strategy; JSON names match better-auth's field names.
+	"github.com/better-go-auth/goauth/src/schema"
+)
+
+// ModelPasskey is better-auth's logical model name of the passkey table.
+const ModelPasskey = "passkey"
+
+// Passkey is better-auth's `passkey` model; JSON names match better-auth's field names.
+//
+// The gorm tags describe the table older goauth versions created with GORM AutoMigrate; the plugin now
+// stores rows through InitContext.Adapter and the table comes from Schema (same table and columns).
 type Passkey struct {
 	ID   string  `gorm:"primaryKey;size:255" json:"id"`
 	Name *string ` json:"name"`
@@ -21,4 +30,21 @@ type Passkey struct {
 	Transports *string    ` json:"transports"`
 	CreatedAt  *time.Time ` json:"createdAt"`
 	AAGUID     *string    `gorm:"size:64;column:aaguid" json:"aaguid"`
+}
+
+// Schema is @better-auth/passkey's plugin schema (src/schema.ts, version 1.6.16).
+func Schema() schema.PluginSchema {
+	return schema.PluginSchema{ModelPasskey: schema.Model{Fields: map[string]schema.Field{
+		"name":      {Type: schema.String},
+		"publicKey": {Type: schema.String, Required: true},
+		"userId": {Type: schema.String, Required: true, Index: true,
+			References: &schema.Reference{Model: schema.ModelUser, Field: "id"}},
+		"credentialID": {Type: schema.String, Required: true, Index: true},
+		"counter":      {Type: schema.Number, Required: true},
+		"deviceType":   {Type: schema.String, Required: true},
+		"backedUp":     {Type: schema.Boolean, Required: true},
+		"transports":   {Type: schema.String},
+		"createdAt":    {Type: schema.Date},
+		"aaguid":       {Type: schema.String},
+	}}}
 }

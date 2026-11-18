@@ -41,10 +41,14 @@ type DeleteRoleInput struct {
 	RoleID         string `json:"roleId,omitempty"`
 }
 
-// SuccessResponse is better-auth's `{ success: true }`.
-type SuccessResponse struct {
+// OrgSuccessResponse is better-auth's `{ success: true }`. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type OrgSuccessResponse struct {
 	Success bool `json:"success"`
 }
+
+// SuccessResponse is OrgSuccessResponse (the name earlier goauth versions used).
+type SuccessResponse = OrgSuccessResponse
 
 // UpdateRoleData matches better-auth's update-role `data` object.
 type UpdateRoleData struct {

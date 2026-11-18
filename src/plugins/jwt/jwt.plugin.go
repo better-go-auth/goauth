@@ -12,7 +12,6 @@ import (
 	"time"
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
-	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
@@ -21,11 +20,11 @@ import (
 	jwtmodels "github.com/better-go-auth/goauth/src/plugins/jwt/models"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/repository"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/services"
+	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
-	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/better-go-auth/goauth/src/schema"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
-	"gorm.io/gorm"
 )
 
 func safeHumagoUnwrap(ctx huma.Context) (r *http.Request, w http.ResponseWriter) {
@@ -40,7 +39,6 @@ const PluginID = "jwt"
 // Plugin implements plugins.Plugin for Better Auth's JWT and JWKS specification.
 type Plugin struct {
 	config   jwtconfig.JWTConfig
-	db       *gorm.DB
 	repo     repository.IJwksRepo
 	service  *services.JWTService
 	handler  *humajwt.JWTHandler
@@ -48,19 +46,16 @@ type Plugin struct {
 	basePath string
 }
 
-var _ plugins.Plugin = (*Plugin)(nil)
+var (
+	_ plugins.Plugin         = (*Plugin)(nil)
+	_ plugins.SchemaProvider = (*Plugin)(nil)
+)
 
 // Option configures the JWT Plugin.
 type Option func(*Plugin)
 
-// WithDB sets the GORM database connection for the JWT plugin.
-func WithDB(db *gorm.DB) Option {
-	return func(p *Plugin) {
-		p.db = db
-	}
-}
-
-// WithRepo sets a custom repository implementation for JWKS.
+// WithRepo sets a custom repository implementation for JWKS (default: the jwks table through
+// InitContext.Adapter).
 func WithRepo(repo repository.IJwksRepo) Option {
 	return func(p *Plugin) {
 		p.repo = repo
@@ -109,7 +104,8 @@ func WithDisableSettingJwtHeader(disable bool) Option {
 	}
 }
 
-// WithBasePath configures the auth base path (default: "/api/auth").
+// WithBasePath mounts the JWT routes under another base path than the core routes (default: the core
+// AuthConfig.BasePath).
 func WithBasePath(basePath string) Option {
 	return func(p *Plugin) {
 		p.basePath = basePath
@@ -138,10 +134,7 @@ func New(cfg jwtconfig.JWTConfig, opts ...Option) *Plugin {
 		cfg.Jwks.KeyPairConfig.Crv = jwtconfig.CrvEd25519
 	}
 
-	p := &Plugin{
-		config:   cfg,
-		basePath: "/api/auth",
-	}
+	p := &Plugin{config: cfg}
 	for _, opt := range opts {
 		opt(p)
 	}
@@ -158,17 +151,11 @@ func (p *Plugin) ID() string {
 // 	p.db = db
 // }
 
-// Migrator returns the database migrator for creating the jwks table.
-// The migrator lives on the repo itself, so no *gorm.DB handle is required.
-func (p *Plugin) Migrator() migration.IMigrator {
-	if p.repo != nil {
-		return p.repo.Migrator()
-	}
-	if p.db != nil {
-		return jwtmodels.NewMigrator(p.db)
-	}
-	return nil
-}
+// Schema declares better-auth's jwks table (plugins.SchemaProvider); goauth's migrator creates it.
+func (p *Plugin) Schema() schema.PluginSchema { return jwtmodels.Schema() }
+
+// Migrator returns nil: the jwks table is declared by Schema and created by goauth's migrator.
+func (p *Plugin) Migrator() migration.IMigrator { return nil }
 
 // Services returns the services provided by this plugin.
 func (p *Plugin) Services() map[string]any {
@@ -224,15 +211,15 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	}
 	p.config.Jwks.KeyPairConfig = kp
 
-	if p.db == nil && ictx.DB != nil {
-		p.db = ictx.DB
-	}
-
 	if p.repo == nil {
-		if p.db == nil {
-			return fmt.Errorf("jwt plugin: *gorm.DB is required to create jwks repository")
+		if ictx.Adapter == nil {
+			return fmt.Errorf("jwt plugin: a storage adapter (GoAuthOptions.Conn or adapter-based Repositories) or WithRepo is required")
 		}
-		p.repo = repository.NewGormJwksRepo(p.db)
+		repo, err := repository.New(ictx.Adapter, ictx.Schema)
+		if err != nil {
+			return fmt.Errorf("jwt plugin: %w", err)
+		}
+		p.repo = repo
 	}
 
 	keys := authcrypto.NewSecretKeys(ictx.Config)
@@ -240,21 +227,20 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	p.service = services.NewJWTServiceWithKeys(p.config, keys, baseURL, p.repo)
 
-	var cm *cookies.Manager
-	if ictx.CookieManager != nil {
-		cm = ictx.CookieManager
-	} else {
-		cm = cookies.New(ictx.Config)
+	// shared plugin runtime: goauth's one session resolver and cookie manager, base path, disabled routes
+	kit, err := pluginkit.New(ictx)
+	if err != nil {
+		return fmt.Errorf("jwt plugin: %w", err)
 	}
-	var sessMgr *sessionsvc.Manager
-	if sm, ok := ictx.SessionManager.(*sessionsvc.Manager); ok {
-		sessMgr = sm
+	if p.basePath != "" {
+		kit.BasePath = strings.TrimSuffix(p.basePath, "/")
 	}
-	p.resolver = humaadapter.NewResolver(sessMgr, cm)
+	p.basePath = kit.BasePath
+	p.resolver = kit.Resolver
 
-	p.handler = humajwt.NewJWTHandler(p.service, p.resolver)
+	p.handler = humajwt.NewJWTHandler(p.service, kit)
 
-	humajwt.RegisterRoutes(ictx.Api, p.basePath, p.config.Jwks.JwksPath, p.handler)
+	humajwt.RegisterRoutes(ictx.Api, kit, p.config.Jwks.JwksPath, p.handler)
 
 	// Register middleware for setting set-auth-jwt response header on /get-session (after hook)
 	if !p.config.DisableSettingJwtHeader {

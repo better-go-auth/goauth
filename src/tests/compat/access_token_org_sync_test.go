@@ -46,9 +46,9 @@ func TestAccessToken_ActiveOrgAndTeamSync(t *testing.T) {
 	atCfg.AutoRegisterMiddleware = true
 	atCfg.Session.JWT.AccessSecret = accessSecret
 
-	orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 		Teams: &orgconfig.TeamsConfig{Enabled: true},
-	})
+	}})
 	require.NoError(t, err)
 
 	s := NewServer(t,

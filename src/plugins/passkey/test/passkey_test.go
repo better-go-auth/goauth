@@ -116,7 +116,7 @@ func signInPasskey(t *testing.T, s *compattest.Server, a *softAuthenticator) *co
 func dbPasskeys(t *testing.T, s *compattest.Server, userID string) []pkmodels.Passkey {
 	t.Helper()
 	var out []pkmodels.Passkey
-	if err := s.DB.Where("user_id = ?", userID).Find(&out).Error; err != nil {
+	if err := s.DB.Where(&pkmodels.Passkey{UserID: userID}).Find(&out).Error; err != nil {
 		t.Fatal(err)
 	}
 	return out
