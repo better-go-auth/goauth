@@ -264,6 +264,7 @@ so a TypeScript better-auth server can share the database; `Advanced.Database.ID
 | **Access-Token** | `src/plugins/access-token` | Short-lived Access JWT + refresh token flow with live claim synchronization (Layer 1) and automatic `set-auth-token` header emission on active org/team changes (Layer 2). |
 | **Email OTP** | `src/plugins/email-otp` | Time-sensitive one-time passcodes for sign-in and verification with enumeration defense, rate limiting, and global email verification override. |
 | **JWT / JWKS** | `src/plugins/jwt` | OpenID/OAuth-compatible JWT issuance and public JWKS endpoint (`/.well-known/jwks.json`). |
+| **API Key** | `src/plugins/api-key` | `@better-auth/api-key` 1.6.16: hashed API keys (database or secondary storage), per-key usage limits with refills, rate limits, permissions, organization keys, `x-api-key` sessions and a middleware for your own routes. |
 
 ---
 
@@ -279,6 +280,7 @@ so a TypeScript better-auth server can share the database; `Advanced.Database.ID
 | **Bearer Token Plugin** | Supported | Supported | Verified Parity |
 | **Email OTP Plugin** | Supported | Supported | Verified Parity |
 | **JWT & JWKS Plugin** | Supported | Supported | Verified Parity |
+| **API Key Plugin (`@better-auth/api-key`)** | Supported | Supported | Verified with `apiKeyClient()` |
 | **Multi-Database Support (SQLite, Postgres, MySQL)** | Supported | Supported | Verified with Testcontainers |
 | **OAuth 2.0 / Social Sign-In** | Supported | *Planned* | In Roadmap |
 | **Passkeys / WebAuthn** | Supported | *Planned* | In Roadmap |

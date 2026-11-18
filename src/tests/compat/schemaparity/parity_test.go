@@ -19,6 +19,8 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	"github.com/better-go-auth/goauth/src/plugins/anonymous"
 	anonconfig "github.com/better-go-auth/goauth/src/plugins/anonymous/config"
+	apikey "github.com/better-go-auth/goauth/src/plugins/api-key"
+	apikeyconfig "github.com/better-go-auth/goauth/src/plugins/api-key/config"
 	"github.com/better-go-auth/goauth/src/plugins/bearer"
 	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
 	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
@@ -60,6 +62,8 @@ type dump struct {
 	// Defaults lists, per table, the columns better-auth's adapter always fills (fields with a defaultValue)
 	Defaults map[string][]string `json:"defaults"`
 	Passkey  bool                `json:"passkey"`
+	// APIKey reports whether client-apikey/node_modules was there (the apikey table is in the dump)
+	APIKey bool `json:"apikey"`
 }
 
 // filled reports whether better-auth writes column of table on every insert.
@@ -139,6 +143,7 @@ func plugins(t *testing.T, db *gorm.DB) []plugin.Plugin {
 	require.NoError(t, err)
 	return []plugin.Plugin{
 		adminPlugin,
+		apikey.New(apikeyconfig.Configuration{}),
 		anonymous.New(anonconfig.AnonymousConfig{}),
 		bearer.New(bearerconfig.BearerConfig{}),
 		emailotp.New(emailotpconfig.EmailOTPConfig{SendVerificationOTP: func(emailotpconfig.SendVerificationOTPData, *http.Request) error { return nil }}),
@@ -374,6 +379,11 @@ var knownGaps = map[string]bool{
 func TestCamelSchemaMatchesBetterAuth(t *testing.T) {
 	ba := betterAuthSchema(t)
 	require.True(t, ba.Passkey, "client-passkey/node_modules is needed for the passkey table")
+	if !ba.APIKey {
+		t.Log("client-apikey/node_modules missing: the apikey table is not compared (run npm install there)")
+	} else {
+		require.Contains(t, ba.Tables, "apikey")
+	}
 	ga := goauthSchema(t)
 	hard, notes := diff(ba, ga)
 	for _, n := range notes {

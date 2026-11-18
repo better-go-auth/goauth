@@ -124,7 +124,7 @@ Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
 
 ## Stage 5 – Cheap plugin wins (S each)
 
-- [ ] **5.1 api-key** (`@better-auth/api-key`: keys, rate limits, permissions via the new `access` package,
+- [x] **5.1 api-key** (`@better-auth/api-key`: keys, rate limits, permissions via the new `access` package,
   `x-api-key` session) – highest value for Go backends.
 - [x] **5.2 captcha** (Turnstile / reCAPTCHA / hCaptcha / CaptchaFox before-hook) – after 3.3
 - [x] **5.3 haveibeenpwned** (k-anonymity check on sign-up / change / reset password) – after 3.3
