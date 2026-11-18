@@ -319,6 +319,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		RateLimiter:      limiter,
 		Adapter:          store,
 		Schema:           reg,
+		Plugins:          opts.Plugins,
 	}
 
 	// Phase 1: Initialize plugins (transport/middleware plugins first so global middlewares wrap all plugin routes)

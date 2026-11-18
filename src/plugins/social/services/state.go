@@ -149,6 +149,13 @@ type generatedState struct {
 
 // generateState is better-auth's generateState + generateGenericState.
 func (s *Service) generateState(ctx context.Context, link *StateLink, in stateRequest) (*generatedState, error) {
+	return s.generateStateNamed(ctx, "", link, in)
+}
+
+// generateStateNamed is generateState with generateGenericState's settings.cookieName: the cookie holding the
+// signed state (database strategy) or the encrypted payload (cookie strategy); "" keeps "state" /
+// "oauth_state". The SAML relay state of the sso plugin uses "relay_state".
+func (s *Service) generateStateNamed(ctx context.Context, cookieName string, link *StateLink, in stateRequest) (*generatedState, error) {
 	// Step 1: the callback URL defaults to the app's base URL
 	callbackURL := in.CallbackURL
 	if callbackURL == "" {
@@ -184,12 +191,12 @@ func (s *Service) generateState(ctx context.Context, link *StateLink, in stateRe
 		if err != nil {
 			return nil, ErrUnableToCreateVerification
 		}
-		out.Cookies = append(out.Cookies, s.kit.Cookies.Cookie(OAuthStateCookie, enc, oauthStateCookieMaxAge))
+		out.Cookies = append(out.Cookies, s.kit.Cookies.Cookie(pickCookie(cookieName, OAuthStateCookie), enc, oauthStateCookieMaxAge))
 		return out, nil
 	}
 
 	// Step 3b: database strategy: a signed state cookie + a verification row keyed by the state
-	out.Cookies = append(out.Cookies, s.kit.Cookies.SignedCookie(StateCookie, state, stateCookieMaxAge))
+	out.Cookies = append(out.Cookies, s.kit.Cookies.SignedCookie(pickCookie(cookieName, StateCookie), state, stateCookieMaxAge))
 	if _, err := s.kit.Repos.UpsertVerificationValue(ctx, &models.Verification{
 		Identifier: state,
 		Value:      payload,
@@ -209,6 +216,19 @@ func (s *Service) parseState(ctx context.Context, state string) (*StateData, []h
 // parseStateWith is parseState with better-auth's settings.skipStateCookieCheck (which wins over the
 // configured SkipStateCookieCheck), e.g. oauth-proxy cleaning up a state started in another deployment.
 func (s *Service) parseStateWith(ctx context.Context, state string, skipStateCookieCheck bool) (*StateData, []http.Cookie, error) {
+	return s.parseStateNamed(ctx, "", state, skipStateCookieCheck)
+}
+
+// pickCookie returns name, or def when name is empty.
+func pickCookie(name, def string) string {
+	if name == "" {
+		return def
+	}
+	return name
+}
+
+// parseStateNamed is parseStateWith with parseGenericState's settings.cookieName ("" keeps the defaults).
+func (s *Service) parseStateNamed(ctx context.Context, cookieName, state string, skipStateCookieCheck bool) (*StateData, []http.Cookie, error) {
 	// Step 1: the state parameter is mandatory
 	if state == "" {
 		return nil, nil, &StateError{Code: "state_not_found", Message: "State not found in OAuth callback"}
@@ -224,7 +244,7 @@ func (s *Service) parseStateWith(ctx context.Context, state string, skipStateCoo
 
 	if s.cfg.Strategy() == socialconfig.StateCookie {
 		// Step 2a: cookie strategy: decrypt oauth_state and compare its embedded state
-		enc, ok := s.kit.Cookies.ReadCookie(cookieHeader, OAuthStateCookie)
+		enc, ok := s.kit.Cookies.ReadCookie(cookieHeader, pickCookie(cookieName, OAuthStateCookie))
 		if !ok || enc == "" {
 			return nil, nil, &StateError{Code: "state_mismatch", Message: "State mismatch: auth state cookie not found"}
 		}
@@ -238,7 +258,7 @@ func (s *Service) parseStateWith(ctx context.Context, state string, skipStateCoo
 		if data.OAuthState == "" || !authcrypto.SecureEqual(data.OAuthState, state) {
 			return nil, nil, &StateError{Code: "state_mismatch", ErrorURL: data.ErrorURL, Message: "State mismatch: OAuth state parameter does not match stored state"}
 		}
-		cookies = append(cookies, s.kit.Cookies.ExpireCookie(OAuthStateCookie))
+		cookies = append(cookies, s.kit.Cookies.ExpireCookie(pickCookie(cookieName, OAuthStateCookie)))
 	} else {
 		// Step 2b: database strategy: load the verification row
 		v, err := pluginkit.AcceptNotFound(s.kit.Repos.FindVerificationValue(ctx, state))
@@ -259,12 +279,12 @@ func (s *Service) parseStateWith(ctx context.Context, state string, skipStateCoo
 		}
 		// Step 3b: the signed state cookie binds the flow to the browser that started it
 		if !skipStateCookieCheck {
-			if cv, ok := s.kit.Cookies.ReadSigned(cookieHeader, StateCookie); !ok || !authcrypto.SecureEqual(cv, state) {
+			if cv, ok := s.kit.Cookies.ReadSigned(cookieHeader, pickCookie(cookieName, StateCookie)); !ok || !authcrypto.SecureEqual(cv, state) {
 				return nil, nil, &StateError{Code: "state_mismatch", ErrorURL: data.ErrorURL, Message: "State mismatch: State not persisted correctly"}
 			}
 		}
 		// Step 4b: one-time use
-		cookies = append(cookies, s.kit.Cookies.ExpireCookie(StateCookie))
+		cookies = append(cookies, s.kit.Cookies.ExpireCookie(pickCookie(cookieName, StateCookie)))
 		_ = s.kit.Repos.DeleteVerificationByIdentifier(ctx, state)
 	}
 

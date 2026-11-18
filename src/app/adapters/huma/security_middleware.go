@@ -5,6 +5,7 @@ import (
 
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
@@ -34,8 +35,11 @@ func SecurityMiddleware(conf config.AuthConfig, mgr *sessionsvc.Manager, cm *coo
 
 	return func(ctx huma.Context, next func(huma.Context)) {
 		var opID string
+		skipOrigin := false
 		if op := ctx.Operation(); op != nil {
 			opID = op.OperationID
+			// better-auth's skipOriginCheck paths (plugin routes registered with SkipOriginCheck)
+			skipOrigin = op.Metadata[types.SkipOriginCheckMetaKey] == true
 		}
 
 		// 0. Block disabled operations (including plugin routes that bypass core RegisterRoutes)
@@ -45,7 +49,7 @@ func SecurityMiddleware(conf config.AuthConfig, mgr *sessionsvc.Manager, cm *coo
 		}
 
 		// 1. Origin/Referer CSRF check on mutating auth endpoints (core and plugins), optionally on every route
-		if checkOriginEverywhere || (checkAuthOrigin && underBasePath(ctx, basePath)) {
+		if !skipOrigin && (checkOriginEverywhere || (checkAuthOrigin && underBasePath(ctx, basePath))) {
 			if err := OriginError(ctx, conf, origins, false); err != nil {
 				autherr.Report(ctx.Context(), err)
 				writeError(ctx, err)

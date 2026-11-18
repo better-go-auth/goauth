@@ -140,7 +140,8 @@ Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
   `/userinfo`, `/register`, `/endsession`; pairs with jwt)
 - [ ] **6.2 mcp** (OAuth authorization server for MCP clients) – after 6.1
 - [ ] **6.3 device-authorization** (RFC 8628, for CLIs and TVs)
-- [ ] **6.4 SSO** (SAML/OIDC per organization), then **6.5 SCIM** provisioning – after 6.1
+- [x] **6.4 SSO** (SAML/OIDC per organization) *(`src/plugins/sso`, @better-auth/sso 1.6.16; SAML on crewjam/saml)*
+- [x] **6.5 SCIM** provisioning *(`src/plugins/scim`, @better-auth/scim 1.6.16)*
 - [ ] **6.6 siwe** (Sign-In with Ethereum) – niche, last
 
 ## Stage 7 – Other databases (L, when needed)
