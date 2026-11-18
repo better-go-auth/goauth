@@ -89,7 +89,7 @@ jobs:
             echo "TEST_MYSQL_URL=root:testpass@tcp(localhost:3306)/testdb?parseTime=true" >> "$GITHUB_ENV"
           fi
       - name: repository contract
-        run: go test -race ./src/app/repository/... -count=1 -run 'Contract' -v -timeout 300s
+        run: go test -race ./src/app/repository/... ./src/adapter/... -count=1 -run 'Contract' -v -timeout 300s
       - uses: actions/setup-node@v4
         if: matrix.db == 'postgres'
         with: { node-version: "20" }

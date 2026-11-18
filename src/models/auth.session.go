@@ -33,6 +33,10 @@ type Session struct {
 	DeviceType             *string    `json:"deviceType,omitempty"   bun:"device_type"` // mobile, desktop, tablet
 	LastUsedAt             *time.Time `json:"lastUsedAt,omitempty"   bun:"last_used_at"`
 	User                   *User      `json:"user,omitempty"         gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
+
+	// Extra holds the values of runtime fields (config additionalFields, plugin schema fields) keyed by
+	// field name. Read them with schema.Get[T](session, "field").
+	Extra map[string]any `json:"-" gorm:"-" bun:"-" mapstructure:"-"`
 }
 
 type SessionFilter struct {

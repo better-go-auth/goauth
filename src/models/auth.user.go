@@ -18,6 +18,10 @@ type User struct {
 
 	Sessions []Session `json:"sessions,omitempty" gorm:"foreignKey:UserID"`
 	Tokens   []string  `json:"tokens,omitempty" gorm:"-"`
+
+	// Extra holds the values of runtime fields (config additionalFields, plugin schema fields) keyed by
+	// field name. Read them with schema.Get[T](user, "field").
+	Extra map[string]any `json:"-" gorm:"-" bun:"-" mapstructure:"-"`
 }
 
 type UserDto struct {

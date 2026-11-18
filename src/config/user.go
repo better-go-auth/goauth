@@ -5,12 +5,21 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 // UserOptions mirrors better-auth's `user` options.
 type UserOptions struct {
 	ChangeEmail ChangeEmailOptions
 	DeleteUser  DeleteUserOptions
+
+	// ModelName renames the user table (better-auth's user.modelName). It wins over GoAuth.TableNames.
+	ModelName string
+	// Fields renames user columns: field name → column name, used as is (better-auth's user.fields),
+	// e.g. {"emailVerified": "is_verified"}.
+	Fields map[string]string
+	// AdditionalFields adds user fields stored in real columns (better-auth's user.additionalFields).
+	AdditionalFields map[string]schema.Field
 
 	GoAuth UserGoAuth
 }
@@ -63,6 +72,13 @@ type DeleteAccountVerificationData struct {
 // AccountOptions mirrors better-auth's `account` options.
 type AccountOptions struct {
 	AccountLinking AccountLinkingOptions
+
+	// ModelName renames the account table (better-auth's account.modelName).
+	ModelName string
+	// Fields renames account columns: field name → column name (better-auth's account.fields).
+	Fields map[string]string
+	// AdditionalFields adds account fields (better-auth's account.additionalFields).
+	AdditionalFields map[string]schema.Field
 }
 
 type AccountLinkingOptions struct {

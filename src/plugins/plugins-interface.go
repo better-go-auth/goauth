@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/better-go-auth/goauth/src/adapter"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	"github.com/better-go-auth/goauth/src/schema"
 	"github.com/danielgtaylor/huma/v2"
 	"gorm.io/gorm"
 )
@@ -43,6 +45,11 @@ type InitContext struct {
 	DB               *gorm.DB
 	CookieManager    *cookies.Manager
 	GenerateID       func() string
+
+	// Adapter is the storage-agnostic adapter over the schema registry (core + config + plugin schemas).
+	// It is nil until SetupGoAuth builds the registry and adapter (missing-tasks 2.5); plugins moving off
+	// DB (2.9) read and write their models through it with registry field names.
+	Adapter adapter.Adapter
 
 	// Extras is intentionally disabled. We do not use this field; all
 	// dependencies are provided via the typed fields above (DB,
@@ -84,6 +91,14 @@ type DependencyProvider interface {
 // the fields of installed plugins (false / null when unset), and update-user knows which keys exist.
 type SchemaFieldsProvider interface {
 	SchemaFields() dtos.SchemaFields
+}
+
+// SchemaProvider is an optional interface for plugins that declare database schema like better-auth's
+// plugin `schema`: fields added to existing models (user, session, ...) and whole new models (tables).
+// SetupGoAuth merges every provider into the schema registry after the configuration's additionalFields
+// (later plugins win), and the registry drives input parsing, output, migrations and the adapter.
+type SchemaProvider interface {
+	Schema() schema.PluginSchema
 }
 
 // HookProvider is an optional interface plugins can implement to provide a HookService.

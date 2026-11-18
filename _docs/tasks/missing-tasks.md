@@ -41,14 +41,17 @@ the stage follows doc 04 §7.
   DeleteUser / CreateSession / LinkAccount / verification API used by core *and* plugins, replacing direct
   `repos.CreateUser` calls (core sign-up, email-otp, admin, org) and the duplicated delete in admin.
   *(01 §2.1)*
-- [ ] **2.2 Schema registry** `src/schema` with logical types only and name resolution (`ModelName`, `Fields`,
+- [x] **2.2 Schema registry** `src/schema` with logical types only and name resolution (`ModelName`, `Fields`,
   prefix, `ColumnCase`); no GORM import. *(04 §7 step 1, 02 step 1)*
-- [ ] **2.3 `ParseInput` + output rules** (better-auth's additionalFields input/output rules and error codes).
+- [x] **2.3 `ParseInput` + output rules** (better-auth's additionalFields input/output rules and error codes).
   *(04 §7 step 2, 02 steps 2–3)* – after 2.2
-- [ ] **2.4 Generic adapter contract + memory adapter + `adapterrepo`**; run `repotest` against it. *(04 §7 step 3)*
+- [x] **2.4 Generic adapter contract + memory adapter + `adapterrepo`**; run `repotest` against it. *(04 §7 step 3)*
   – after 2.2
 - [ ] **2.5 GORM adapter** becomes the default `IAuthRepos` once `repotest` and the compat suite pass on SQLite,
   Postgres and MySQL; the old `gormauth` stays as an escape hatch. Riskiest step. *(04 §7 step 4)* – after 2.4
+  - [x] GORM adapter (`src/adapter/gormadapter`) passing the adapter contract and `repotest` (via `adapterrepo`)
+    on SQLite, Postgres and MySQL.
+  - [ ] Switch `SetupGoAuth`'s default repositories to `adapterrepo(gormadapter)` and run the compat suites.
 - [ ] **2.6 `additionalFields` end to end:** sign-up, update-user, update-session, plugin sign-ups, admin
   create-user; official client test with `inferAdditionalFields`. Fixes blocker B2. *(02 step 6)* – after 2.3, 2.5
 - [ ] **2.7 Migrations:** SQL renderer, additive migrator, `Migrations.Mode = auto | verify | off`,
