@@ -59,6 +59,10 @@ type InitContext struct {
 	// Schema is the schema registry SetupGoAuth built (core models, configuration additionalFields and
 	// renames, every SchemaProvider): table and column names, field definitions, input/output rules.
 	Schema *schema.Registry
+	// Plugin returns the installed plugin with id, or nil (better-auth's ctx.context.getPlugin). Plugins are
+	// initialized one after the other, so call it at request time (or after Init) to see every plugin; nil
+	// outside SetupGoAuth.
+	Plugin func(id string) Plugin
 
 	// Extras is intentionally disabled. We do not use this field; all
 	// dependencies are provided via the typed fields above (DB,

@@ -136,9 +136,9 @@ Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
 
 ## Stage 6 – Larger and identity-provider features (L)
 
-- [ ] **6.1 oidc-provider** (`/.well-known/openid-configuration`, `/oauth2/authorize`, `/consent`, `/token`,
-  `/userinfo`, `/register`, `/endsession`; pairs with jwt)
-- [ ] **6.2 mcp** (OAuth authorization server for MCP clients) – after 6.1
+- [x] **6.1 oidc-provider** (`/.well-known/openid-configuration`, `/oauth2/authorize`, `/consent`, `/token`,
+  `/userinfo`, `/register`, `/endsession`; pairs with jwt) *(done 2026-11-18: `src/plugins/oidc-provider`)*
+- [x] **6.2 mcp** (OAuth authorization server for MCP clients) – after 6.1 *(done 2026-11-18: `src/plugins/mcp`)*
 - [ ] **6.3 device-authorization** (RFC 8628, for CLIs and TVs)
 - [ ] **6.4 SSO** (SAML/OIDC per organization), then **6.5 SCIM** provisioning – after 6.1
 - [ ] **6.6 siwe** (Sign-In with Ethereum) – niche, last
