@@ -391,12 +391,9 @@ func (s *PhoneNumberService) signUpUser(ctx context.Context, in VerifyInput) (*m
 	if truthy(in.Extra["phoneNumberVerified"]) {
 		return nil, ErrPhoneNumberVerifiedNotAllowed
 	}
-	// Step 2: placeholder email and name
+	// Step 2: placeholder email (GetTempEmail is required, checked by the plugin's Init) and name
 	opts := s.cfg.SignUpOnVerification
-	email := in.PhoneNumber + "@phone.invalid"
-	if opts.GetTempEmail != nil {
-		email = opts.GetTempEmail(in.PhoneNumber)
-	}
+	email := opts.GetTempEmail(in.PhoneNumber)
 	name := in.PhoneNumber
 	if opts.GetTempName != nil {
 		name = opts.GetTempName(in.PhoneNumber)

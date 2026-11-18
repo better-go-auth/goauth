@@ -36,13 +36,13 @@ type StatusOutput struct {
 // SignIn mirrors better-auth's signInMagicLink: it stores a token and sends the link.
 func (h *MagicLinkHandler) SignIn(ctx context.Context, in *SignInInput) (*StatusOutput, error) {
 	// Step 1: better-auth's global origin check validates the body redirect targets first
-	if err := h.Kit.CheckURL(in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
+	if err := h.Kit.CheckURL(ctx, in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
-	if err := h.Kit.CheckURL(in.Body.ErrorCallbackURL, autherr.ErrInvalidErrorCallbackURL); err != nil {
+	if err := h.Kit.CheckURL(ctx, in.Body.ErrorCallbackURL, autherr.ErrInvalidErrorCallbackURL); err != nil {
 		return nil, err
 	}
-	if err := h.Kit.CheckURL(in.Body.NewUserCallbackURL, autherr.ErrInvalidNewUserCallbackURL); err != nil {
+	if err := h.Kit.CheckURL(ctx, in.Body.NewUserCallbackURL, autherr.ErrInvalidNewUserCallbackURL); err != nil {
 		return nil, err
 	}
 	// Step 2: create the token and send the link
@@ -78,20 +78,20 @@ func (h *MagicLinkHandler) Verify(ctx context.Context, in *VerifyInput) (*Verify
 	// Step 2: better-auth's originCheck middlewares; all three use the "callbackURL" label, so every
 	// untrusted target is reported as INVALID_CALLBACK_URL
 	for _, target := range []string{rawCallback, rawNewUser, rawError} {
-		if err := h.Kit.CheckURL(orRoot(target), autherr.ErrInvalidCallbackURL); err != nil {
+		if err := h.Kit.CheckURL(ctx, orRoot(target), autherr.ErrInvalidCallbackURL); err != nil {
 			return nil, err
 		}
 	}
 
 	// Step 3: resolve the targets against the base URL (errorCallbackURL/newUserCallbackURL default to callbackURL)
-	callbackURL := h.resolve(orRoot(rawCallback))
+	callbackURL := h.resolve(ctx, orRoot(rawCallback))
 	errorCallbackURL := callbackURL
 	if rawError != "" {
-		errorCallbackURL = h.resolve(rawError)
+		errorCallbackURL = h.resolve(ctx, rawError)
 	}
 	newUserCallbackURL := callbackURL
 	if rawNewUser != "" {
-		newUserCallbackURL = h.resolve(rawNewUser)
+		newUserCallbackURL = h.resolve(ctx, rawNewUser)
 	}
 
 	// Step 4: consume the token, sign up if needed and create the session
@@ -129,8 +129,8 @@ func (h *MagicLinkHandler) Verify(ctx context.Context, in *VerifyInput) (*Verify
 
 // resolve is new URL(raw, ctx.context.baseURL).toString(): relative targets are resolved against the base URL
 // and an empty path becomes "/".
-func (h *MagicLinkHandler) resolve(raw string) string {
-	resolved := h.Kit.ResolveURL(raw)
+func (h *MagicLinkHandler) resolve(ctx context.Context, raw string) string {
+	resolved := h.Kit.ResolveURL(ctx, raw)
 	u, err := url.Parse(resolved)
 	if err != nil {
 		return resolved

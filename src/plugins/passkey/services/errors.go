@@ -56,8 +56,9 @@ var (
 	ErrSessionRequired       = pluginkit.NewError(http.StatusUnauthorized, codeSessionRequired, MsgSessionRequired)
 	ErrResolveUserRequired   = pluginkit.NewError(http.StatusBadRequest, codeResolveUserRequired, MsgResolveUserRequired)
 	ErrResolvedUserInvalid   = pluginkit.NewError(http.StatusBadRequest, codeResolvedUserInvalid, MsgResolvedUserInvalid)
-	// ErrOriginMissing is better-auth's `new APIError("BAD_REQUEST", { message: "origin missing" })`.
-	ErrOriginMissing = pluginkit.NewError(http.StatusBadRequest, "BAD_REQUEST", "origin missing")
+	// ErrOriginMissing is better-auth's `new APIError("BAD_REQUEST", { message: "origin missing" })`: a 400 whose
+	// body is only {"message": "origin missing"} (no code, like better-call's APIError without one).
+	ErrOriginMissing = pluginkit.NewError(http.StatusBadRequest, "", "origin missing")
 	// ErrUserNotFound is verify-authentication's answer when the passkey's user no longer exists.
 	ErrUserNotFound = pluginkit.NewError(http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", "User not found")
 	// ErrForbidden is requireResourceOwnership's plain UNAUTHORIZED (delete-passkey of another user's passkey).

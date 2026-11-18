@@ -10,7 +10,7 @@ import (
 // this JSON body matches Better Auth's wire format: {"code": "...", "message": "..."}.
 type AuthError struct {
 	StatusCode int      `json:"-"`
-	Code       RespCode `json:"code"`
+	Code       RespCode `json:"code,omitempty"`
 	Message    string   `json:"message"`
 	// RequestID is set on internal (5xx) errors created by Internal; the same ID is logged with the
 	// real cause, so a client report can be matched to the log.

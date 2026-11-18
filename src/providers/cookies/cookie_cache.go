@@ -2,42 +2,49 @@ package cookies
 
 import (
 	"bytes"
-	"crypto/aes"
-	"crypto/cipher"
 	"crypto/hmac"
-	"crypto/rand"
-	"crypto/sha512"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/hkdf"
 )
 
-// CachedSessionPayload is the serialized payload stored inside session_data.
+// CachedSessionPayload is a decoded session_data cookie: better-auth's cookie-cache sessionData
+// ({session, user, updatedAt, version}) plus the moment the cache expires.
 type CachedSessionPayload struct {
-	Session   dtos.SessionData  `json:"session"`
-	User      dtos.UserResponse `json:"user"`
-	Version   string            `json:"version"`
-	ExpiresAt int64             `json:"expiresAt"`
-}
-
-// jwtCacheClaims represents standard JWT claims wrapping CachedSessionPayload.
-type jwtCacheClaims struct {
 	Session dtos.SessionData  `json:"session"`
 	User    dtos.UserResponse `json:"user"`
-	Version string            `json:"version"`
-	jwt.RegisteredClaims
+	// UpdatedAt is when the cache was written (unix milliseconds).
+	UpdatedAt int64  `json:"updatedAt"`
+	Version   string `json:"version"`
+	// ExpiresAt is when the cache expires (unix seconds).
+	ExpiresAt int64 `json:"-"`
+}
+
+// sessionData is better-auth's cookie-cache payload; the field order is JSON.stringify's, which the compact
+// strategy's signature covers.
+type sessionData struct {
+	Session   dtos.SessionData  `json:"session"`
+	User      dtos.UserResponse `json:"user"`
+	UpdatedAt int64             `json:"updatedAt"`
+	Version   string            `json:"version"`
+}
+
+// compactEnvelope is the compact strategy's cookie: base64url(JSON{session, expiresAt, signature}).
+type compactEnvelope struct {
+	Session   json.RawMessage `json:"session"`
+	ExpiresAt int64           `json:"expiresAt"`
+	Signature string          `json:"signature"`
 }
 
 var (
@@ -51,49 +58,44 @@ func (c *Manager) CookieCacheEnabled() bool {
 	return c.cookieCache != nil && c.cookieCache.IsEnabled()
 }
 
-// CreateSessionDataCookie builds the Set-Cookie for session_data caching sw.
+// CreateSessionDataCookie builds the Set-Cookie for session_data caching sw, in better-auth's format for the
+// configured strategy (setCookieCache), signed / encrypted with the current secret.
 func (c *Manager) CreateSessionDataCookie(sw *dtos.SessionWithUser, dontRemember bool) (*http.Cookie, error) {
 	if sw == nil {
 		return nil, errors.New("cookies: nil session provided")
 	}
 
-	// 1. Calculate expiration duration
+	// Step 1: calculate expiration duration
 	maxAge := c.cookieCache.EffectiveMaxAge()
-	expiresAt := time.Now().Add(maxAge).Unix()
 	cookieMaxAge := int(maxAge.Seconds())
 	if dontRemember {
 		cookieMaxAge = 0
 	}
 
-	// 2. Build payload structure
-	payload := CachedSessionPayload{
+	// Step 2: build better-auth's sessionData
+	data := sessionData{
 		Session:   sw.Session,
 		User:      sw.User,
+		UpdatedAt: time.Now().UnixMilli(),
 		Version:   c.cookieCache.EffectiveVersion(),
-		ExpiresAt: expiresAt,
 	}
 
-	// 3. Encode according to configured strategy
-	strategy := c.cookieCache.EffectiveStrategy()
+	// Step 3: encode according to configured strategy
 	var encodedVal string
 	var err error
-
-	switch strategy {
+	switch c.cookieCache.EffectiveStrategy() {
 	case config.CookieCacheStrategyJwt:
-		encodedVal, err = c.encodeJWT(payload, expiresAt)
+		encodedVal, err = c.encodeJWT(data, maxAge)
 	case config.CookieCacheStrategyJwe:
-		encodedVal, err = c.encodeJWE(payload)
-	case config.CookieCacheStrategyCompact:
-		fallthrough
+		encodedVal, err = c.keys.EncodeJWE(data, authcrypto.JWESaltSession, maxAge)
 	default:
-		encodedVal, err = c.encodeCompact(payload)
+		encodedVal, err = c.encodeCompact(data, time.Now().Add(maxAge).UnixMilli())
 	}
-
 	if err != nil {
 		return nil, fmt.Errorf("cookies: failed to encode session_data: %w", err)
 	}
 
-	// 4. Construct cookie object with secure attributes
+	// Step 4: construct cookie object with secure attributes
 	ck := c.cookie(CookieSessionData, encodedVal, cookieMaxAge)
 	return &ck, nil
 }
@@ -104,43 +106,30 @@ func (c *Manager) ReadSessionData(cookieHeader string) (*dtos.SessionWithUser, e
 		return nil, errors.New("cookies: cookie cache not enabled")
 	}
 
-	// 1. Read raw session_data cookie value
-	raw, ok := c.read(cookieHeader, CookieSessionData)
-	if !ok || raw == "" {
-		return nil, http.ErrNoCookie
-	}
-
-	// 2. Decode based on configured strategy
-	strategy := c.cookieCache.EffectiveStrategy()
-	var payload *CachedSessionPayload
-	var err error
-
-	switch strategy {
-	case config.CookieCacheStrategyJwt:
-		payload, err = c.decodeJWT(raw)
-	case config.CookieCacheStrategyJwe:
-		payload, err = c.decodeJWE(raw)
-	case config.CookieCacheStrategyCompact:
-		fallthrough
-	default:
-		payload, err = c.decodeCompact(raw)
-	}
-
+	// Step 1: decode and verify the cookie
+	payload, err := c.decodeSessionData(cookieHeader)
 	if err != nil {
 		return nil, err
 	}
 
-	// 3. Verify expiration
-	if payload.ExpiresAt > 0 && time.Now().Unix() > payload.ExpiresAt {
-		return nil, errExpiredCookieCache
+	// Step 2: version match for cache invalidation (missing version counts as "1", like better-auth)
+	version := payload.Version
+	if version == "" {
+		version = "1"
 	}
-
-	// 4. Verify version match for cache invalidation
-	if payload.Version != c.cookieCache.EffectiveVersion() {
+	if version != c.cookieCache.EffectiveVersion() {
 		return nil, errVersionMismatch
 	}
 
-	// 5. Return reconstructed SessionWithUser
+	// Step 3: the cache and the cached session must both still be valid
+	if payload.ExpiresAt > 0 && time.Now().Unix() > payload.ExpiresAt {
+		return nil, errExpiredCookieCache
+	}
+	if exp := time.Time(payload.Session.ExpiresAt); !exp.IsZero() && exp.Before(time.Now()) {
+		return nil, errExpiredCookieCache
+	}
+
+	// Step 4: return reconstructed SessionWithUser
 	return &dtos.SessionWithUser{
 		Session: payload.Session,
 		User:    payload.User,
@@ -152,29 +141,12 @@ func (c *Manager) ShouldRefreshCookieCache(cookieHeader string) bool {
 	if !c.CookieCacheEnabled() || !c.cookieCache.IsRefreshEnabled() {
 		return false
 	}
-
-	// 1. Read raw cookie value
-	raw, ok := c.read(cookieHeader, CookieSessionData)
-	if !ok || raw == "" {
-		return false
-	}
-
-	// 2. Decode payload
-	var payload *CachedSessionPayload
-	var err error
-	switch c.cookieCache.EffectiveStrategy() {
-	case config.CookieCacheStrategyJwt:
-		payload, err = c.decodeJWT(raw)
-	case config.CookieCacheStrategyJwe:
-		payload, err = c.decodeJWE(raw)
-	default:
-		payload, err = c.decodeCompact(raw)
-	}
+	// Step 1: decode payload
+	payload, err := c.decodeSessionData(cookieHeader)
 	if err != nil || payload == nil {
 		return false
 	}
-
-	// 3. Check remaining lifetime against RefreshUpdateAge
+	// Step 2: check remaining lifetime against RefreshUpdateAge
 	remaining := time.Until(time.Unix(payload.ExpiresAt, 0))
 	return remaining <= c.cookieCache.RefreshUpdateAge()
 }
@@ -193,269 +165,149 @@ func (c *Manager) SessionCookiesWithData(sw *dtos.SessionWithUser, dontRemember 
 	return cookies
 }
 
-// ─── Compact Strategy Implementation ──────────────────────────────────────────
+// decodeSessionData reads session_data (joining chunks) and decodes it with the configured strategy.
+func (c *Manager) decodeSessionData(cookieHeader string) (*CachedSessionPayload, error) {
+	raw, ok := c.ReadChunked(cookieHeader, CookieSessionData)
+	if !ok || raw == "" {
+		return nil, http.ErrNoCookie
+	}
+	switch c.cookieCache.EffectiveStrategy() {
+	case config.CookieCacheStrategyJwt:
+		return c.decodeJWT(raw)
+	case config.CookieCacheStrategyJwe:
+		return c.decodeJWE(raw)
+	default:
+		return c.decodeCompact(raw)
+	}
+}
 
-// encodeCompact serializes payload to JSON, encodes to Base64URL, and signs via HMAC-SHA256.
-func (c *Manager) encodeCompact(payload CachedSessionPayload) (string, error) {
-	// 1. Marshal payload to JSON
-	jsonBytes, err := json.Marshal(payload)
+// ─── Compact Strategy ────────────────────────────────────────────────────────
+
+// encodeCompact is better-auth's compact strategy: base64url(JSON{session: sessionData, expiresAt, signature})
+// where signature = HMAC-SHA256(secret, JSON.stringify({...sessionData, expiresAt})) in unpadded base64url.
+func (c *Manager) encodeCompact(data sessionData, expiresAtMs int64) (string, error) {
+	// Step 1: sessionData serialized like JSON.stringify
+	inner, err := authcrypto.MarshalJSON(data)
 	if err != nil {
 		return "", err
 	}
-
-	// 2. Encode to unpadded URL-safe base64
-	b64Val := base64.RawURLEncoding.EncodeToString(jsonBytes)
-
-	// 3. Sign using HMAC-SHA256 and encode cookie
-	signed := SignCookieValue(b64Val, c.secret)
-	return EncodeCookieValue(signed), nil
+	// Step 2: sign the sessionData with expiresAt appended
+	sig := compactSignature(c.keys.CurrentSecret(), inner, expiresAtMs)
+	// Step 3: the envelope, base64url without padding
+	outer, err := authcrypto.MarshalJSON(compactEnvelope{Session: inner, ExpiresAt: expiresAtMs, Signature: sig})
+	if err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(outer), nil
 }
 
-// decodeCompact verifies HMAC-SHA256 and decodes the JSON payload.
+// decodeCompact verifies the signature (current secret, then older ones) and decodes the payload.
 func (c *Manager) decodeCompact(raw string) (*CachedSessionPayload, error) {
-	// 1. Decode URL encoding and verify HMAC signature
-	decodedCookie := DecodeCookieValue(raw)
-	b64Val, valid := VerifyCookieValue(decodedCookie, c.secret)
+	// Step 1: base64url-decode the envelope
+	b, err := base64.RawURLEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, errInvalidCookieCache
+	}
+	var env compactEnvelope
+	if err := json.Unmarshal(b, &env); err != nil || len(env.Session) == 0 || env.Signature == "" {
+		return nil, errInvalidCookieCache
+	}
+	// Step 2: verify; the raw JSON text is exactly what JSON.stringify produced when it was signed
+	inner := bytes.TrimSpace(env.Session)
+	valid := false
+	for _, secret := range c.keys.VerifySecrets() {
+		if subtle.ConstantTimeCompare([]byte(compactSignature(secret, inner, env.ExpiresAt)), []byte(env.Signature)) == 1 {
+			valid = true
+			break
+		}
+	}
 	if !valid {
 		return nil, errInvalidCookieCache
 	}
-
-	// 2. Decode unpadded URL-safe base64
-	jsonBytes, err := base64.RawURLEncoding.DecodeString(b64Val)
-	if err != nil {
-		// Fallback to standard Base64 if needed
-		jsonBytes, err = base64.StdEncoding.DecodeString(b64Val)
-		if err != nil {
-			return nil, errInvalidCookieCache
-		}
-	}
-
-	// 3. Unmarshal JSON
-	var payload CachedSessionPayload
-	if err := json.Unmarshal(jsonBytes, &payload); err != nil {
+	// Step 3: decode the sessionData
+	var data sessionData
+	if err := json.Unmarshal(inner, &data); err != nil {
 		return nil, errInvalidCookieCache
 	}
-
-	return &payload, nil
+	return &CachedSessionPayload{Session: data.Session, User: data.User, UpdatedAt: data.UpdatedAt, Version: data.Version, ExpiresAt: env.ExpiresAt / 1000}, nil
 }
 
-// ─── JWT Strategy Implementation ──────────────────────────────────────────────
-
-// encodeJWT signs the session cache as an HS256 JWT using Manager.secret.
-func (c *Manager) encodeJWT(payload CachedSessionPayload, expiresAt int64) (string, error) {
-	claims := jwtCacheClaims{
-		Session: payload.Session,
-		User:    payload.User,
-		Version: payload.Version,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Unix(expiresAt, 0)),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
-		},
+// compactSignature signs JSON.stringify({...sessionData, expiresAt}) given sessionData's JSON text.
+func compactSignature(secret string, inner []byte, expiresAtMs int64) string {
+	signed := make([]byte, 0, len(inner)+32)
+	signed = append(signed, inner[:len(inner)-1]...)
+	if len(inner) > 2 {
+		signed = append(signed, ',')
 	}
+	signed = append(signed, `"expiresAt":`+strconv.FormatInt(expiresAtMs, 10)+`}`...)
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(signed)
+	return base64.RawURLEncoding.EncodeToString(mac.Sum(nil))
+}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte(c.secret))
+// ─── JWT Strategy ────────────────────────────────────────────────────────────
+
+// encodeJWT is better-auth's signJWT(sessionData, secret, maxAge): HS256 with iat and exp.
+func (c *Manager) encodeJWT(data sessionData, maxAge time.Duration) (string, error) {
+	// Step 1: sessionData as claims
+	raw, err := json.Marshal(data)
 	if err != nil {
 		return "", err
 	}
-	return EncodeCookieValue(tokenString), nil
+	claims := jwt.MapClaims{}
+	if err := json.Unmarshal(raw, &claims); err != nil {
+		return "", err
+	}
+	// Step 2: iat / exp and the signature with the current secret
+	now := time.Now()
+	claims["iat"] = now.Unix()
+	claims["exp"] = now.Add(maxAge).Unix()
+	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(c.keys.CurrentSecret()))
 }
 
-// decodeJWT parses and validates the HS256 JWT cookie cache.
+// decodeJWT verifies the HS256 cookie cache with the current secret, then the older ones.
 func (c *Manager) decodeJWT(raw string) (*CachedSessionPayload, error) {
-	tokenString := DecodeCookieValue(raw)
-	var claims jwtCacheClaims
-
-	token, err := jwt.ParseWithClaims(tokenString, &claims, func(t *jwt.Token) (any, error) {
-		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("cookies: unexpected signing method: %v", t.Header["alg"])
+	for _, secret := range c.keys.VerifySecrets() {
+		var claims struct {
+			sessionData
+			jwt.RegisteredClaims
 		}
-		return []byte(c.secret), nil
-	})
-
-	if err != nil || token == nil || !token.Valid {
-		return nil, errInvalidCookieCache
+		token, err := jwt.ParseWithClaims(raw, &claims, func(t *jwt.Token) (any, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("cookies: unexpected signing method: %v", t.Header["alg"])
+			}
+			return []byte(secret), nil
+		})
+		if err != nil || token == nil || !token.Valid {
+			continue
+		}
+		return payloadFromClaims(claims.sessionData, claims.ExpiresAt), nil
 	}
-
-	var exp int64
-	if claims.ExpiresAt != nil {
-		exp = claims.ExpiresAt.Unix()
-	}
-
-	return &CachedSessionPayload{
-		Session:   claims.Session,
-		User:      claims.User,
-		Version:   claims.Version,
-		ExpiresAt: exp,
-	}, nil
+	return nil, errInvalidCookieCache
 }
 
-// ─── JWE Strategy Implementation ──────────────────────────────────────────────
-// Implements standard RFC 7516 Direct JWE with A256CBC-HS512 authenticated encryption.
+// ─── JWE Strategy ────────────────────────────────────────────────────────────
 
-const (
-	jweHeaderCompact = "eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2Q0JDLUhTNTEyIn0" // {"alg":"dir","enc":"A256CBC-HS512"}
-	jweKeyDeriveInfo = "better-auth-jwe-cookie-cache"
-)
-
-// deriveJWEKeys derives a 32-byte MAC key and 32-byte AES key from the secret via HKDF-SHA512.
-func (c *Manager) deriveJWEKeys() (macKey, encKey []byte, err error) {
-	kdf := hkdf.New(sha512.New, []byte(c.secret), nil, []byte(jweKeyDeriveInfo))
-	keyMaterial := make([]byte, 64)
-	if _, err := io.ReadFull(kdf, keyMaterial); err != nil {
-		return nil, nil, err
-	}
-	return keyMaterial[:32], keyMaterial[32:64], nil
-}
-
-// encodeJWE encrypts payload into a compact 5-part JWE string (header..iv.ciphertext.tag).
-func (c *Manager) encodeJWE(payload CachedSessionPayload) (string, error) {
-	// 1. Serialize JSON payload
-	plaintext, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-
-	// 2. Derive MAC and Encryption keys
-	macKey, encKey, err := c.deriveJWEKeys()
-	if err != nil {
-		return "", err
-	}
-
-	// 3. Generate random 16-byte IV
-	iv := make([]byte, aes.BlockSize)
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return "", err
-	}
-
-	// 4. PKCS#7 pad plaintext
-	paddedPlaintext := pkcs7Pad(plaintext, aes.BlockSize)
-
-	// 5. Encrypt with AES-256-CBC
-	block, err := aes.NewCipher(encKey)
-	if err != nil {
-		return "", err
-	}
-	ciphertext := make([]byte, len(paddedPlaintext))
-	mode := cipher.NewCBCEncrypter(block, iv)
-	mode.CryptBlocks(ciphertext, paddedPlaintext)
-
-	// 6. Compute HMAC-SHA512 authentication tag over AAD || IV || Ciphertext || AL
-	aad := []byte(jweHeaderCompact)
-	tag := computeJWETag(macKey, aad, iv, ciphertext)
-
-	// 7. Assemble 5-part compact JWE: header..iv.ciphertext.tag
-	jweToken := fmt.Sprintf("%s..%s.%s.%s",
-		jweHeaderCompact,
-		base64.RawURLEncoding.EncodeToString(iv),
-		base64.RawURLEncoding.EncodeToString(ciphertext),
-		base64.RawURLEncoding.EncodeToString(tag),
-	)
-
-	return EncodeCookieValue(jweToken), nil
-}
-
-// decodeJWE decrypts and verifies a compact 5-part JWE string.
+// decodeJWE decrypts better-auth's symmetricEncodeJWT(sessionData, secretConfig, "better-auth-session").
 func (c *Manager) decodeJWE(raw string) (*CachedSessionPayload, error) {
-	jweToken := DecodeCookieValue(raw)
-	parts := strings.Split(jweToken, ".")
-	if len(parts) != 5 {
-		return nil, errInvalidCookieCache
-	}
-
-	headerB64, encKeyB64, ivB64, cipherB64, tagB64 := parts[0], parts[1], parts[2], parts[3], parts[4]
-
-	// 1. Direct encryption requires empty encrypted key
-	if encKeyB64 != "" || headerB64 != jweHeaderCompact {
-		return nil, errInvalidCookieCache
-	}
-
-	// 2. Decode IV, Ciphertext, and Tag
-	iv, err := base64.RawURLEncoding.DecodeString(ivB64)
-	if err != nil || len(iv) != aes.BlockSize {
-		return nil, errInvalidCookieCache
-	}
-	ciphertext, err := base64.RawURLEncoding.DecodeString(cipherB64)
-	if err != nil || len(ciphertext) == 0 || len(ciphertext)%aes.BlockSize != 0 {
-		return nil, errInvalidCookieCache
-	}
-	tag, err := base64.RawURLEncoding.DecodeString(tagB64)
-	if err != nil || len(tag) != 32 {
-		return nil, errInvalidCookieCache
-	}
-
-	// 3. Derive keys and verify authentication tag
-	macKey, encKey, err := c.deriveJWEKeys()
-	if err != nil {
-		return nil, err
-	}
-
-	expectedTag := computeJWETag(macKey, []byte(headerB64), iv, ciphertext)
-	if subtle.ConstantTimeCompare(tag, expectedTag) != 1 {
-		return nil, errInvalidCookieCache
-	}
-
-	// 4. Decrypt with AES-256-CBC
-	block, err := aes.NewCipher(encKey)
-	if err != nil {
-		return nil, err
-	}
-	paddedPlaintext := make([]byte, len(ciphertext))
-	mode := cipher.NewCBCDecrypter(block, iv)
-	mode.CryptBlocks(paddedPlaintext, ciphertext)
-
-	// 5. Unpad PKCS#7
-	plaintext, err := pkcs7Unpad(paddedPlaintext, aes.BlockSize)
+	b, err := c.keys.DecodeJWE(raw, authcrypto.JWESaltSession)
 	if err != nil {
 		return nil, errInvalidCookieCache
 	}
-
-	// 6. Unmarshal JSON payload
-	var payload CachedSessionPayload
-	if err := json.Unmarshal(plaintext, &payload); err != nil {
+	var claims struct {
+		sessionData
+		Exp *jwt.NumericDate `json:"exp"`
+	}
+	if err := json.Unmarshal(b, &claims); err != nil || claims.Session.Token == "" {
 		return nil, errInvalidCookieCache
 	}
-
-	return &payload, nil
+	return payloadFromClaims(claims.sessionData, claims.Exp), nil
 }
 
-// computeJWETag computes the 32-byte truncated HMAC-SHA512 tag per RFC 7518 section 5.2.2.1.
-func computeJWETag(macKey, aad, iv, ciphertext []byte) []byte {
-	// AL = 64-bit big-endian representation of number of bits in AAD
-	al := make([]byte, 8)
-	binary.BigEndian.PutUint64(al, uint64(len(aad)*8))
-
-	mac := hmac.New(sha512.New, macKey)
-	mac.Write(aad)
-	mac.Write(iv)
-	mac.Write(ciphertext)
-	mac.Write(al)
-
-	digest := mac.Sum(nil)
-	return digest[:32] // Truncate to 32 bytes (256 bits) for A256CBC-HS512
-}
-
-// pkcs7Pad appends PKCS#7 padding to data.
-func pkcs7Pad(data []byte, blockSize int) []byte {
-	padding := blockSize - (len(data) % blockSize)
-	padtext := bytes.Repeat([]byte{byte(padding)}, padding)
-	return append(data, padtext...)
-}
-
-// pkcs7Unpad removes PKCS#7 padding from data.
-func pkcs7Unpad(data []byte, blockSize int) ([]byte, error) {
-	length := len(data)
-	if length == 0 || length%blockSize != 0 {
-		return nil, errors.New("pkcs7: invalid padding size")
+func payloadFromClaims(d sessionData, exp *jwt.NumericDate) *CachedSessionPayload {
+	p := &CachedSessionPayload{Session: d.Session, User: d.User, UpdatedAt: d.UpdatedAt, Version: d.Version}
+	if exp != nil {
+		p.ExpiresAt = exp.Unix()
 	}
-	padLen := int(data[length-1])
-	if padLen == 0 || padLen > blockSize {
-		return nil, errors.New("pkcs7: invalid padding value")
-	}
-	for i := length - padLen; i < length; i++ {
-		if data[i] != byte(padLen) {
-			return nil, errors.New("pkcs7: invalid padding byte")
-		}
-	}
-	return data[:length-padLen], nil
+	return p
 }

@@ -12,6 +12,7 @@ package social
 import (
 	"fmt"
 
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
@@ -68,6 +69,53 @@ func New(cfg socialconfig.SocialConfig, opts ...Option) *Plugin {
 		p.config.StoreStateStrategy = socialconfig.StateDatabase
 	}
 	return p
+}
+
+// FromAuthConfig builds the plugin for better-auth's core options: AuthConfig.SocialProviders plus the OAuth
+// fields of AuthConfig.Account (account linking, token encryption, state strategy). goauth.SetupGoAuth installs
+// it automatically when SocialProviders is set, so `betterAuth({ socialProviders, account })` ports 1:1.
+func FromAuthConfig(conf config.AuthConfig) *Plugin {
+	acc := conf.Account
+	return New(socialconfig.SocialConfig{
+		Providers: append([]providers.Provider(nil), conf.SocialProviders...),
+		AccountLinking: socialconfig.AccountLinking{
+			Enabled:                   acc.AccountLinking.Enabled,
+			TrustedProviders:          acc.AccountLinking.TrustedProviders,
+			AllowDifferentEmails:      acc.AccountLinking.AllowDifferentEmails,
+			DisableImplicitLinking:    acc.AccountLinking.DisableImplicitLinking,
+			UpdateUserInfoOnLink:      acc.AccountLinking.UpdateUserInfoOnLink,
+			RequireLocalEmailVerified: acc.AccountLinking.RequireLocalEmailVerified,
+		},
+		EncryptOAuthTokens:    acc.EncryptOAuthTokens,
+		UpdateAccountOnSignIn: acc.UpdateAccountOnSignIn,
+		StoreStateStrategy:    socialconfig.StateStrategy(acc.StoreStateStrategy),
+		SkipStateCookieCheck:  acc.SkipStateCookieCheck,
+	})
+}
+
+// AddProviders appends providers before Init (used for AuthConfig.SocialProviders and generic-oauth providers).
+// A provider whose id is already configured is an error.
+func (p *Plugin) AddProviders(ps ...providers.Provider) error {
+	for _, np := range ps {
+		if np == nil {
+			continue
+		}
+		if p.HasProvider(np.ID()) {
+			return fmt.Errorf("social plugin: provider %q is configured twice", np.ID())
+		}
+		p.config.Providers = append(p.config.Providers, np)
+	}
+	return nil
+}
+
+// HasProvider reports whether a provider with id is configured.
+func (p *Plugin) HasProvider(id string) bool {
+	for _, existing := range p.config.Providers {
+		if existing != nil && existing.ID() == id {
+			return true
+		}
+	}
+	return false
 }
 
 // ID returns the plugin identifier.

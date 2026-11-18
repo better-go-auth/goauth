@@ -20,7 +20,7 @@ func SetupRoutes(api huma.API, kit *pluginkit.Kit, h *Handler, requireSession bo
 	// Step 2: ceremony endpoints
 	pluginkit.Register(kit, api, pluginkit.Route{
 		OperationID: "generatePasskeyRegistrationOptions", Method: http.MethodGet, Path: "/passkey/generate-register-options",
-		Summary: "Generate registration options for a new passkey", Tags: tags, Access: regAccess,
+		Summary: "Generate registration options for a new passkey", Tags: tags, Access: regAccess, ValidateFirst: true,
 	}, h.GenerateRegisterOptions)
 	pluginkit.Register(kit, api, pluginkit.Route{
 		OperationID: "passkeyGenerateAuthenticateOptions", Method: http.MethodGet, Path: "/passkey/generate-authenticate-options",
@@ -28,7 +28,7 @@ func SetupRoutes(api huma.API, kit *pluginkit.Kit, h *Handler, requireSession bo
 	}, h.GenerateAuthenticateOptions)
 	pluginkit.Register(kit, api, pluginkit.Route{
 		OperationID: "passkeyVerifyRegistration", Method: http.MethodPost, Path: "/passkey/verify-registration",
-		Summary: "Verify registration of a new passkey", Tags: tags, Access: regAccess,
+		Summary: "Verify registration of a new passkey", Tags: tags, Access: regAccess, ValidateFirst: true,
 	}, h.VerifyRegistration)
 	pluginkit.Register(kit, api, pluginkit.Route{
 		OperationID: "passkeyVerifyAuthentication", Method: http.MethodPost, Path: "/passkey/verify-authentication",
@@ -42,10 +42,10 @@ func SetupRoutes(api huma.API, kit *pluginkit.Kit, h *Handler, requireSession bo
 	}, h.ListUserPasskeys)
 	pluginkit.Register(kit, api, pluginkit.Route{
 		OperationID: "deletePasskey", Method: http.MethodPost, Path: "/passkey/delete-passkey",
-		Summary: "Delete a specific passkey", Tags: tags, Access: pluginkit.Session,
+		Summary: "Delete a specific passkey", Tags: tags, Access: pluginkit.Session, ValidateFirst: true,
 	}, h.DeletePasskey)
 	pluginkit.Register(kit, api, pluginkit.Route{
 		OperationID: "updatePasskey", Method: http.MethodPost, Path: "/passkey/update-passkey",
-		Summary: "Update a specific passkey's name", Tags: tags, Access: pluginkit.Session,
+		Summary: "Update a specific passkey's name", Tags: tags, Access: pluginkit.Session, ValidateFirst: true,
 	}, h.UpdatePasskey)
 }

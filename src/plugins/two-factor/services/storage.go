@@ -32,7 +32,7 @@ func GenerateBackupCodeList(opts tfconfig.BackupCodeOptions) []string {
 }
 
 // EncodeBackupCodes serialises codes as JSON and stores them per storeBackupCodes.
-func EncodeBackupCodes(codes []string, secret string, opts tfconfig.BackupCodeOptions) (string, error) {
+func EncodeBackupCodes(codes []string, keys authcrypto.SecretKeys, opts tfconfig.BackupCodeOptions) (string, error) {
 	// Step 1: JSON.stringify(codes)
 	if codes == nil {
 		codes = []string{}
@@ -45,7 +45,7 @@ func EncodeBackupCodes(codes []string, secret string, opts tfconfig.BackupCodeOp
 	store := opts.StoreBackupCodes
 	switch {
 	case store.Mode == tfconfig.StoreEncrypted:
-		return authcrypto.SymmetricEncrypt(secret, string(raw))
+		return keys.Encrypt(string(raw))
 	case store.Encrypt != nil:
 		return store.Encrypt(string(raw))
 	default:
@@ -54,14 +54,14 @@ func EncodeBackupCodes(codes []string, secret string, opts tfconfig.BackupCodeOp
 }
 
 // DecodeBackupCodes reverses EncodeBackupCodes (nil when the stored value cannot be read, like safeJSONParse).
-func DecodeBackupCodes(stored, secret string, opts tfconfig.BackupCodeOptions) []string {
+func DecodeBackupCodes(stored string, keys authcrypto.SecretKeys, opts tfconfig.BackupCodeOptions) []string {
 	// Step 1: decrypt when needed
 	store := opts.StoreBackupCodes
 	plain := stored
 	var err error
 	switch {
 	case store.Mode == tfconfig.StoreEncrypted:
-		plain, err = authcrypto.SymmetricDecrypt(secret, stored)
+		plain, err = keys.Decrypt(stored)
 	case store.Decrypt != nil:
 		plain, err = store.Decrypt(stored)
 	}
@@ -79,7 +79,7 @@ func DecodeBackupCodes(stored, secret string, opts tfconfig.BackupCodeOptions) [
 // ─── OTP storage ─────────────────────────────────────────────────────────────
 
 // StoreOTP converts a fresh code into its stored form (better-auth's storeOTP).
-func StoreOTP(otp, secret string, cfg tfconfig.StoreOTPConfig) (string, error) {
+func StoreOTP(otp string, keys authcrypto.SecretKeys, cfg tfconfig.StoreOTPConfig) (string, error) {
 	switch {
 	case cfg.Mode == tfconfig.StoreHashed:
 		return HashOTP(otp), nil
@@ -88,7 +88,7 @@ func StoreOTP(otp, secret string, cfg tfconfig.StoreOTPConfig) (string, error) {
 	case cfg.Encrypt != nil:
 		return cfg.Encrypt(otp)
 	case cfg.Mode == tfconfig.StoreEncrypted:
-		return authcrypto.SymmetricEncrypt(secret, otp)
+		return keys.Encrypt(otp)
 	default:
 		return otp, nil
 	}
@@ -96,7 +96,7 @@ func StoreOTP(otp, secret string, cfg tfconfig.StoreOTPConfig) (string, error) {
 
 // OTPMatches compares the user input with the stored code (better-auth's decryptOrHashForComparison
 // followed by a constant-time comparison).
-func OTPMatches(stored, input, secret string, cfg tfconfig.StoreOTPConfig) bool {
+func OTPMatches(stored, input string, keys authcrypto.SecretKeys, cfg tfconfig.StoreOTPConfig) bool {
 	// Step 1: bring both sides to the same form
 	left, right := stored, input
 	var err error
@@ -104,7 +104,7 @@ func OTPMatches(stored, input, secret string, cfg tfconfig.StoreOTPConfig) bool 
 	case cfg.Mode == tfconfig.StoreHashed:
 		right = HashOTP(input)
 	case cfg.Mode == tfconfig.StoreEncrypted:
-		left, err = authcrypto.SymmetricDecrypt(secret, stored)
+		left, err = keys.Decrypt(stored)
 	case cfg.Hash != nil:
 		right, err = cfg.Hash(input)
 	case cfg.Decrypt != nil:

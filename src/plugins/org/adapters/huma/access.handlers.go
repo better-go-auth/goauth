@@ -49,6 +49,7 @@ func setupAccessControlRoutes(api huma.API, h *OrgHandler, path string) {
 		Description: "Checks whether the caller's member role in the organization grants the permissions.",
 		Tags:        tags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+		Metadata:    rawBodyMeta(),
 	}, h.HasPermission)
 
 	if !h.Org.DynamicAccessControlEnabled() {
@@ -62,6 +63,7 @@ func setupAccessControlRoutes(api huma.API, h *OrgHandler, path string) {
 		Description: "Creates a dynamic role (requires ac:create and every granted permission).",
 		Tags:        tags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+		Metadata:    rawBodyMeta(),
 	}, h.CreateRole)
 	huma.Register(api, huma.Operation{
 		OperationID: OrDeleteRole.Str(),
@@ -71,6 +73,7 @@ func setupAccessControlRoutes(api huma.API, h *OrgHandler, path string) {
 		Description: "Deletes a dynamic role by roleName or roleId (requires ac:delete).",
 		Tags:        tags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+		Metadata:    rawBodyMeta(),
 	}, h.DeleteRole)
 	huma.Register(api, huma.Operation{
 		OperationID: OrListRoles.Str(),
@@ -80,6 +83,7 @@ func setupAccessControlRoutes(api huma.API, h *OrgHandler, path string) {
 		Description: "Lists the organization's dynamic roles (requires ac:read).",
 		Tags:        tags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+		Metadata:    rawBodyMeta(),
 	}, h.ListRoles)
 	huma.Register(api, huma.Operation{
 		OperationID: OrGetRole.Str(),
@@ -89,6 +93,7 @@ func setupAccessControlRoutes(api huma.API, h *OrgHandler, path string) {
 		Description: "Reads a dynamic role by roleName or roleId (requires ac:read).",
 		Tags:        tags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+		Metadata:    rawBodyMeta(),
 	}, h.GetRole)
 	huma.Register(api, huma.Operation{
 		OperationID: OrUpdateRole.Str(),
@@ -98,6 +103,7 @@ func setupAccessControlRoutes(api huma.API, h *OrgHandler, path string) {
 		Description: "Updates a dynamic role's permission and/or name (requires ac:update and every granted permission).",
 		Tags:        tags,
 		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
+		Metadata:    rawBodyMeta(),
 	}, h.UpdateRole)
 }
 

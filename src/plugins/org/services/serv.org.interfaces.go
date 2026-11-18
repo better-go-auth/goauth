@@ -71,6 +71,8 @@ type ITeamService interface {
 	RemoveTeamMember(ctx context.Context, input dtos.RemoveTeamMemberInput, requestingUserID string) error
 	ListTeamMembers(ctx context.Context, teamID string, requestingUserID string, pagi models.Pagination) ([]models.TeamMember, int64, error)
 	SetActiveTeam(ctx context.Context, sessionID string, teamID *string, userID string) (*authdtos.SessionWithUser, error)
+	// ListUserTeams returns the teams the user belongs to in organizations they are a member of.
+	ListUserTeams(ctx context.Context, userID string) ([]models.Team, error)
 
 	// Dynamic Access Control
 	CreateRole(ctx context.Context, orgID, role string, permission models.Permission, requestingUserID string) (*models.OrganizationRole, error)

@@ -118,6 +118,8 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
 	cm := cookies.New(authCfg)
 	cookieName := cm.Name(cookies.CookieSessionToken)
+	// every secret a token may be signed with: the current one, then older versions after a rotation
+	secrets := cm.Keys().VerifySecrets()
 
 	return func(ctx huma.Context, next func(huma.Context)) {
 		// ─── BEFORE HOOK: Convert Authorization: Bearer <token> to Session Cookie ───
@@ -132,7 +134,7 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 		if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
 			raw := strings.TrimSpace(authHeader[7:])
 			if raw != "" {
-				if tok, ok := VerifyAndExtractToken(raw, authCfg.Secret, p.config.RequiresSignature()); ok {
+				if tok, ok := VerifyAndExtractTokenWithSecrets(raw, secrets, p.config.RequiresSignature()); ok {
 					bearerToken = tok
 					hasBearer = true
 					// Attach raw session token to context
@@ -172,6 +174,23 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 		// ─── AFTER HOOK: Intercept Set-Cookie and set set-auth-token ───
 		wrapped.finalizeHeaders()
 	}
+}
+
+// VerifyAndExtractTokenWithSecrets is VerifyAndExtractToken for secret rotation: a signature made with any of
+// secrets (current first) is accepted; unsigned tokens follow requireSignature.
+func VerifyAndExtractTokenWithSecrets(token string, secrets []string, requireSignature bool) (string, bool) {
+	// Step 1: a signature by one of the secrets
+	for _, secret := range secrets {
+		if tok, ok := VerifyAndExtractToken(token, secret, true); ok {
+			return tok, true
+		}
+	}
+	// Step 2: no secret matched: unsigned / invalid handling with the current secret
+	current := ""
+	if len(secrets) > 0 {
+		current = secrets[0]
+	}
+	return VerifyAndExtractToken(token, current, requireSignature)
 }
 
 // VerifyAndExtractToken validates and extracts the raw session token from a bearer token string.

@@ -50,42 +50,6 @@ func SymmetricDecrypt(secret, hexData string) (string, error) {
 	return string(plain), nil
 }
 
-// SecretKeys supports better-auth's secret rotation: Current encrypts, Keys[version] decrypts.
-type SecretKeys struct {
-	Current int
-	Keys    map[int]string
-	// Legacy decrypts bare-hex payloads written before versioning.
-	Legacy string
-}
-
-// Encrypt writes a versioned "$ba$<version>$<hex>" envelope.
-func (k SecretKeys) Encrypt(data string) (string, error) {
-	secret, ok := k.Keys[k.Current]
-	if !ok {
-		return "", fmt.Errorf("authcrypto: secret version %d not found", k.Current)
-	}
-	ct, err := SymmetricEncrypt(secret, data)
-	if err != nil {
-		return "", err
-	}
-	return envelopePrefix + strconv.Itoa(k.Current) + "$" + ct, nil
-}
-
-// Decrypt accepts versioned envelopes and, when Legacy is set, bare-hex payloads.
-func (k SecretKeys) Decrypt(data string) (string, error) {
-	if version, ct, ok := parseEnvelope(data); ok {
-		secret, found := k.Keys[version]
-		if !found {
-			return "", fmt.Errorf("authcrypto: secret version %d not found", version)
-		}
-		return SymmetricDecrypt(secret, ct)
-	}
-	if k.Legacy == "" {
-		return "", errors.New("authcrypto: bare-hex payload but no legacy secret configured")
-	}
-	return SymmetricDecrypt(k.Legacy, data)
-}
-
 func parseEnvelope(data string) (int, string, bool) {
 	rest, ok := strings.CutPrefix(data, envelopePrefix)
 	if !ok {

@@ -128,7 +128,7 @@ func TestRouteSecurityPolicy_RequireBearerTokenOps(t *testing.T) {
 			"name": "Policy Org",
 			"slug": fmt.Sprintf("policy-org-%d", time.Now().UnixNano()),
 		})
-		require.Equal(t, http.StatusCreated, orgRes.Status, string(orgRes.Body))
+		require.Equal(t, http.StatusOK, orgRes.Status, string(orgRes.Body))
 		var createdOrg struct {
 			ID string `json:"id"`
 		}
@@ -313,7 +313,7 @@ func TestRouteSecurityPolicy_DefaultStrictAndPluginOriginCheck(t *testing.T) {
 
 	// 3. Cookie-authenticated plugin mutation with trusted Origin succeeds
 	st, body = sendCookieReq(s.Origin)
-	require.Equal(t, http.StatusCreated, st, body)
+	require.Equal(t, http.StatusOK, st, body)
 
 	// 4. DefaultStrictSecurityConfig blocks Access JWTs on sensitive ops (e.g. /admin/remove-user)
 	jwtTok := loginForJWT(t, s.URL, email, "Password123!")

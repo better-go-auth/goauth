@@ -179,7 +179,8 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 	// Step 5: Check slug uniqueness
 	slug := strings.ToLower(strings.TrimSpace(input.Slug))
 	if existing, err := s.orgRepo.GetOrgBySlug(ctx, slug); err == nil && existing != nil {
-		return nil, orgerrors.ErrSlugTaken
+		// better-auth's create answers ORGANIZATION_ALREADY_EXISTS (check-slug and update use ORGANIZATION_SLUG_ALREADY_TAKEN)
+		return nil, orgerrors.ErrOrgAlreadyExists
 	}
 
 	// Step 6: Determine initial organization approval status uniformly for all callers
@@ -201,7 +202,7 @@ func (s *OrgService) CreateOrganization(ctx context.Context, creatorUserID strin
 		Name:      input.Name,
 		Slug:      slug,
 		Logo:      input.Logo,
-		Metadata:  input.Metadata,
+		Metadata:  input.Metadata.StringPtr(),
 		CreatedBy: creatorUserID,
 		Status:    orgStatus,
 		OrgType:   input.OrgType,
@@ -404,7 +405,7 @@ func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input
 
 	// Step 2: Permission check - requester must be an organization admin/owner
 	if !s.isOrgAdmin(ctx, orgID, requestingUserID, "organization", "update") {
-		return nil, autherr.ErrForbidden
+		return nil, orgerrors.ErrNotAllowedToUpdateOrganization
 	}
 
 	// Step 2: Fetch requesting user and member for hook context
@@ -446,7 +447,7 @@ func (s *OrgService) UpdateOrganization(ctx context.Context, orgID string, input
 		data["Logo"] = *input.Logo
 	}
 	if input.Metadata != nil {
-		data["Metadata"] = *input.Metadata
+		data["Metadata"] = string(*input.Metadata)
 	}
 	if input.OrgType != nil {
 		data["OrgType"] = input.OrgType
@@ -481,7 +482,7 @@ func (s *OrgService) DeleteOrganization(ctx context.Context, orgID, requestingUs
 
 	// Step 2: Permission check - requester must be an organization admin/owner
 	if !s.isOrgAdmin(ctx, orgID, requestingUserID, "organization", "delete") {
-		return autherr.ErrForbidden
+		return orgerrors.ErrNotAllowedToDeleteOrganization
 	}
 
 	// Step 3: Fetch organization and user details for hook context
@@ -668,7 +669,7 @@ func (s *OrgService) AdminCreateOrganization(ctx context.Context, requestingAdmi
 		Name:      createInput.Name,
 		Slug:      slug,
 		Logo:      createInput.Logo,
-		Metadata:  createInput.Metadata,
+		Metadata:  createInput.Metadata.StringPtr(),
 		CreatedBy: ownerID,
 		Status:    models.OrgStatusActive,
 		OrgType:   createInput.OrgType,

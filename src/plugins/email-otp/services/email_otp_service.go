@@ -170,15 +170,16 @@ func (s *EmailOTPService) encryptionKey() []byte {
 	return sum[:]
 }
 
-// encryptOTP is better-auth's storeOTP "encrypted": symmetricEncrypt(secret, otp) (XChaCha20-Poly1305, hex).
+// encryptOTP is better-auth's storeOTP "encrypted": symmetricEncrypt({key: secretConfig, data: otp})
+// (XChaCha20-Poly1305, hex; a "$ba$<version>$" envelope when versioned Secrets are configured).
 func (s *EmailOTPService) encryptOTP(plain string) (string, error) {
-	return authcrypto.SymmetricEncrypt(s.rootConfig.Secret, plain)
+	return authcrypto.NewSecretKeys(s.rootConfig).Encrypt(plain)
 }
 
 // decryptOTP reverses encryptOTP and still reads values written by older goauth versions (AES-GCM, base64url).
 func (s *EmailOTPService) decryptOTP(encoded string) (string, error) {
 	// Step 1: better-auth format first
-	if plain, err := authcrypto.SymmetricDecrypt(s.rootConfig.Secret, encoded); err == nil {
+	if plain, err := authcrypto.NewSecretKeys(s.rootConfig).Decrypt(encoded); err == nil {
 		return plain, nil
 	}
 	// Step 2: legacy goauth format

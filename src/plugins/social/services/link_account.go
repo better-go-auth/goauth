@@ -60,6 +60,9 @@ type oauthUserResult struct {
 	Session    *dtos.SessionWithUser
 	User       *models.User
 	IsRegister bool
+	// Account is the provider account signed in with (refreshed or created), for the account_data cookie.
+	// It is nil after implicit linking, where better-auth does not set the cookie either.
+	Account *models.Account
 }
 
 // ─── Token storage ───────────────────────────────────────────────────────────
@@ -70,7 +73,7 @@ func (s *Service) setToken(token string) (*string, error) {
 		return nil, nil
 	}
 	if s.cfg.EncryptOAuthTokens {
-		enc, err := authcrypto.SymmetricEncrypt(s.kit.Conf.Secret, token)
+		enc, err := s.kit.Cookies.Keys().Encrypt(token)
 		if err != nil {
 			return nil, err
 		}
@@ -100,14 +103,8 @@ func (s *Service) decryptToken(token string) (string, error) {
 	if token == "" || !s.cfg.EncryptOAuthTokens || !isLikelyEncrypted(token) {
 		return token, nil
 	}
-	if strings.HasPrefix(token, "$ba$") {
-		// versioned envelope "$ba$<version>$<hex>": goauth has a single secret
-		parts := strings.SplitN(token, "$", 4)
-		if len(parts) == 4 {
-			return authcrypto.SymmetricDecrypt(s.kit.Conf.Secret, parts[3])
-		}
-	}
-	return authcrypto.SymmetricDecrypt(s.kit.Conf.Secret, token)
+	// versioned envelopes "$ba$<version>$<hex>" pick their secret, bare hex uses the legacy / single secret
+	return s.kit.Cookies.Keys().Decrypt(token)
 }
 
 // tokenUpdate is the account update for fresh tokens, skipping unknown values (better-auth filters undefined).
@@ -300,6 +297,7 @@ func (s *Service) handleOAuthUserInfo(ctx context.Context, in oauthUserInput) (*
 		return &oauthUserResult{Error: "internal server error"}, nil
 	}
 	isRegister := user == nil
+	var signedIn *models.Account
 
 	if user != nil {
 		if linked == nil {
@@ -330,10 +328,13 @@ func (s *Service) handleOAuthUserInfo(ctx context.Context, in oauthUserInput) (*
 			}
 		} else {
 			// Step 2b: returning user: refresh the stored tokens (updateAccountOnSignIn)
+			signedIn = linked
 			if s.cfg.UpdateAccountOnSignInEnabled() {
 				update, err := s.tokenUpdate(account)
 				if err == nil && len(update) > 0 {
-					_, _ = s.kit.Repos.UpdateAccount(ctx, linked.ID, update)
+					if updated, err := s.kit.Repos.UpdateAccount(ctx, linked.ID, update); err == nil && updated != nil {
+						signedIn = updated
+					}
 				}
 			}
 			if info.EmailVerified && !user.EmailVerified && email == user.Email {
@@ -361,11 +362,12 @@ func (s *Service) handleOAuthUserInfo(ctx context.Context, in oauthUserInput) (*
 		if in.DisableSignUp {
 			return &oauthUserResult{Error: "signup disabled"}, nil
 		}
-		created, errMsg := s.createOAuthUser(ctx, info, account)
+		created, createdAccount, errMsg := s.createOAuthUser(ctx, info, account)
 		if errMsg != "" {
 			return &oauthUserResult{Error: errMsg}, nil
 		}
 		user = created
+		signedIn = createdAccount
 		// Step 5: verification email for unverified provider emails (emailVerification.sendOnSignUp)
 		if !info.EmailVerified {
 			s.sendVerificationOnSignUp(ctx, user, in.CallbackURL)
@@ -380,13 +382,16 @@ func (s *Service) handleOAuthUserInfo(ctx context.Context, in oauthUserInput) (*
 		}
 		return &oauthUserResult{Error: "unable to create session"}, nil
 	}
-	return &oauthUserResult{Session: sw, User: user, IsRegister: isRegister}, nil
+	return &oauthUserResult{Session: sw, User: user, IsRegister: isRegister, Account: signedIn}, nil
 }
 
 // createOAuthUser is better-auth's internalAdapter.createOAuthUser (user + account in a transaction). It
 // returns better-auth's error string on failure.
-func (s *Service) createOAuthUser(ctx context.Context, info providers.UserInfo, account accountData) (*models.User, string) {
-	var created *models.User
+func (s *Service) createOAuthUser(ctx context.Context, info providers.UserInfo, account accountData) (*models.User, *models.Account, string) {
+	var (
+		created        *models.User
+		createdAccount *models.Account
+	)
 	err := s.kit.InTx(ctx, func(ctx context.Context) error {
 		// Step 1: the user (BeforeUserCreate / AfterUserCreate hooks run inside)
 		u := &models.User{UserDto: models.UserDto{
@@ -409,20 +414,21 @@ func (s *Service) createOAuthUser(ctx context.Context, info providers.UserInfo, 
 			return err
 		}
 		acc.AccountID = info.ID
-		if _, err := s.kit.Repos.CreateAccount(ctx, acc); err != nil {
+		stored, err := s.kit.Repos.CreateAccount(ctx, acc)
+		if err != nil {
 			return err
 		}
-		created = user
+		created, createdAccount = user, stored
 		return nil
 	})
 	if err != nil {
 		// hook errors (APIError upstream) surface their message; storage failures are generic
 		if ae := autherr.AsAuthError(err); ae != nil && ae.Code != autherr.ErrFailedToCreateUser.Code {
-			return nil, ae.Message
+			return nil, nil, ae.Message
 		}
-		return nil, "unable to create user"
+		return nil, nil, "unable to create user"
 	}
-	return created, ""
+	return created, createdAccount, ""
 }
 
 // sendVerificationOnSignUp emails a verification link to a new OAuth user whose provider email is not verified,
@@ -445,7 +451,7 @@ func (s *Service) sendVerificationOnSignUp(ctx context.Context, user *models.Use
 	if callbackURL == "" {
 		callbackURL = "/"
 	}
-	link := s.kit.BaseURL() + "/verify-email?token=" + tok + "&callbackURL=" + encodeURIComponent(callbackURL)
+	link := s.kit.BaseURL(ctx) + "/verify-email?token=" + tok + "&callbackURL=" + encodeURIComponent(callbackURL)
 	data := config.EmailVerificationData{User: *user, URL: link, Token: tok}
 	_ = s.kit.Conf.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
 		return ev.SendVerificationEmail(data, s.kit.Request(ctx))

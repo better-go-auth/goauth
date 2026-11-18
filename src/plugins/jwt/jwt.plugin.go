@@ -21,6 +21,7 @@ import (
 	jwtmodels "github.com/better-go-auth/goauth/src/plugins/jwt/models"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/repository"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/services"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -234,10 +235,10 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		p.repo = repository.NewGormJwksRepo(p.db)
 	}
 
-	secret := ictx.Config.Secret
+	keys := authcrypto.NewSecretKeys(ictx.Config)
 	baseURL := ictx.Config.BaseURL
 
-	p.service = services.NewJWTService(p.config, secret, baseURL, p.repo)
+	p.service = services.NewJWTServiceWithKeys(p.config, keys, baseURL, p.repo)
 
 	var cm *cookies.Manager
 	if ictx.CookieManager != nil {

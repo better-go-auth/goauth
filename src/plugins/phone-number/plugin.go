@@ -112,6 +112,10 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	if ictx == nil {
 		return errors.New("phone-number: init context is required")
 	}
+	// better-auth's signUpOnVerification requires getTempEmail (there is no fallback email)
+	if p.config.SignUpOnVerification != nil && p.config.SignUpOnVerification.GetTempEmail == nil {
+		return errors.New("phone-number: SignUpOnVerification.GetTempEmail is required (better-auth's signUpOnVerification.getTempEmail)")
+	}
 	// Step 1: shared plugin runtime (sessions, cookies, origin check, rate limiter)
 	kit, err := pluginkit.New(ictx)
 	if err != nil {

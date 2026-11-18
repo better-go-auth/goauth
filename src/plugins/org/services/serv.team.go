@@ -13,6 +13,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
+	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
 )
 
 // ─── Teams Operations ─────────────────────────────────────────────────────────
@@ -268,13 +269,13 @@ func (s *OrgService) AddTeamMember(ctx context.Context, input dtos.AddTeamMember
 	// Step 4: Ensure target user is a member of the organization
 	targetMember, err := s.memberRepo.GetMemberByOrgAndUser(ctx, team.OrganizationID, input.UserID)
 	if err != nil || targetMember == nil {
-		return nil, orgerrors.ErrMemberNotFound
+		return nil, orgerrors.ErrUserNotMemberOfOrg400
 	}
 
-	// Step 5: Check if user is already a team member
+	// Step 5: better-auth's findOrCreateTeamMember: an existing membership is returned as is
 	existing, err := s.teamMemberRepo.GetTeamMember(ctx, input.TeamID, input.UserID)
 	if err == nil && existing != nil {
-		return nil, orgerrors.ErrAlreadyTeamMember
+		return existing, nil
 	}
 
 	// Step 6: Fetch user and organization for limit and hook context
@@ -422,12 +423,61 @@ func (s *OrgService) ListTeamMembers(ctx context.Context, teamID string, request
 	if err != nil || team == nil {
 		return nil, 0, orgerrors.ErrTeamNotFound
 	}
-	// Step 3: Verify requesting user is a member of the organization
+	// Step 3: Verify requesting user is a member of the organization and of the team
+	// (better-auth answers 400 USER_IS_NOT_A_MEMBER_OF_THE_TEAM for both)
 	m, err := s.memberRepo.GetMemberByOrgAndUser(ctx, team.OrganizationID, requestingUserID)
 	if err != nil || m == nil {
-		return nil, 0, autherr.ErrForbidden
+		return nil, 0, orgerrors.ErrTeamMemberNotFound
+	}
+	if tm, err := s.teamMemberRepo.GetTeamMember(ctx, teamID, requestingUserID); err != nil || tm == nil {
+		return nil, 0, orgerrors.ErrTeamMemberNotFound
 	}
 	return s.teamMemberRepo.ListMembersByTeamID(ctx, teamID, pagi)
+}
+
+// ListUserTeams returns the teams userID belongs to, limited to organizations the user is still a member
+// of (better-auth's /organization/list-user-teams).
+func (s *OrgService) ListUserTeams(ctx context.Context, userID string) ([]models.Team, error) {
+	// Step 1: Verify teams are enabled
+	if !s.TeamsEnabled() {
+		return nil, orgerrors.ErrTeamsDisabled
+	}
+	// Step 2: the user's organizations (membership filter, like better-auth's checkMembership)
+	orgs, err := s.orgRepo.ListOrgsByUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	memberOf := make(map[string]bool, len(orgs))
+	for _, o := range orgs {
+		memberOf[o.ID] = true
+	}
+	// Step 3: the user's teams, in one query when the repository supports it
+	var teams []models.Team
+	if lister, ok := s.teamMemberRepo.(orgrepo.IUserTeamsLister); ok {
+		if teams, err = lister.ListTeamsByUserID(ctx, userID); err != nil {
+			return nil, err
+		}
+	} else {
+		for _, o := range orgs {
+			orgTeams, _, err := s.teamRepo.ListTeamsByOrgID(ctx, o.ID, models.Pagination{Limit: 1000})
+			if err != nil {
+				return nil, err
+			}
+			for _, t := range orgTeams {
+				if tm, err := s.teamMemberRepo.GetTeamMember(ctx, t.ID, userID); err == nil && tm != nil {
+					teams = append(teams, t)
+				}
+			}
+		}
+	}
+	// Step 4: drop teams of organizations the user left
+	out := make([]models.Team, 0, len(teams))
+	for _, t := range teams {
+		if memberOf[t.OrganizationID] {
+			out = append(out, t)
+		}
+	}
+	return out, nil
 }
 
 func (s *OrgService) SetActiveTeam(ctx context.Context, sessionID string, teamID *string, userID string) (*authdtos.SessionWithUser, error) {
@@ -441,7 +491,7 @@ func (s *OrgService) SetActiveTeam(ctx context.Context, sessionID string, teamID
 		}
 		tm, err := s.teamMemberRepo.GetTeamMember(ctx, *teamID, userID)
 		if err != nil || tm == nil {
-			return nil, autherr.ErrForbidden
+			return nil, orgerrors.ErrUserNotMemberOfTeam403
 		}
 	}
 	if s.sessionMgr == nil {

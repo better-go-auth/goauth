@@ -566,12 +566,24 @@ func TestSocialPluginInterop(t *testing.T) {
 	e := newEnv(t, envOpts{extra: func(_ *socialtest.Provider, p *genericoauth.Plugin) []compattest.Option {
 		return []compattest.Option{compattest.WithPlugin(social.New(socialconfig.SocialConfig{}, social.WithProviders(p.SocialProviders()...)))}
 	}})
-	// Step 1: /sign-in/social with the generic provider uses the social callback
+	socialInterop(t, e)
+}
+
+// TestGenericProvidersAreSocialProvidersWithoutSocialPlugin: like better-auth, generic-oauth providers join the
+// core social providers, so /sign-in/social and the account endpoints work without passing the social plugin.
+func TestGenericProvidersAreSocialProvidersWithoutSocialPlugin(t *testing.T) {
+	socialInterop(t, newEnv(t))
+}
+
+func socialInterop(t *testing.T, e *env) {
+	t.Helper()
+	// Step 1: /sign-in/social with the generic provider comes back to /oauth2/callback/<id>, the redirect URI
+	// better-auth's generic providers use in ctx.socialProviders
 	r := e.s.Post(t, "/api/auth/sign-in/social", map[string]any{"provider": "fake", "callbackURL": "/s", "disableRedirect": true})
 	var body redirectBody
 	r.JSON(t, &body)
 	u, _ := url.Parse(body.URL)
-	if u.Query().Get("redirect_uri") != baseURL+"/api/auth/callback/fake" {
+	if u.Query().Get("redirect_uri") != baseURL+"/api/auth/oauth2/callback/fake" {
 		t.Fatalf("social redirect_uri: %s", body.URL)
 	}
 	if loc := location(t, e.s.Get(t, e.authorize(t, body.URL))); loc != "/s" {

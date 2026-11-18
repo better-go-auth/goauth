@@ -52,7 +52,7 @@ func TestOrganizationAuthorizationFlow(t *testing.T) {
 	// Step 1: the owner signs up and creates an organization; it becomes the session's active one
 	owner.MustOK(owner.SignUp("owner@example.com", password, "Olivia"), nil)
 	var acme idBody
-	owner.MustStatus(owner.Post("/api/auth/organization/create", map[string]any{"name": "Acme", "slug": "acme"}), http.StatusCreated, &acme)
+	owner.MustStatus(owner.Post("/api/auth/organization/create", map[string]any{"name": "Acme", "slug": "acme"}), http.StatusOK, &acme)
 	if acme.ID == "" {
 		t.Fatal("organization id missing")
 	}
@@ -70,7 +70,7 @@ func TestOrganizationAuthorizationFlow(t *testing.T) {
 	}
 
 	// Step 3: the owner invites Bob as a member; the invitation ID arrives through SendInvitationEmail
-	owner.MustStatus(owner.Post("/api/auth/organization/invite-member", map[string]any{"email": "bob@example.com", "role": "member"}), http.StatusCreated, nil)
+	owner.MustStatus(owner.Post("/api/auth/organization/invite-member", map[string]any{"email": "bob@example.com", "role": "member"}), http.StatusOK, nil)
 	invitationID := outbox.Last("invitation", "bob@example.com")
 	if invitationID == "" {
 		t.Fatal("no invitation sent")
@@ -102,7 +102,10 @@ func TestOrganizationAuthorizationFlow(t *testing.T) {
 	if hasPermission(t, bob, "invitation", "create") {
 		t.Fatal("member should not have invitation:create")
 	}
-	mustForbidden(t, "member invites", bob.Post("/api/auth/organization/invite-member", map[string]any{"email": "carol@example.com", "role": "member"}))
+	// (built-in routes answer with better-auth's route-specific code)
+	if r := bob.Post("/api/auth/organization/invite-member", map[string]any{"email": "carol@example.com", "role": "member"}); r.Status != http.StatusForbidden || r.ErrorCode() != "YOU_ARE_NOT_ALLOWED_TO_INVITE_USERS_TO_THIS_ORGANIZATION" {
+		t.Fatalf("member invites: status %d (%s), want 403 YOU_ARE_NOT_ALLOWED_TO_INVITE_USERS_TO_THIS_ORGANIZATION", r.Status, r.Body)
+	}
 
 	// Step 8: the owner promotes Bob to admin (member:update)
 	var members struct {
@@ -134,7 +137,7 @@ func TestOrganizationAuthorizationFlow(t *testing.T) {
 	var gemini Project
 	bob.MustStatus(bob.Post("/api/example/projects", map[string]any{"name": "Gemini"}), http.StatusCreated, &gemini)
 	mustForbidden(t, "admin deletes project", bob.Do(http.MethodDelete, "/api/example/projects/"+gemini.ID, nil))
-	bob.MustStatus(bob.Post("/api/auth/organization/invite-member", map[string]any{"email": "carol@example.com", "role": "member"}), http.StatusCreated, nil)
+	bob.MustStatus(bob.Post("/api/auth/organization/invite-member", map[string]any{"email": "carol@example.com", "role": "member"}), http.StatusOK, nil)
 	if hasPermission(t, bob, "organization", "delete") {
 		t.Fatal("admin should not have organization:delete")
 	}
@@ -151,15 +154,34 @@ func TestOrganizationAuthorizationFlow(t *testing.T) {
 	var team idBody
 	bob.MustOK(bob.Post("/api/auth/organization/create-team", map[string]any{"name": "Platform"}), &team)
 	bob.MustOK(bob.Post("/api/auth/organization/add-team-member", map[string]any{"teamId": team.ID, "userId": bobUserID}), nil)
+	// set-active-team returns the team (better-auth); the session now carries it
+	var activeTeam idBody
+	bob.MustOK(bob.Post("/api/auth/organization/set-active-team", map[string]any{"teamId": team.ID}), &activeTeam)
+	if activeTeam.ID != team.ID {
+		t.Fatalf("set-active-team returned %+v, want team %s", activeTeam, team.ID)
+	}
 	var active struct {
 		Session struct {
 			ActiveOrganizationID string `json:"activeOrganizationId"`
 			ActiveTeamID         string `json:"activeTeamId"`
 		} `json:"session"`
 	}
-	bob.MustOK(bob.Post("/api/auth/organization/set-active-team", map[string]any{"teamId": team.ID}), &active)
+	bob.MustOK(bob.Get("/api/auth/get-session"), &active)
 	if active.Session.ActiveTeamID != team.ID || active.Session.ActiveOrganizationID != acme.ID {
 		t.Fatalf("session after set-active-team = %+v", active.Session)
+	}
+	// list-user-teams shows Bob's teams; get-active-member / get-active-member-role describe his membership
+	var bobTeams []idBody
+	bob.MustOK(bob.Get("/api/auth/organization/list-user-teams"), &bobTeams)
+	if len(bobTeams) != 1 || bobTeams[0].ID != team.ID {
+		t.Fatalf("list-user-teams = %+v", bobTeams)
+	}
+	var role struct {
+		Role string `json:"role"`
+	}
+	bob.MustOK(bob.Get("/api/auth/organization/get-active-member-role"), &role)
+	if role.Role != "admin" {
+		t.Fatalf("get-active-member-role = %q, want admin", role.Role)
 	}
 
 	// Step 13: demoting or removing Bob takes effect on his next request, without a new sign-in
@@ -182,7 +204,7 @@ func TestOwnerOnlyHasItsStatements(t *testing.T) {
 
 	// Step 2: the owner is refused by the middleware, and has-permission says no as well
 	c.MustOK(c.SignUp("owner@example.com", password, "Olivia"), nil)
-	c.MustStatus(c.Post("/api/auth/organization/create", map[string]any{"name": "Acme", "slug": "acme"}), http.StatusCreated, nil)
+	c.MustStatus(c.Post("/api/auth/organization/create", map[string]any{"name": "Acme", "slug": "acme"}), http.StatusOK, nil)
 	mustForbidden(t, "owner archives projects", c.Post("/api/example/projects/archive", nil))
 	if hasPermission(t, c, "project", "archive") {
 		t.Fatal("has-permission should deny project:archive")

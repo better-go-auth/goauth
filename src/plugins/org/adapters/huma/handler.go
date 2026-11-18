@@ -21,6 +21,12 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/access"
 )
 
+// rawBodyMeta marks an org operation so its JSON body reaches the client as better-auth sends it
+// (no Huma "$schema" link field).
+func rawBodyMeta() map[string]any {
+	return map[string]any{humatypes.RawBodyMetaKey: true}
+}
+
 // OrgHandler holds org-domain services and embeds AuthHandler for authentication.
 type OrgHandler struct {
 	Org        orgsvc.IOrgService
@@ -38,9 +44,64 @@ func NewOrgHandler(org orgsvc.IOrgService, mdlware *middleware.AuthMiddleware, a
 	return &OrgHandler{Org: org, MiddleWare: mdlware, authFn: af}
 }
 
+// opErrors are the errors the equivalent better-auth endpoint returns when no organization is given
+// (and none is active), when the caller is not a member, and when the caller lacks the permission.
+type opErrors struct {
+	noOrg, notMember, denied *autherr.AuthError
+}
+
+// orgOpErrors maps operations to better-auth's per-route errors (plugins/organization/routes/*).
+// Operations missing from the map use NO_ACTIVE_ORGANIZATION / FORBIDDEN / FORBIDDEN.
+var orgOpErrors = map[consts.OperationId]opErrors{
+	OrGetOrg:           {noOrg: orgerrors.ErrOrgNotFound, notMember: orgerrors.ErrUserNotMemberOfOrg403},
+	OrUpdateOrg:        {noOrg: orgerrors.ErrOrgNotFound, notMember: orgerrors.ErrUserNotMemberOfOrg400, denied: orgerrors.ErrNotAllowedToUpdateOrganization},
+	OrDeleteOrg:        {noOrg: orgerrors.ErrOrgNotFound, notMember: orgerrors.ErrUserNotMemberOfOrg400, denied: orgerrors.ErrNotAllowedToDeleteOrganization},
+	OrSetActiveOrg:     {noOrg: orgerrors.ErrOrgNotFound, notMember: orgerrors.ErrUserNotMemberOfOrg403},
+	OrInviteMember:     {noOrg: orgerrors.ErrOrgNotFound, notMember: orgerrors.ErrMemberNotFound, denied: orgerrors.ErrNotAllowedToInviteUsers},
+	OrCancelInvitation: {noOrg: orgerrors.ErrInvitationNotFound, notMember: orgerrors.ErrMemberNotFound, denied: orgerrors.ErrNotAllowedToCancelInvitation},
+	OrListInvitations: {
+		noOrg:     autherr.New(autherr.BadRequest, "Organization ID is required", http.StatusBadRequest),
+		notMember: autherr.New(autherr.Forbidden, "You are not a member of this organization", http.StatusForbidden),
+	},
+	OrGetMember:        {notMember: orgerrors.ErrNotAMemberOfThisOrganization},
+	OrListMembers:      {notMember: orgerrors.ErrNotAMemberOfThisOrganization},
+	OrUpdateMemberRole: {notMember: orgerrors.ErrMemberNotFound, denied: orgerrors.ErrNotAllowedToUpdateMember},
+	OrRemoveMember:     {notMember: orgerrors.ErrMemberNotFound, denied: orgerrors.ErrNotAllowedToDeleteMember},
+	OrCreateTeam:       {notMember: orgerrors.ErrNotAllowedToInviteUsers, denied: orgerrors.ErrNotAllowedToCreateTeams},
+	OrUpdateTeam:       {notMember: orgerrors.ErrNotAllowedToUpdateTeam, denied: orgerrors.ErrNotAllowedToUpdateTeam},
+	OrDeleteTeam:       {notMember: orgerrors.ErrNotAllowedToDeleteThisTeam, denied: orgerrors.ErrNotAllowedToDeleteTeams},
+	OrListTeams:        {notMember: orgerrors.ErrNotAllowedToAccessOrganization},
+	OrAddTeamMember:    {notMember: orgerrors.ErrUserNotMemberOfOrg400, denied: orgerrors.ErrNotAllowedToCreateTeamMember},
+	OrRemoveTeamMember: {notMember: orgerrors.ErrUserNotMemberOfOrg400, denied: orgerrors.ErrNotAllowedToRemoveTeamMember},
+	OrGetActiveMemberRole: {
+		notMember: orgerrors.ErrNotAMemberOfThisOrganization,
+	},
+}
+
+// errorsFor returns the better-auth errors of op, with goauth's defaults for unmapped operations.
+func errorsFor(op consts.OperationId) opErrors {
+	e := orgOpErrors[op]
+	if e.noOrg == nil {
+		e.noOrg = orgerrors.ErrNoActiveOrganization
+	}
+	if e.notMember == nil {
+		e.notMember = autherr.ErrForbidden
+	}
+	if e.denied == nil {
+		e.denied = autherr.ErrForbidden
+	}
+	return e
+}
+
 // RequireOrgMember authenticates the caller and checks, against the member table, that they belong to
 // orgID (the session's active organization when orgID is empty) with one of roles (any role when empty).
 func (h *OrgHandler) RequireOrgMember(ctx context.Context, auth humatypes.AuthHeaders, orgID string, roles ...string) (sessionRes *dtos.SessionWithUser, orgid string, err error) {
+	return h.requireMember(ctx, auth, orgID, errorsFor(""), roles...)
+}
+
+// requireMember is RequireOrgMember with the better-auth errors of one route.
+func (h *OrgHandler) requireMember(ctx context.Context, auth humatypes.AuthHeaders, orgID string, errs opErrors, roles ...string) (*dtos.SessionWithUser, string, error) {
+	// Step 1: authenticate and resolve the organization (explicit, else the active one)
 	sessionResp, err := h.Authenticate(ctx, auth)
 	if err != nil {
 		return nil, "", err
@@ -49,13 +110,15 @@ func (h *OrgHandler) RequireOrgMember(ctx context.Context, auth humatypes.AuthHe
 		orgID = *sessionResp.Session.ActiveOrganizationID
 	}
 	if orgID == "" {
-		return nil, "", humatypes.NewError(http.StatusBadRequest, "organizationId is required when no organization is active")
+		return nil, "", errs.noOrg
 	}
 
+	// Step 2: membership
 	member, err := h.Org.GetMember(ctx, orgID, sessionResp.User.ID)
 	if err != nil || member == nil {
-		return nil, "", autherr.ErrForbidden
+		return nil, "", errs.notMember
 	}
+	// Step 3: role restriction
 	if len(roles) == 0 {
 		return sessionResp, orgID, nil
 	}
@@ -63,7 +126,7 @@ func (h *OrgHandler) RequireOrgMember(ctx context.Context, auth humatypes.AuthHe
 	if memberHasAnyRole(string(member.Role), roles) {
 		return sessionResp, orgID, nil
 	}
-	return nil, "", autherr.ErrForbidden
+	return nil, "", errs.denied
 }
 
 // memberHasAnyRole reports whether any of the comma-separated member roles is in roles (case-insensitive).
@@ -89,13 +152,14 @@ func memberHasAnyRole(memberRole string, roles []string) bool {
 //     Ops list contains the operation ID passes too (owner always passes HasOperation).
 func (h *OrgHandler) RequireOrgOp(ctx context.Context, auth humatypes.AuthHeaders, orgID string, op consts.OperationId) (*dtos.SessionWithUser, string, error) {
 	// Step 1: authenticate and require membership
-	sessionResp, orgID, err := h.RequireOrgMember(ctx, auth, orgID)
+	errs := errorsFor(op)
+	sessionResp, orgID, err := h.requireMember(ctx, auth, orgID, errs)
 	if err != nil {
 		return nil, "", err
 	}
 	member, err := h.Org.GetMember(ctx, orgID, sessionResp.User.ID)
 	if err != nil || member == nil {
-		return nil, "", autherr.ErrForbidden
+		return nil, "", errs.notMember
 	}
 	allowed := rolesFor(op)
 	perm, hasPerm := OrgRoutePermissions[op]
@@ -131,7 +195,7 @@ func (h *OrgHandler) RequireOrgOp(ctx context.Context, auth humatypes.AuthHeader
 			}
 		}
 	}
-	return nil, "", autherr.ErrForbidden
+	return nil, "", errs.denied
 }
 
 // withoutBuiltinRoles drops goauth's built-in owner/admin/member names from a comma-separated role.
@@ -170,7 +234,7 @@ func (h *OrgHandler) requireInvitee(ctx context.Context, auth humatypes.AuthHead
 		return nil, err
 	}
 	if !h.isInvitee(ctx, session, inv.Email) {
-		return nil, autherr.ErrForbidden
+		return nil, orgerrors.ErrNotRecipientOfInvitation
 	}
 	return session, nil
 }

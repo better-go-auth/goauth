@@ -202,6 +202,13 @@ func TestGoMirror_Org(t *testing.T) {
 	// [1] Register owner and invitee
 	res := owner.post(t, "/api/auth/sign-up/email", map[string]any{"email": ownerEmail, "password": password, "name": "Org Owner"})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	var ownerUp struct {
+		User struct {
+			ID string `json:"id"`
+		} `json:"user"`
+	}
+	res.JSON(t, &ownerUp)
+	ownerUserID := ownerUp.User.ID
 	res = invitee.post(t, "/api/auth/sign-up/email", map[string]any{"email": inviteeEmail, "password": password, "name": "Org Invitee"})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 	var invUp struct {
@@ -218,24 +225,35 @@ func TestGoMirror_Org(t *testing.T) {
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 
 	res = owner.post(t, "/api/auth/organization/create", map[string]any{"name": "Acme Corp", "slug": slug})
-	require.Equal(t, http.StatusCreated, res.Status, string(res.Body))
-	var createdOrg orgdtos.OrgResponse
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	var createdOrg orgdtos.CreatedOrgResponse
 	res.JSON(t, &createdOrg)
+	require.NotContains(t, string(res.Body), "$schema")
+	require.Len(t, createdOrg.Members, 1, "create returns the creator's membership")
+	require.Equal(t, "owner", createdOrg.Members[0].Role)
 
 	res = owner.post(t, "/api/auth/organization/check-slug", map[string]any{"slug": slug})
-	require.NotEqual(t, http.StatusOK, res.Status)
+	require.Equal(t, http.StatusBadRequest, res.Status, string(res.Body))
+	require.Contains(t, string(res.Body), "ORGANIZATION_SLUG_ALREADY_TAKEN")
 
 	// [3] get-full-organization, list, update, set-active
 	res = owner.get(t, "/api/auth/organization/get-full-organization?organizationId="+createdOrg.ID)
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	var full orgdtos.FullOrgResponse
+	res.JSON(t, &full)
+	require.Equal(t, createdOrg.ID, full.ID)
+	require.Len(t, full.Members, 1)
+	require.NotNil(t, full.Members[0].User)
+	require.Equal(t, ownerEmail, full.Members[0].User.Email)
+	require.NotNil(t, full.Invitations)
+	require.NotNil(t, full.Teams, "teams are included when the feature is enabled")
+	require.Len(t, *full.Teams, 1)
 
 	res = owner.get(t, "/api/auth/organization/list")
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
-	var listOrgs struct {
-		Organizations []orgdtos.OrgResponse `json:"organizations"`
-	}
+	var listOrgs []orgdtos.OrgResponse
 	res.JSON(t, &listOrgs)
-	require.GreaterOrEqual(t, len(listOrgs.Organizations), 1)
+	require.GreaterOrEqual(t, len(listOrgs), 1)
 
 	res = owner.post(t, "/api/auth/organization/update", map[string]any{
 		"organizationId": createdOrg.ID,
@@ -267,12 +285,12 @@ func TestGoMirror_Org(t *testing.T) {
 
 	// [5] Invitations: re-invite cancellation, verification gate, list-user-invitations, accept
 	res = owner.post(t, "/api/auth/organization/invite-member", map[string]any{"email": inviteeEmail, "role": "member", "organizationId": createdOrg.ID})
-	require.Equal(t, http.StatusCreated, res.Status, string(res.Body))
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 	var inv1 orgdtos.InvitationResponse
 	res.JSON(t, &inv1)
 
 	res = owner.post(t, "/api/auth/organization/invite-member", map[string]any{"email": inviteeEmail, "role": "admin", "organizationId": createdOrg.ID})
-	require.Equal(t, http.StatusCreated, res.Status, string(res.Body))
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 	var inv2 orgdtos.InvitationResponse
 	res.JSON(t, &inv2)
 	require.NotEqual(t, inv1.ID, inv2.ID)
@@ -286,21 +304,53 @@ func TestGoMirror_Org(t *testing.T) {
 
 	res = invitee.get(t, "/api/auth/organization/list-user-invitations")
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
-	var inbox struct {
-		Invitations []orgdtos.InvitationResponse `json:"invitations"`
-	}
+	var inbox []orgdtos.InvitationResponse
 	res.JSON(t, &inbox)
-	require.Len(t, inbox.Invitations, 1)
-	require.Equal(t, inv2.ID, inbox.Invitations[0].ID)
-	require.NotNil(t, inbox.Invitations[0].OrganizationName)
-	require.Equal(t, "Acme Updated", *inbox.Invitations[0].OrganizationName)
-	require.NotNil(t, inbox.Invitations[0].Inviter)
-	require.Equal(t, ownerEmail, inbox.Invitations[0].Inviter.Email)
+	require.Len(t, inbox, 1)
+	require.Equal(t, inv2.ID, inbox[0].ID)
+	require.NotNil(t, inbox[0].OrganizationName)
+	require.Equal(t, "Acme Updated", *inbox[0].OrganizationName)
+	require.NotNil(t, inbox[0].Inviter)
+	require.Equal(t, ownerEmail, inbox[0].Inviter.Email)
 
 	res = invitee.get(t, "/api/auth/organization/get-invitation?id="+inv2.ID)
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	var details orgdtos.InvitationDetailsResponse
+	res.JSON(t, &details)
+	require.Equal(t, ownerEmail, details.InviterEmail)
+	require.NotNil(t, details.OrganizationSlug)
+	require.Equal(t, slug, *details.OrganizationSlug)
+
+	// the invitee has no active organization yet
+	res = invitee.get(t, "/api/auth/organization/get-active-member")
+	require.Equal(t, http.StatusBadRequest, res.Status, string(res.Body))
+	require.Contains(t, string(res.Body), "NO_ACTIVE_ORGANIZATION")
+
 	res = invitee.post(t, "/api/auth/organization/accept-invitation", map[string]any{"invitationId": inv2.ID})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	var accepted orgdtos.InvitationResultResponse
+	res.JSON(t, &accepted)
+	require.NotNil(t, accepted.Invitation)
+	require.Equal(t, "accepted", accepted.Invitation.Status)
+	require.NotNil(t, accepted.Member)
+	require.Equal(t, "admin", accepted.Member.Role)
+
+	// accepting made the organization active: get-active-member / get-active-member-role work without a query
+	res = invitee.get(t, "/api/auth/organization/get-active-member")
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	var activeMember orgdtos.MemberResponse
+	res.JSON(t, &activeMember)
+	require.Equal(t, inviteeUserID, activeMember.UserID)
+	require.Equal(t, createdOrg.ID, activeMember.OrganizationID)
+	require.NotNil(t, activeMember.User)
+	require.Equal(t, inviteeEmail, activeMember.User.Email)
+
+	res = invitee.get(t, "/api/auth/organization/get-active-member-role")
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	require.JSONEq(t, `{"role":"admin"}`, string(res.Body))
+	res = invitee.get(t, "/api/auth/organization/get-active-member-role?organizationSlug="+slug+"&userId="+ownerUserID)
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	require.JSONEq(t, `{"role":"owner"}`, string(res.Body))
 
 	// [6] Members & Team Members
 	res = owner.get(t, "/api/auth/organization/list-members?organizationId="+createdOrg.ID)
@@ -321,7 +371,11 @@ func TestGoMirror_Org(t *testing.T) {
 	res = owner.post(t, "/api/auth/organization/add-team-member", map[string]any{"teamId": team2.ID, "userId": inviteeUserID, "organizationId": createdOrg.ID})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 
+	// like better-auth, only members of the team may list its members
 	res = owner.get(t, "/api/auth/organization/list-team-members?teamId="+team2.ID)
+	require.Equal(t, http.StatusBadRequest, res.Status, string(res.Body))
+	require.Contains(t, string(res.Body), "USER_IS_NOT_A_MEMBER_OF_THE_TEAM")
+	res = invitee.get(t, "/api/auth/organization/list-team-members?teamId="+team2.ID)
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 	var tmList []orgdtos.TeamMemberResponse
 	res.JSON(t, &tmList)
@@ -329,34 +383,49 @@ func TestGoMirror_Org(t *testing.T) {
 	require.NotNil(t, tmList[0].User)
 	require.Equal(t, inviteeEmail, tmList[0].User.Email)
 
+	// list-user-teams: the invitee is only in team2
+	res = invitee.get(t, "/api/auth/organization/list-user-teams")
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	var userTeams []orgdtos.TeamResponse
+	res.JSON(t, &userTeams)
+	require.Len(t, userTeams, 1)
+	require.Equal(t, team2.ID, userTeams[0].ID)
+
 	res = invitee.post(t, "/api/auth/organization/set-active-team", map[string]any{"teamId": team2.ID})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	var activeTeam orgdtos.TeamResponse
+	res.JSON(t, &activeTeam)
+	require.Equal(t, team2.ID, activeTeam.ID, "set-active-team returns the team")
 	res = owner.post(t, "/api/auth/organization/remove-team-member", map[string]any{"teamId": team2.ID, "userId": inviteeUserID, "organizationId": createdOrg.ID})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	require.JSONEq(t, `{"message":"Team member removed successfully."}`, string(res.Body))
 	res = owner.post(t, "/api/auth/organization/remove-team", map[string]any{"teamId": team2.ID, "organizationId": createdOrg.ID})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	require.JSONEq(t, `{"message":"Team removed successfully."}`, string(res.Body))
 
 	res = owner.post(t, "/api/auth/organization/update-member-role", map[string]any{"memberId": inviteeMemberID, "role": "member", "organizationId": createdOrg.ID})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
+	res = invitee.get(t, "/api/auth/organization/get-active-member-role")
+	require.JSONEq(t, `{"role":"member"}`, string(res.Body))
 
 	res = invitee.get(t, "/api/auth/organization/list-members?organizationId="+createdOrg.ID)
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 
 	res = owner.post(t, "/api/auth/organization/leave", map[string]any{"organizationId": createdOrg.ID})
 	require.Equal(t, http.StatusBadRequest, res.Status, string(res.Body))
-	require.Contains(t, string(res.Body), "CANNOT_LEAVE_AS_SOLE_OWNER")
+	require.Contains(t, string(res.Body), "YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER")
 
 	res = owner.post(t, "/api/auth/organization/remove-member", map[string]any{"memberIdOrEmail": inviteeEmail, "organizationId": createdOrg.ID})
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 
 	// [7] OrganizationLimit=2 + leave
 	res = owner.post(t, "/api/auth/organization/create", map[string]any{"name": "Second Org", "slug": fmt.Sprintf("go-second-%d", ts)})
-	require.Equal(t, http.StatusCreated, res.Status, string(res.Body))
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 	var org2 orgdtos.OrgResponse
 	res.JSON(t, &org2)
 
 	res = owner.post(t, "/api/auth/organization/invite-member", map[string]any{"email": inviteeEmail, "role": "member", "organizationId": org2.ID})
-	require.Equal(t, http.StatusCreated, res.Status, string(res.Body))
+	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 	var invOrg2 orgdtos.InvitationResponse
 	res.JSON(t, &invOrg2)
 	res = invitee.post(t, "/api/auth/organization/accept-invitation", map[string]any{"invitationId": invOrg2.ID})
@@ -365,7 +434,8 @@ func TestGoMirror_Org(t *testing.T) {
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
 
 	res = owner.post(t, "/api/auth/organization/create", map[string]any{"name": "Third Org", "slug": fmt.Sprintf("go-third-%d", ts)})
-	require.NotEqual(t, http.StatusCreated, res.Status)
+	require.Equal(t, http.StatusForbidden, res.Status, string(res.Body))
+	require.Contains(t, string(res.Body), "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_ORGANIZATIONS")
 
 	// [8] Delete organization
 	res = owner.post(t, "/api/auth/organization/delete", map[string]any{"organizationId": createdOrg.ID})

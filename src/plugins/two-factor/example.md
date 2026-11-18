@@ -135,3 +135,9 @@ from that browser gets a session directly, and the cookie is rotated each time.
 - Sign-in with `rememberMe: false` is honoured: the session created after the second factor is a
   browser-session cookie.
 - Deleting a user deletes their `twoFactor` row.
+- A pending sign-in is bounded by the `two_factor` cookie's max-age (`TwoFactorCookieMaxAge`), like better-auth:
+  the `2fa-*` verification row is honoured even after its `expiresAt` while the browser still sends the cookie,
+  and it is deleted atomically when the second factor succeeds.
+- TOTP secrets, backup codes and encrypted OTPs use `AuthConfig.Secrets` when set: written with the current
+  version (`$ba$<version>$...`), older versions keep decrypting. Trust-device cookies signed with an older
+  secret version are still accepted.

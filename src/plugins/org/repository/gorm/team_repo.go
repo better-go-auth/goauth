@@ -128,6 +128,23 @@ func (r *TeamMemberRepo) DeleteTeamMember(ctx context.Context, teamID, userID st
 	return nil
 }
 
+// ListTeamsByUserID returns the teams userID belongs to (better-auth's listTeamsByUser).
+func (r *TeamMemberRepo) ListTeamsByUserID(ctx context.Context, userID string) ([]models.Team, error) {
+	// Step 1: load the user's team memberships with their team
+	var memberships []models.TeamMember
+	if err := getDB(ctx, r.db).Preload("Team").Where(&models.TeamMember{UserID: userID}, "UserID").Find(&memberships).Error; err != nil {
+		return nil, fmt.Errorf("gorm/team-member: list teams by user: %w", err)
+	}
+	// Step 2: keep the teams (rows whose team is gone are skipped)
+	out := make([]models.Team, 0, len(memberships))
+	for _, m := range memberships {
+		if m.Team != nil {
+			out = append(out, *m.Team)
+		}
+	}
+	return out, nil
+}
+
 // DeleteTeamMembersByUserID removes every team membership of userID (user deletion cleanup).
 func (r *TeamMemberRepo) DeleteTeamMembersByUserID(ctx context.Context, userID string) error {
 	if userID == "" {

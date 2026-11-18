@@ -53,9 +53,13 @@ func (s *Service) Provider(id string) (providers.Provider, bool) {
 // Kit exposes the plugin kit (handlers build cookies with it).
 func (s *Service) Kit() *pluginkit.Kit { return s.kit }
 
-// redirectURI is "<baseURL>/callback/<id>".
-func (s *Service) redirectURI(p providers.Provider) string {
-	return s.kit.BaseURL() + "/callback/" + p.ID()
+// redirectURI is "<baseURL>/callback/<id>", or "<baseURL><path>" for providers with their own callback route
+// (generic-oauth providers: "/oauth2/callback/<id>", like better-auth registers them in ctx.socialProviders).
+func (s *Service) redirectURI(ctx context.Context, p providers.Provider) string {
+	if cp, ok := p.(providers.CallbackPather); ok {
+		return s.kit.BaseURL(ctx) + cp.CallbackPath()
+	}
+	return s.kit.BaseURL(ctx) + "/callback/" + p.ID()
 }
 
 // disableSignUp is `provider.disableImplicitSignUp && !requestSignUp || provider.disableSignUp`.
@@ -101,7 +105,7 @@ func (s *Service) SignInSocial(ctx context.Context, in socialdtos.SignInSocialIn
 	u, err := p.CreateAuthorizationURL(ctx, providers.AuthorizationURLInput{
 		State:        st.State,
 		CodeVerifier: st.CodeVerifier,
-		RedirectURI:  s.redirectURI(p),
+		RedirectURI:  s.redirectURI(ctx, p),
 		Scopes:       in.Scopes,
 		LoginHint:    in.LoginHint,
 	})
@@ -158,7 +162,7 @@ func (s *Service) signInWithIDToken(ctx context.Context, p providers.Provider, i
 	user := dtos.UserFromModel(res.User)
 	return &SignInResult{
 		Body:    socialdtos.SignInSocialResponse{Redirect: false, Token: res.Session.Session.Token, User: &user},
-		Cookies: s.kit.SessionCookies(res.Session, false),
+		Cookies: s.SignInCookies(ctx, res),
 	}, nil
 }
 
@@ -205,7 +209,7 @@ func (s *Service) LinkSocial(ctx context.Context, current *dtos.SessionWithUser,
 	u, err := p.CreateAuthorizationURL(ctx, providers.AuthorizationURLInput{
 		State:        st.State,
 		CodeVerifier: st.CodeVerifier,
-		RedirectURI:  s.redirectURI(p),
+		RedirectURI:  s.redirectURI(ctx, p),
 		Scopes:       in.Scopes,
 	})
 	if err != nil {
@@ -310,19 +314,19 @@ func errorRedirect(errorURL, code, description string, cookies []http.Cookie) *R
 
 // defaultErrorURL is the plugin's ErrorURL, else onAPIError.errorURL (AuthConfig.OnAPIError.ErrorURL), else
 // "<baseURL>/error".
-func (s *Service) defaultErrorURL() string {
+func (s *Service) defaultErrorURL(ctx context.Context) string {
 	if s.cfg.ErrorURL != "" {
 		return s.cfg.ErrorURL
 	}
 	if u := s.kit.Conf.OnAPIError.ErrorURL; u != "" {
 		return u
 	}
-	return s.kit.BaseURL() + "/error"
+	return s.kit.BaseURL(ctx) + "/error"
 }
 
 // PostCallbackRedirect is the POST /callback/{id} (form_post) answer: merge body and query, then redirect to the
 // GET callback so the cookies (SameSite=Lax) are sent.
-func (s *Service) PostCallbackRedirect(providerID string, body, query CallbackParams) *Redirect {
+func (s *Service) PostCallbackRedirect(ctx context.Context, providerID string, body, query CallbackParams) *Redirect {
 	// Step 1: query values win over body values
 	merged := body
 	for _, kv := range []struct {
@@ -340,12 +344,12 @@ func (s *Service) PostCallbackRedirect(providerID string, body, query CallbackPa
 			parts = append(parts, url.QueryEscape(kv[0])+"="+url.QueryEscape(kv[1]))
 		}
 	}
-	return &Redirect{Location: s.kit.BaseURL() + "/callback/" + providerID + "?" + strings.Join(parts, "&")}
+	return &Redirect{Location: s.kit.BaseURL(ctx) + "/callback/" + providerID + "?" + strings.Join(parts, "&")}
 }
 
 // Callback is better-auth's callbackOAuth (GET): every outcome, success or failure, is a redirect.
 func (s *Service) Callback(ctx context.Context, providerID string, q CallbackParams) *Redirect {
-	defaultErrorURL := s.defaultErrorURL()
+	defaultErrorURL := s.defaultErrorURL(ctx)
 
 	// Step 1: the state (PKCE verifier, callback URLs, link target)
 	state, cookies, err := s.parseState(ctx, q.State)
@@ -389,7 +393,7 @@ func (s *Service) Callback(ctx context.Context, providerID string, q CallbackPar
 		Code:         q.Code,
 		CodeVerifier: state.CodeVerifier,
 		DeviceID:     q.DeviceID,
-		RedirectURI:  s.redirectURI(p),
+		RedirectURI:  s.redirectURI(ctx, p),
 	})
 	if err != nil || tokens == nil {
 		return fail("invalid_code")
@@ -443,7 +447,7 @@ func (s *Service) Callback(ctx context.Context, providerID string, q CallbackPar
 	if result.IsRegister && state.NewUserURL != "" {
 		target = state.NewUserURL
 	}
-	return &Redirect{Location: target, Cookies: append(cookies, s.kit.SessionCookies(result.Session, false)...)}
+	return &Redirect{Location: target, Cookies: append(cookies, s.SignInCookies(ctx, result)...)}
 }
 
 // callbackLink is the link branch of callbackOAuth.

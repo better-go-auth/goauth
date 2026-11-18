@@ -51,7 +51,7 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 		"slug": "denied-org",
 	}, deniedAuth["Authorization"])
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "USER_CANNOT_CREATE_ORG")
+	require.Contains(t, rec.Body.String(), "YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION")
 
 	// Step 2: Test OrganizationLimit = 1 and DisableOrganizationDeletion = true via HTTP handlers
 	orgLimit := 1
@@ -73,7 +73,7 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 		"name": "HTTP Limit Org",
 		"slug": "http-limit-org",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var orgResp orgdtos.OrgResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &orgResp))
 
@@ -81,7 +81,7 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 	rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/check-slug", map[string]any{
 		"slug": "http-limit-org",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 
 	rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/check-slug", map[string]any{
 		"slug": "available-slug-123",
@@ -93,8 +93,8 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 		"name": "HTTP Limit Org 2",
 		"slug": "http-limit-org-2",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "ORGANIZATION_LIMIT_REACHED")
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_ORGANIZATIONS")
 
 	// Update org using Better Auth nested `data` payload
 	rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/update", map[string]any{
@@ -113,7 +113,7 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 		rec = doOrgHTTP(t, env.Mux, method, "/api/auth/organization/delete", map[string]any{
 			"organizationId": orgResp.ID,
 		}, ownerAuth["Authorization"])
-		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+		require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
 		require.Contains(t, rec.Body.String(), "ORGANIZATION_DELETION_DISABLED")
 	}
 
@@ -123,7 +123,7 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 		"email":          "http-invitee1@example.com",
 		"role":           "member",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 	// Invite 2nd member fails with INVITATION_LIMIT_REACHED (limit=1)
 	rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/invite-member", map[string]any{
@@ -131,7 +131,7 @@ func TestOrgHandlers_ConfigLimitsAndRestrictions(t *testing.T) {
 		"email":          "http-invitee2@example.com",
 		"role":           "member",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "INVITATION_LIMIT_REACHED")
 }
 
@@ -162,7 +162,7 @@ func TestOrgHandlers_EmailVerificationAndReInvite(t *testing.T) {
 		"name": "Verif HTTP Org",
 		"slug": "verif-http-org",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var orgResp orgdtos.OrgResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &orgResp))
 
@@ -171,7 +171,7 @@ func TestOrgHandlers_EmailVerificationAndReInvite(t *testing.T) {
 		"email":          "http-verif-invitee@example.com",
 		"role":           "member",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	require.True(t, sentEmail)
 
 	rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/invite-member", map[string]any{
@@ -179,20 +179,20 @@ func TestOrgHandlers_EmailVerificationAndReInvite(t *testing.T) {
 		"email":          "http-verif-invitee@example.com",
 		"role":           "admin",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var inv2 orgdtos.InvitationResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &inv2))
 
 	// Step 3: Unverified recipient cannot get, reject, or accept invitation via HTTP handlers
 	rec = doOrgHTTP(t, env.Mux, http.MethodGet, "/api/auth/organization/get-invitation?id="+inv2.ID, nil, inviteeAuth["Authorization"])
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "EMAIL_NOT_VERIFIED")
+	require.Contains(t, rec.Body.String(), "EMAIL_VERIFICATION_REQUIRED_FOR_INVITATION")
 
 	rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/accept-invitation", map[string]any{
 		"invitationId": inv2.ID,
 	}, inviteeAuth["Authorization"])
 	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "EMAIL_NOT_VERIFIED")
+	require.Contains(t, rec.Body.String(), "EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION")
 
 	// Step 4: Verify recipient email and accept invitation via HTTP handler
 	require.NoError(t, env.DB.Model(&coremodels.User{}).Where("id = ?", inviteeID).Update("email_verified", true).Error)
@@ -302,7 +302,7 @@ func TestOrgHandlers_TeamsAndHooks(t *testing.T) {
 		"name": "TeamsHTTP",
 		"slug": "teams-http",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var orgResp orgdtos.OrgResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &orgResp))
 
@@ -329,7 +329,7 @@ func TestOrgHandlers_TeamsAndHooks(t *testing.T) {
 		"name":           "Frontend",
 	}, ownerAuth["Authorization"])
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "MAXIMUM_TEAMS_REACHED")
+	require.Contains(t, rec.Body.String(), "YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_TEAMS")
 
 	// Step 4: Update 2nd team via Better Auth nested `data` payload
 	rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/update-team", map[string]any{
@@ -345,7 +345,7 @@ func TestOrgHandlers_TeamsAndHooks(t *testing.T) {
 		"email":          "http-teams-member@example.com",
 		"role":           "member",
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 	var inv orgdtos.InvitationResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &inv))
 
@@ -368,8 +368,8 @@ func TestOrgHandlers_TeamsAndHooks(t *testing.T) {
 		"teamId":         team2.ID,
 		"userId":         ownerID,
 	}, ownerAuth["Authorization"])
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "MAXIMUM_TEAM_MEMBERS_REACHED")
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "TEAM_MEMBER_LIMIT_REACHED")
 
 	// Remove team member and remove team2 via Better Auth canonical routes
 	rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/remove-team-member", map[string]any{
@@ -391,7 +391,7 @@ func TestOrgHandlers_TeamsAndHooks(t *testing.T) {
 		"teamId":         teams[0].ID,
 	}, ownerAuth["Authorization"])
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Body.String(), "CANNOT_REMOVE_ALL_TEAMS")
+	require.Contains(t, rec.Body.String(), "UNABLE_TO_REMOVE_LAST_TEAM")
 
 	// Step 6: Verify all expected hook events fired
 	joined := strings.Join(hookEvents, ",")
@@ -445,7 +445,7 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 			"name": "Needs Approval Alpha",
 			"slug": "needs-approval-alpha",
 		}, ownerAuth["Authorization"])
-		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 		var pendingOrg orgdtos.OrgResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &pendingOrg))
 		require.Equal(t, string(orgmodels.OrgStatusPending), pendingOrg.Status)
@@ -454,7 +454,7 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 			"name": "Admin Regular Endpoint Pending Org",
 			"slug": "admin-regular-endpoint-pending",
 		}, adminAuth)
-		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 		var adminRegularOrg orgdtos.OrgResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &adminRegularOrg))
 		require.Equal(t, string(orgmodels.OrgStatusPending), adminRegularOrg.Status)
@@ -508,24 +508,23 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 			"email":          "member-issues@example.com",
 			"role":           "member",
 		}, ownerAuth["Authorization"])
-		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 		var invMember orgdtos.InvitationResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &invMember))
 
 		rec = doOrgHTTP(t, env.Mux, http.MethodGet, "/api/auth/organization/list-user-invitations", nil, memberAuth["Authorization"])
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-		var inboxResp struct {
-			Invitations []orgdtos.InvitationResponse `json:"invitations"`
-		}
+		// better-auth returns an array (goauth adds organizationSlug and inviter to organizationName)
+		var inboxResp []orgdtos.InvitationResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &inboxResp))
-		require.Len(t, inboxResp.Invitations, 1)
-		require.Equal(t, invMember.ID, inboxResp.Invitations[0].ID)
-		require.NotNil(t, inboxResp.Invitations[0].OrganizationName)
-		require.Equal(t, "Acme Platform Labs", *inboxResp.Invitations[0].OrganizationName)
-		require.NotNil(t, inboxResp.Invitations[0].OrganizationSlug)
-		require.Equal(t, "acme-platform-labs", *inboxResp.Invitations[0].OrganizationSlug)
-		require.NotNil(t, inboxResp.Invitations[0].Inviter)
-		require.Equal(t, "owner-issues@example.com", inboxResp.Invitations[0].Inviter.Email)
+		require.Len(t, inboxResp, 1)
+		require.Equal(t, invMember.ID, inboxResp[0].ID)
+		require.NotNil(t, inboxResp[0].OrganizationName)
+		require.Equal(t, "Acme Platform Labs", *inboxResp[0].OrganizationName)
+		require.NotNil(t, inboxResp[0].OrganizationSlug)
+		require.Equal(t, "acme-platform-labs", *inboxResp[0].OrganizationSlug)
+		require.NotNil(t, inboxResp[0].Inviter)
+		require.Equal(t, "owner-issues@example.com", inboxResp[0].Inviter.Email)
 
 		// Invite & accept co-owner too, and member accepts
 		rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/accept-invitation", map[string]any{
@@ -538,7 +537,7 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 			"email":          "coowner-issues@example.com",
 			"role":           "owner",
 		}, ownerAuth["Authorization"])
-		require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 		var invCoOwner orgdtos.InvitationResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &invCoOwner))
 
@@ -556,7 +555,7 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 			"organizationId": orgResp.ID,
 		}, ownerAuth["Authorization"])
 		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-		require.Contains(t, rec.Body.String(), "CANNOT_LEAVE_AS_SOLE_OWNER")
+		require.Contains(t, rec.Body.String(), "YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER")
 
 		rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/organization/set-active", map[string]any{
 			"organizationId": orgResp.ID,
@@ -615,8 +614,10 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 			"/api/auth/organization/team/list-members?teamId=" + teamResp.ID,
 			"/api/auth/organization/list-team-members?teamId=" + teamResp.ID,
 		} {
+			// better-auth's list-team-members answers 400 USER_IS_NOT_A_MEMBER_OF_THE_TEAM to non-members
 			rec = doOrgHTTP(t, env.Mux, http.MethodGet, endpoint, nil, adminAuth)
-			require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+			require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+			require.Contains(t, rec.Body.String(), "USER_IS_NOT_A_MEMBER_OF_THE_TEAM")
 		}
 
 		// Org members can ListTeams, GetTeam, and ListTeamMembers (both /team/list-members and /list-team-members) with preloaded User
@@ -652,7 +653,7 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 
 		// Step 8: AdminBlockOrg merges blockReason into existing JSON Metadata without overwriting it
-		metaJSON := `{"plan":"pro"}`
+		metaJSON := orgdtos.JSONString(`{"plan":"pro"}`)
 		_, err = orgPlugin.Service().UpdateOrganization(context.Background(), orgResp.ID, orgdtos.UpdateOrgInput{Metadata: &metaJSON}, coOwnerID)
 		require.NoError(t, err)
 		rec = doOrgHTTP(t, env.Mux, http.MethodPost, "/api/auth/admin/organization/block", map[string]any{
@@ -662,9 +663,10 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
 		var blockedOrg orgdtos.OrgResponse
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &blockedOrg))
+		// metadata is returned as a JSON object, like better-auth
 		require.NotNil(t, blockedOrg.Metadata)
-		var parsedMeta map[string]any
-		require.NoError(t, json.Unmarshal([]byte(*blockedOrg.Metadata), &parsedMeta))
+		parsedMeta, ok := blockedOrg.Metadata.(map[string]any)
+		require.True(t, ok, "metadata should be an object, got %T", blockedOrg.Metadata)
 		require.Equal(t, "pro", parsedMeta["plan"])
 		require.Equal(t, "billing", parsedMeta["blockReason"])
 	})

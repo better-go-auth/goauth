@@ -71,7 +71,7 @@ func (s *Service) ApplyUpdateUserInfoOnLink(ctx context.Context, userID string, 
 }
 
 // DefaultErrorURL is onAPIError.errorURL (SocialConfig.ErrorURL) or "<baseURL>/error".
-func (s *Service) DefaultErrorURL() string { return s.defaultErrorURL() }
+func (s *Service) DefaultErrorURL(ctx context.Context) string { return s.defaultErrorURL(ctx) }
 
 // ErrorRedirect is better-auth's redirectOnError: <errorURL>?error=<code>[&error_description=...].
 func ErrorRedirect(errorURL, code, description string, cookies []http.Cookie) *Redirect {

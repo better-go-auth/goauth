@@ -372,9 +372,36 @@ func TestSignIn_PendingCookieExpires(t *testing.T) {
 	e := newEnv(t, tfconfig.Config{TwoFactorCookieMaxAge: time.Minute}, false)
 	_, secret, _ := e.enableFully("pending@example.com")
 	e.challenge("pending@example.com")
-	e.plugin.Service().SetClock(func() time.Time { return time.Now().Add(2 * time.Minute) })
-	defer e.plugin.Service().SetClock(time.Now)
+	// Step 1: the cookie max-age is what bounds the pending sign-in: once the browser drops the two_factor
+	// cookie, verification fails with INVALID_TWO_FACTOR_COOKIE
+	pending := e.cookie("two_factor")
+	if pending == "" {
+		t.Fatal("challenge must set the two_factor cookie")
+	}
+	e.setCookie("two_factor", "")
 	expectError(t, e.post("/two-factor/verify-totp", map[string]any{"code": e.totp(secret)}), 401, "INVALID_TWO_FACTOR_COOKIE")
+}
+
+func TestSignIn_ExpiredPendingRowIsHonouredLikeBetterAuth(t *testing.T) {
+	e := newEnv(t, tfconfig.Config{TwoFactorCookieMaxAge: time.Minute}, false)
+	_, secret, _ := e.enableFully("expired-row@example.com")
+	e.challenge("expired-row@example.com")
+	// Step 1: the 2fa-* row expires while the browser still sends the two_factor cookie
+	if err := e.s.DB.Model(&models.Verification{}).Where("identifier LIKE ?", "2fa-%").
+		Update("expires_at", time.Now().Add(-time.Minute)).Error; err != nil {
+		t.Fatal(err)
+	}
+	// Step 2: better-auth's verifyTwoFactor does not check the row's expiresAt (findVerificationValue returns it
+	// before cleaning expired rows up), so the sign-in completes
+	r := e.post("/two-factor/verify-totp", map[string]any{"code": e.totp(secret)})
+	expectStatus(t, r, 200)
+	if !strings.Contains(string(r.Body), `"token":"`) {
+		t.Fatalf("expected a session token: %s", r.Body)
+	}
+	// Step 3: the row is consumed
+	if rows := e.verificationByPrefix("2fa-"); len(rows) != 0 {
+		t.Fatalf("2fa row must be gone, got %d", len(rows))
+	}
 }
 
 func TestTOTPDisabled(t *testing.T) {

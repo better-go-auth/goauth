@@ -248,12 +248,12 @@ func TestOrgAccessControl_LegacyDefaults(t *testing.T) {
 	}})
 	require.NoError(t, err)
 	_, _, err = h.RequireOrgOp(ctx, authOf(memberHdr), org.ID, humaorg.OrInviteMember)
-	requireCode(t, err, "FORBIDDEN") // plain member,ops cannot invite
+	requireCode(t, err, "YOU_ARE_NOT_ALLOWED_TO_INVITE_USERS_TO_THIS_ORGANIZATION") // plain member,ops cannot invite
 	setMemberRole(t, env, member, "member,inviter")
 	_, _, err = h.RequireOrgOp(ctx, authOf(memberHdr), org.ID, humaorg.OrInviteMember)
 	require.NoError(t, err) // the dynamic role grants invitation:create
 	_, _, err = h.RequireOrgOp(ctx, authOf(adminHdr), org.ID, humaorg.OrUpdateMemberRole)
-	requireCode(t, err, "FORBIDDEN") // legacy table: only owner may update member roles
+	requireCode(t, err, "YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_MEMBER") // legacy table: only owner may update member roles
 
 	// Step 4: has-permission route in legacy mode
 	hp, err := h.HasPermission(ctx, &humaorg.HasPermissionInput{AuthHeaders: authOf(ownerHdr), Body: orgdtos.HasPermissionInput{

@@ -70,6 +70,17 @@ type Advanced struct {
 	IPAddress IPAddress
 	// BackgroundTasks mirrors better-auth's `advanced.backgroundTasks` (non-blocking senders).
 	BackgroundTasks BackgroundTasks
+	// Cookies overrides the name and attributes of single auth cookies, keyed by the cookie name without
+	// prefix: "session_token", "session_data", "dont_remember", "account_data", "two_factor", "state", ...
+	// (better-auth's advanced.cookies).
+	Cookies map[string]CookieOverride
+	// DefaultCookieAttributes apply to every auth cookie, below per-cookie attributes
+	// (better-auth's advanced.defaultCookieAttributes), e.g. {SameSite: "none", Secure: &yes, Partitioned: &yes}.
+	DefaultCookieAttributes *CookieAttributes
+	// TrustedProxyHeaders makes X-Forwarded-Host / X-Forwarded-Proto count when the base URL is derived from
+	// the request (better-auth's advanced.trustedProxyHeaders). nil = trusted for a DynamicBaseURL (better-auth's
+	// default there).
+	TrustedProxyHeaders *bool
 
 	GoAuth AdvancedGoAuth
 }
@@ -172,6 +183,16 @@ type IPAddress struct {
 func (opts *AuthConfig) SecureCookies() bool {
 	if opts.Advanced.UseSecureCookies != nil {
 		return *opts.Advanced.UseSecureCookies
+	}
+	// a dynamic base URL decides by its protocol, else by the environment (better-auth's createCookieGetter)
+	if d := opts.DynamicBaseURL; d != nil {
+		switch d.Protocol {
+		case "https":
+			return true
+		case "http":
+			return false
+		}
+		return IsProduction()
 	}
 	return strings.HasPrefix(strings.ToLower(opts.BaseURL), "https://")
 }

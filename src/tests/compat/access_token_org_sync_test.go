@@ -130,7 +130,7 @@ func TestAccessToken_ActiveOrgAndTeamSync(t *testing.T) {
 		"slug":                          fmt.Sprintf("sync-org-%d", time.Now().UnixNano()),
 		"keepCurrentActiveOrganization": true,
 	})
-	require.Equal(t, http.StatusCreated, orgRes.Status, string(orgRes.Body))
+	require.Equal(t, http.StatusOK, orgRes.Status, string(orgRes.Body))
 	var createdOrg orgdtos.OrgResponse
 	orgRes.JSON(t, &createdOrg)
 

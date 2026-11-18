@@ -11,6 +11,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/logger"
+	socialproviders "github.com/better-go-auth/goauth/src/plugins/social/providers"
 	"github.com/better-go-auth/goauth/src/schema"
 )
 
@@ -51,8 +52,26 @@ type AuthConfig struct {
 	 */
 	BasePath string // usualy /api/auth
 	// Secret signs cookies and tokens; defaults to $BETTER_AUTH_SECRET.
-	Secret         string
+	Secret string
+	// Secrets enables better-auth's secret rotation (`secrets`, or $BETTER_AUTH_SECRETS as
+	// "<version>:<secret>,..."): the first entry signs and encrypts, older entries still decrypt and verify.
+	// When set, SetDefaults replaces Secret with the first entry and keeps the old Secret only to decrypt
+	// bare-hex payloads written before rotation (see secrets.go).
+	Secrets []SecretVersion
+	// TrustedOrigins are origins (wildcards allowed, e.g. "https://*.example.com") trusted for redirects and
+	// the origin/CSRF check, besides the base URL (better-auth's trustedOrigins as an array).
 	TrustedOrigins []string
+	// TrustedOriginsFunc adds origins computed from each request (better-auth's trustedOrigins as a function).
+	// It is also called once at startup with a nil request.
+	TrustedOriginsFunc func(r *http.Request) []string
+	// DynamicBaseURL resolves the base URL per request from the Host / X-Forwarded-Host header, for
+	// multi-domain and preview deployments (better-auth's baseURL: {allowedHosts, fallback, protocol}).
+	// When set, BaseURL may be empty; it defaults to Fallback.
+	DynamicBaseURL *DynamicBaseURL
+	// SocialProviders are better-auth's core `socialProviders`: setting them installs the social plugin
+	// (/sign-in/social, /callback/{id}, /link-social, /get-access-token, /refresh-token, /account-info),
+	// configured from these providers and Account (linking policy, token encryption, state strategy).
+	SocialProviders []socialproviders.Provider
 	// DisabledPaths lists endpoint paths (relative to BasePath) that are not mounted.
 	DisabledPaths []string
 	// DisabledOps lists operation IDs that are disabled (skipped during core route registration
@@ -60,6 +79,7 @@ type AuthConfig struct {
 	DisabledOps []consts.OperationId
 	Advanced    Advanced
 
+	secrets            secretState
 	cachedSecure       *bool
 	cachedCookieDomain string
 	cachedDomainOnce   bool
@@ -92,6 +112,16 @@ type VerificationOptions struct {
 	Fields map[string]string
 	// AdditionalFields adds verification fields (better-auth's verification.additionalFields).
 	AdditionalFields map[string]schema.Field
+
+	// StoreIdentifier is how verification identifiers (tokens, OTP keys, ...) are written to the verification
+	// table: plain (default), hashed (SHA-256, unpadded base64url) or a custom hash (better-auth's
+	// verification.storeIdentifier). Rows written before a change keep working: lookups fall back to the plain
+	// identifier.
+	StoreIdentifier StoreIdentifierOption
+	// StoreIdentifierOverrides choose another option for identifiers starting with a prefix, e.g.
+	// {"reset-password:": {Mode: "hashed"}} (better-auth's storeIdentifier.overrides). The longest matching
+	// prefix wins.
+	StoreIdentifierOverrides map[string]StoreIdentifierOption
 }
 
 // GoAuthConfig holds top-level options better-auth doesn't have.

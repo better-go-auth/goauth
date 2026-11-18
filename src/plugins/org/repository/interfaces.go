@@ -61,6 +61,12 @@ type IUserTeamMembersCleaner interface {
 	DeleteTeamMembersByUserID(ctx context.Context, userID string) error
 }
 
+// IUserTeamsLister is optionally implemented by ITeamMemberRepo: it returns every team a user belongs to
+// in one query (better-auth's listTeamsByUser). Without it, list-user-teams walks the user's organizations.
+type IUserTeamsLister interface {
+	ListTeamsByUserID(ctx context.Context, userID string) ([]models.Team, error)
+}
+
 // IInviterInvitationsCleaner is optionally implemented by IInvitationRepo: it removes every invitation a user
 // sent (run when the user is deleted, like better-auth's invitation.inviterId onDelete: "cascade").
 type IInviterInvitationsCleaner interface {

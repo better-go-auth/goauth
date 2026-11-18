@@ -45,7 +45,7 @@ func (h *Handler) SignInSocial(ctx context.Context, in *signInSocialInput) (*sig
 		{in.Body.ErrorCallbackURL, autherr.ErrInvalidErrorCallbackURL},
 		{in.Body.NewUserCallbackURL, autherr.ErrInvalidNewUserCallbackURL},
 	} {
-		if err := kit.CheckURL(c.url, c.err); err != nil {
+		if err := kit.CheckURL(ctx, c.url, c.err); err != nil {
 			return nil, err
 		}
 	}
@@ -73,10 +73,10 @@ type linkSocialOutput struct {
 func (h *Handler) LinkSocial(ctx context.Context, in *linkSocialInput) (*linkSocialOutput, error) {
 	// Step 1: trusted redirect targets
 	kit := h.Service.Kit()
-	if err := kit.CheckURL(in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
+	if err := kit.CheckURL(ctx, in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
-	if err := kit.CheckURL(in.Body.ErrorCallbackURL, autherr.ErrInvalidErrorCallbackURL); err != nil {
+	if err := kit.CheckURL(ctx, in.Body.ErrorCallbackURL, autherr.ErrInvalidErrorCallbackURL); err != nil {
 		return nil, err
 	}
 	// Step 2: the session user
@@ -150,7 +150,7 @@ func (h *Handler) CallbackPost(ctx context.Context, in *callbackPostInput) (*red
 	}
 	// Step 2: redirect to the GET callback with body + query merged
 	query := callbackQuery{Code: in.Code, Error: in.Error, DeviceID: in.DeviceID, ErrorDescription: in.ErrorDescription, State: in.State, User: in.User}
-	return redirect(h.Service.PostCallbackRedirect(in.ID, body, query.params())), nil
+	return redirect(h.Service.PostCallbackRedirect(ctx, in.ID, body, query.params())), nil
 }
 
 // ─── Account tokens ──────────────────────────────────────────────────────────
@@ -160,29 +160,31 @@ type accountTokenInput struct {
 }
 
 type accessTokenOutput struct {
-	Body *socialdtos.AccessTokenResponse
+	SetCookie []http.Cookie `header:"Set-Cookie"`
+	Body      *socialdtos.AccessTokenResponse
 }
 
 // GetAccessToken returns a valid provider access token, refreshing it when needed.
 func (h *Handler) GetAccessToken(ctx context.Context, in *accountTokenInput) (*accessTokenOutput, error) {
-	res, err := h.Service.GetAccessToken(ctx, in.Body)
+	res, cookies, err := h.Service.GetAccessToken(ctx, in.Body)
 	if err != nil {
 		return nil, err
 	}
-	return &accessTokenOutput{Body: res}, nil
+	return &accessTokenOutput{SetCookie: cookies, Body: res}, nil
 }
 
 type refreshTokenOutput struct {
-	Body *socialdtos.RefreshTokenResponse
+	SetCookie []http.Cookie `header:"Set-Cookie"`
+	Body      *socialdtos.RefreshTokenResponse
 }
 
 // RefreshToken refreshes the provider tokens.
 func (h *Handler) RefreshToken(ctx context.Context, in *accountTokenInput) (*refreshTokenOutput, error) {
-	res, err := h.Service.RefreshToken(ctx, in.Body)
+	res, cookies, err := h.Service.RefreshToken(ctx, in.Body)
 	if err != nil {
 		return nil, err
 	}
-	return &refreshTokenOutput{Body: res}, nil
+	return &refreshTokenOutput{SetCookie: cookies, Body: res}, nil
 }
 
 type accountInfoInput struct {
@@ -192,14 +194,15 @@ type accountInfoInput struct {
 }
 
 type accountInfoOutput struct {
-	Body *socialdtos.AccountInfoResponse
+	SetCookie []http.Cookie `header:"Set-Cookie"`
+	Body      *socialdtos.AccountInfoResponse
 }
 
 // AccountInfo returns the provider's profile of one of the user's accounts.
 func (h *Handler) AccountInfo(ctx context.Context, in *accountInfoInput) (*accountInfoOutput, error) {
-	res, err := h.Service.AccountInfo(ctx, services.AccountInfoQuery{AccountID: in.AccountID, ProviderID: in.ProviderID, UserID: in.UserID})
+	res, cookies, err := h.Service.AccountInfo(ctx, services.AccountInfoQuery{AccountID: in.AccountID, ProviderID: in.ProviderID, UserID: in.UserID})
 	if err != nil {
 		return nil, err
 	}
-	return &accountInfoOutput{Body: res}, nil
+	return &accountInfoOutput{SetCookie: cookies, Body: res}, nil
 }

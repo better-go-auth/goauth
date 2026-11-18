@@ -81,7 +81,7 @@ func (s *MultiSessionService) expireNamed(name string) http.Cookie {
 
 // verify returns the value of a signed cookie value (as sent by the browser).
 func (s *MultiSessionService) verify(raw string) (string, bool) {
-	return cookies.VerifyCookieValue(cookies.DecodeCookieValue(raw), s.kit.Cookies.Secret())
+	return s.kit.Cookies.Verify(cookies.DecodeCookieValue(raw))
 }
 
 // DeviceCookies returns the multi-session cookies of cookieHeader whose signature is valid, in header order.

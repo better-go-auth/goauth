@@ -46,6 +46,41 @@ auth, err := goauth.SetupGoAuth(ctx, api, goauth.GoAuthOptions{
 The plugin adds no tables. It stores the provider accounts and their tokens in the core `account` table and
 keeps the OAuth state in the `verification` table.
 
+### Providers in the core config (better-auth's `socialProviders`)
+
+Like `betterAuth({ socialProviders, account })`, the providers can live in the core config instead. goauth then
+installs the social plugin itself (`goauth.GetPlugin[*social.Plugin](auth, social.PluginID)` still finds it),
+configured from `AuthConfig.Account`:
+
+```go
+auth, err := goauth.SetupGoAuth(ctx, api, goauth.GoAuthOptions{
+	Conn: db,
+	AuthConfig: config.AuthConfig{
+		BaseURL: "http://localhost:8080",
+		SocialProviders: []providers.Provider{
+			providers.GitHub(providers.GitHubOptions{ProviderOptions: providers.ProviderOptions{
+				ClientID: os.Getenv("GITHUB_CLIENT_ID"), ClientSecret: os.Getenv("GITHUB_CLIENT_SECRET"),
+			}}),
+		},
+		Account: config.AccountOptions{
+			AccountLinking:     config.AccountLinkingOptions{TrustedProviders: []string{"github"}},
+			EncryptOAuthTokens: true,
+			StoreAccountCookie: true, // /account-info without accountId
+		},
+	},
+})
+```
+
+Passing `social.New(...)` in `Plugins` as well adds `SocialProviders` to that plugin (its own account options
+win); a provider id configured in both places fails setup with a conflict error. Providers of the
+generic-oauth plugin are added automatically, like better-auth's `ctx.socialProviders`.
+
+With `Account.StoreAccountCookie` the provider account of the last OAuth sign-in is kept in the encrypted
+`account_data` cookie (a JWE with the `better-auth-account` salt, chunked above 4 KB, max-age
+`Session.CookieCache.MaxAge` or 300 s): `/account-info` works without `accountId`, `/get-access-token` and
+`/refresh-token` use and refresh it, and sign-out deletes it. It is readable by a TypeScript better-auth server
+with the same secrets.
+
 The built-in providers are `providers.Google`, `GitHub`, `GitLab`, `Discord`, `Facebook`, `Microsoft` and
 `Apple`. `providers.Generic(providers.GenericOptions{ProviderID, Issuer, ProviderOptions{...endpoints}})` covers
 any other OpenID Connect provider; the example test uses it with the fake. Every provider takes
@@ -147,7 +182,9 @@ The callback always answers with a redirect: to `errorCallbackURL`, or to `Error
 
 ## Notes
 
-- To use the generic-oauth plugin's providers here (`/sign-in/social`, `/get-access-token`, ...), pass
-  `genericPlugin.SocialProviders()` to `social.WithProviders`.
+- The generic-oauth plugin's providers are social providers automatically (`/sign-in/social`,
+  `/get-access-token`, ...); their redirect URI is `/oauth2/callback/<id>`, as in better-auth.
+- Encrypted tokens and the OAuth state cookie use `AuthConfig.Secrets` when set: new data is written as a
+  `$ba$<version>$` envelope with the current secret, older versions still decrypt.
 - The provider account's `accountId` is the provider's user id (`sub`).
 - `/list-accounts` returns a `scopes` array for each account.

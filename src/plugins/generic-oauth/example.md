@@ -150,7 +150,7 @@ The callback redirects to `errorCallbackURL`, or to `ErrorURL`, with `?error=<co
 
 - Unlike `/link-social`, `/oauth2/link` does not check whether the provider has verified the email. This
   matches better-auth.
-- better-auth also registers these providers as social providers. In goauth, pass
-  `oauthPlugin.SocialProviders()` to `social.WithProviders(...)` to use them with `/sign-in/social`,
-  `/get-access-token`, `/refresh-token` and `/account-info`. That flow then uses the social `/callback/{id}`
-  route.
+- Like better-auth, these providers are also social providers: goauth installs the social plugin (or adds
+  them to the one you pass, unless it already has a provider with the same id), so `/sign-in/social`,
+  `/link-social`, `/get-access-token`, `/refresh-token` and `/account-info` work with them. Those flows come
+  back to `/oauth2/callback/{providerId}` (the redirect URI better-auth uses), handled by this plugin.

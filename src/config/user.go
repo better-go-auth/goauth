@@ -79,9 +79,38 @@ type AccountOptions struct {
 	Fields map[string]string
 	// AdditionalFields adds account fields (better-auth's account.additionalFields).
 	AdditionalFields map[string]schema.Field
+
+	// The OAuth options below configure the social plugin installed for AuthConfig.SocialProviders.
+
+	// UpdateAccountOnSignIn refreshes the stored provider tokens on every sign-in (default true).
+	UpdateAccountOnSignIn *bool
+	// EncryptOAuthTokens stores provider access/refresh tokens encrypted with the auth secret.
+	EncryptOAuthTokens bool
+	// StoreStateStrategy is where the OAuth state lives between sign-in and callback: "database" (default) or
+	// "cookie".
+	StoreStateStrategy string
+	// SkipStateCookieCheck skips the signed `state` cookie check of the database state strategy.
+	SkipStateCookieCheck bool
+	// StoreAccountCookie keeps the provider account of the last OAuth sign-in in the encrypted account_data
+	// cookie, so /account-info works without accountId and the token endpoints skip a database read
+	// (better-auth's account.storeAccountCookie).
+	StoreAccountCookie bool
 }
 
+// AccountLinkingOptions mirrors better-auth's `account.accountLinking`.
 type AccountLinkingOptions struct {
 	// AllowUnlinkingAll allows unlinking the last account of a user.
 	AllowUnlinkingAll bool
+	// Enabled turns account linking on (default true).
+	Enabled *bool
+	// TrustedProviders may link even when the provider reports an unverified email.
+	TrustedProviders []string
+	// AllowDifferentEmails lets /link-social link an account whose email differs from the user's.
+	AllowDifferentEmails bool
+	// DisableImplicitLinking stops OAuth sign-in from linking a provider account to an existing user by email.
+	DisableImplicitLinking bool
+	// UpdateUserInfoOnLink copies the provider profile (name, image, ...) onto the user when linking.
+	UpdateUserInfoOnLink bool
+	// RequireLocalEmailVerified (default true) only links implicitly when the local user's email is verified.
+	RequireLocalEmailVerified *bool
 }
