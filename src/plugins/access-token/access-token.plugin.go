@@ -21,10 +21,10 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins"
 	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
+	jwttoken "github.com/better-go-auth/goauth/src/plugins/access-token/jwttoken"
 	"github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )

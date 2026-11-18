@@ -98,6 +98,58 @@ type NewSessionEvent struct {
 // (the session and any rows the endpoint wrote stay, like a throwing better-auth after-hook).
 type NewSessionHook func(ctx context.Context, ev NewSessionEvent) error
 
+// ResponseEvent is the response a ResponseHook runs on, right before its status line (and with it every
+// header) is written. It is goauth's form of better-auth's `hooks.after`: the hook sees the cookies and
+// headers the endpoint wrote and can add its own. One core middleware runs every ResponseHook, so a hook
+// covers every core and plugin route no matter in which order the plugins were initialized.
+type ResponseEvent struct {
+	// Path is the operation path relative to BasePath (e.g. "/sign-out", "/organization/{id}").
+	Path string
+	// Status is the HTTP status about to be written.
+	Status int
+	// Context is the request context.
+	Context context.Context
+	// RequestCookies is the Cookie header of the request.
+	RequestCookies string
+	// SetCookies are the Set-Cookie entries written so far (including ones added by earlier hooks).
+	SetCookies []string
+	// Headers are the other response headers written so far.
+	Headers http.Header
+
+	setHeader func(name, value string)
+}
+
+// AddSetCookie adds a Set-Cookie entry (the raw header value) to the response.
+func (e *ResponseEvent) AddSetCookie(v string) {
+	if v != "" {
+		e.SetCookies = append(e.SetCookies, v)
+	}
+}
+
+// SetHeader sets a response header.
+func (e *ResponseEvent) SetHeader(name, value string) {
+	if e.Headers == nil {
+		e.Headers = http.Header{}
+	}
+	e.Headers.Set(name, value)
+	if e.setHeader != nil {
+		e.setHeader(name, value)
+	}
+}
+
+// NewResponseEvent builds a ResponseEvent; setHeader writes a header to the real response.
+// It is used by the HTTP layer that runs the hooks (and by tests).
+func NewResponseEvent(ctx context.Context, path string, status int, reqCookies string, setCookies []string, headers http.Header, setHeader func(name, value string)) *ResponseEvent {
+	if headers == nil {
+		headers = http.Header{}
+	}
+	return &ResponseEvent{Path: path, Status: status, Context: ctx, RequestCookies: reqCookies,
+		SetCookies: append([]string(nil), setCookies...), Headers: headers, setHeader: setHeader}
+}
+
+// ResponseHook inspects and amends a response before it is sent (it cannot fail the request).
+type ResponseHook func(ev *ResponseEvent)
+
 // HookService defines the hook lifecycle methods that a plugin or service can implement.
 // A plugin can implement this interface and register it with the HookRegistry as a whole,
 // instead of binding separate callbacks on init.
@@ -168,6 +220,9 @@ type HookRegistry interface {
 	// OnNewSession registers a hook that runs when a response hands out a session created on that request
 	// (e.g. the anonymous plugin linking an anonymous user to the account it signed in to).
 	OnNewSession(fn NewSessionHook)
+	// OnResponse registers a hook that runs right before every goauth response is sent (better-auth's
+	// hooks.after), after the OnNewSession hooks (e.g. multi-session cookies, one-time-token `set-ott` header).
+	OnResponse(fn ResponseHook)
 
 	// Triggers
 	TriggerBeforeUserCreate(ctx context.Context, user *models.User) error
@@ -185,6 +240,10 @@ type HookRegistry interface {
 	TriggerNewSession(ctx context.Context, ev NewSessionEvent) error
 	// HasNewSessionHooks reports whether any new-session hook is registered (lets the HTTP layer skip work).
 	HasNewSessionHooks() bool
+	// TriggerResponse runs the response hooks in registration order.
+	TriggerResponse(ev *ResponseEvent)
+	// HasResponseHooks reports whether any response hook is registered (lets the HTTP layer skip work).
+	HasResponseHooks() bool
 
 	// Verification Override allows plugins (e.g. email-otp) to suppress or replace the core default verification email.
 	OverrideEmailVerification()
@@ -214,6 +273,7 @@ type DefaultHookRegistry struct {
 	afterSignIn         []SignInInterceptor
 	userInput           []UserInputHook
 	newSession          []NewSessionHook
+	response            []ResponseHook
 }
 
 // NewHookRegistry creates a new HookRegistry instance.
@@ -495,4 +555,30 @@ func (h *DefaultHookRegistry) TriggerNewSession(ctx context.Context, ev NewSessi
 		}
 	}
 	return nil
+}
+
+func (h *DefaultHookRegistry) OnResponse(fn ResponseHook) {
+	if fn == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.response = append(h.response, fn)
+}
+
+func (h *DefaultHookRegistry) HasResponseHooks() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.response) > 0
+}
+
+func (h *DefaultHookRegistry) TriggerResponse(ev *ResponseEvent) {
+	// Step 1: copy the hooks so they can run without holding the lock
+	h.mu.RLock()
+	fns := append([]ResponseHook(nil), h.response...)
+	h.mu.RUnlock()
+	// Step 2: run them in registration order; each sees what the previous ones added
+	for _, fn := range fns {
+		fn(ev)
+	}
 }

@@ -10,7 +10,6 @@ import (
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
 /*
@@ -42,11 +41,13 @@ type SessionLookupRepo interface {
 
 // NewDefaultAuthenticator returns an AuthenticateFunc provided by the core to plugins.
 // It handles:
-// 1. Context claims (when Huma middleware has already authenticated the request)
-// 2. Token extraction from Bearer Authorization header or session cookies
-// 3. JWT verification against the session access secret
-// 4. Database session and user lookup fallback via SessionLookupRepo
-func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) AuthenticateFunc {
+//  1. Context claims (when Huma middleware has already authenticated the request; this is how legacy
+//     access-token JWTs are accepted: the access-token plugin's middleware verifies them first)
+//  2. Token extraction from Bearer Authorization header or session cookies
+//  3. Database session and user lookup via SessionLookupRepo
+//
+// The core no longer verifies JWT access tokens itself; that logic lives in the access-token plugin.
+func NewDefaultAuthenticator(lookup SessionLookupRepo) AuthenticateFunc {
 	return func(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error) {
 		// 1. Check if claims already exist in ctx (set by middleware)
 		if sesResp, valid := SessionFromContext(ctx); valid {
@@ -74,15 +75,7 @@ func NewDefaultAuthenticator(accessSecret string, lookup SessionLookupRepo) Auth
 			return nil, autherr.ErrUnauthorized
 		}
 
-		// 3. Verify JWT
-		if accessSecret != "" {
-			claims, err := jwttoken.ValidateAccessToken(token, accessSecret)
-			if err == nil && claims.UserID != "" {
-				return sessionResponseFromClaims(claims, token)
-			}
-		}
-
-		// 4. Fallback: look up an opaque session token (shape-checked so stored refresh hashes can't be replayed)
+		// 3. Look up an opaque session token (shape-checked so stored refresh hashes can't be replayed)
 		if lookup != nil && idgen.IsToken(token) {
 			sess, err := lookup.FindSession(ctx, token)
 			if err == nil && sess != nil && sess.UserID != "" {

@@ -24,4 +24,3 @@ func NewWithGroup(app *fiber.App, g fiber.Router, opts ...adapters.Option) huma.
 	// 2. Wrap the Fiber router group using humafiber adapter
 	return humafiber.NewV2WithGroup(app, g, cfg)
 }
-

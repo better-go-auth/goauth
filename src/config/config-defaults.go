@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os"
+	"sync"
 	"time"
 )
 
@@ -99,6 +100,9 @@ func (opts *AuthConfig) SetDefaults() {
 	}
 }
 
+// devSecretWarning logs the development-secret warning once per process instead of once per setup.
+var devSecretWarning sync.Once
+
 // Validate verifies that required options are present and valid.
 func (opts *AuthConfig) Validate() error {
 	// 1. Validate BaseURL (required in Better Auth; checked here or from environment)
@@ -119,11 +123,25 @@ func (opts *AuthConfig) Validate() error {
 	if opts.Secret == "" {
 		return fmt.Errorf("goauth: Secret (or $%s) is required", SecretEnvVar)
 	}
+	// a public development secret would let anyone forge cookies and tokens, so production refuses it
+	if IsDevSecret(opts.Secret) {
+		if IsProduction() {
+			return errors.New("goauth: Secret is a public development default; set a random BETTER_AUTH_SECRET in production")
+		}
+		devSecretWarning.Do(func() {
+			slog.Warn("goauth: Secret is a public development default; never use it in production")
+		})
+	}
 	if len(opts.Secret) < MinSecretLength {
 		slog.Warn("goauth: Secret is shorter than recommended", "min", MinSecretLength, "len", len(opts.Secret))
 	}
 
-	// 4. Validate CookieCache if enabled
+	// 4. Validate the ID format
+	if _, err := opts.Advanced.Database.IDGenerator(); err != nil {
+		return fmt.Errorf("goauth: Advanced.Database.IDFormat: %w", err)
+	}
+
+	// 5. Validate CookieCache if enabled
 	if opts.Session.CookieCache != nil && opts.Session.CookieCache.IsEnabled() {
 		switch opts.Session.CookieCache.Strategy {
 		case CookieCacheStrategyCompact, CookieCacheStrategyJwt, CookieCacheStrategyJwe, "":

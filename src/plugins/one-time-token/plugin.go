@@ -4,8 +4,8 @@
 //
 // Tokens live in the verification table under "one-time-token:<token>" (or its hash), so the plugin has no
 // migrator. With SetOttHeaderOnNewSession the plugin adds a `set-ott` header to every response that sets a
-// new session cookie, through a Huma API middleware (pluginkit.UseAfterHook). goauth.New initializes this
-// plugin before the other domain plugins, so the middleware covers the core routes and every plugin route.
+// new session cookie, through an OnResponse hook (pluginkit.UseAfterHook). goauth's response-hook middleware
+// runs it for the core routes and every plugin route, whatever the order of GoAuthOptions.Plugins.
 package onetimetoken
 
 import (

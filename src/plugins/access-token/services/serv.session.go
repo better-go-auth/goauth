@@ -2,21 +2,22 @@ package services
 
 import (
 	"context"
+	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"strings"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
-	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
+	jwttoken "github.com/better-go-auth/goauth/src/plugins/access-token/jwttoken"
 	interfaces1 "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/token"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 )
 
 // sid: -> token index is owned by the access-token plugin (not the core session.Manager).
@@ -143,7 +144,7 @@ func NewSessionService(
 }
 
 // tokens signs the access JWT for s and returns it with the session token as the refresh token.
-func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*models.AuthTokens, error) {
+func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*accesstokendtos.AuthTokens, error) {
 	claims := token.CustomClaims{
 		Role:      role,
 		UserID:    s.UserID,
@@ -166,7 +167,7 @@ func (aus *SessionService) Tokens(s *dtos.SessionData, role string) (*models.Aut
 	if err != nil {
 		return nil, err
 	}
-	return &models.AuthTokens{AccessToken: access, RefreshToken: s.Token}, nil
+	return &accesstokendtos.AuthTokens{AccessToken: access, RefreshToken: s.Token}, nil
 }
 
 // FindByRefreshToken returns the live session behind a refresh token (the session.token itself),
@@ -203,7 +204,7 @@ func (aus *SessionService) FindByRefreshToken(ctx context.Context, refreshToken 
 
 // RefreshTokens slides the session's expiry like better-auth (once UpdateAge has passed), rotates the refresh
 // token when GoAuth.Session.JWT.RotateRefreshToken is on (default) and signs a new access token.
-func (aus *SessionService) RefreshTokens(ctx context.Context, s *models.Session, role string) (*models.AuthTokens, error) {
+func (aus *SessionService) RefreshTokens(ctx context.Context, s *models.Session, role string) (*accesstokendtos.AuthTokens, error) {
 	prevToken := s.Token
 	swu, err := aus.Mgr.Get(ctx, s.Token)
 	if err != nil {
@@ -273,10 +274,9 @@ func (aus *SessionService) DeleteSession(ctx context.Context, sessionId string) 
 	if aus.Hooks != nil {
 		sess := s
 		if sess == nil {
-			sess = &models.Session{Base: models.Base{ID: sessionId} }
+			sess = &models.Session{Base: models.Base{ID: sessionId}}
 		}
 		_ = aus.Hooks.TriggerSessionRevoked(ctx, sess)
 	}
 	return aus.BlacklistSession(ctx, sessionId)
 }
-

@@ -293,8 +293,8 @@ func (r *AdminRepo) UnbanUser(ctx context.Context, userID string) (*models.User,
 	return &user, nil
 }
 
-// RemoveUser deletes a user, their linked accounts, and their active sessions.
-func (r *AdminRepo) RemoveUser(ctx context.Context, userID string) error {
+// RemoveUser deletes a user, their linked accounts, and their active sessions (soft: tombstones the user).
+func (r *AdminRepo) RemoveUser(ctx context.Context, userID string, soft bool) error {
 	db := getDB(ctx, r.db)
 	now := time.Now().UTC()
 	tombstoneEmail := models.AnonymizeEmail(userID, now)
@@ -307,12 +307,20 @@ func (r *AdminRepo) RemoveUser(ctx context.Context, userID string) error {
 		if err := tx.Where(&models.Account{UserID: userID}, "UserID").Delete(&models.Account{}).Error; err != nil {
 			return fmt.Errorf("delete accounts: %w", err)
 		}
-		// Anonymize email, release the unique phone number and soft-delete user
-		// (same tombstone as the core IUserRepo.DeleteUser, so the email and number can be registered again)
+		// Default: remove the user row like better-auth (sessions and accounts are already gone above)
+		if !soft {
+			if err := tx.Where(userByID(userID), "ID").Delete(&models.User{}).Error; err != nil {
+				return fmt.Errorf("delete user: %w", err)
+			}
+			return nil
+		}
+		// Soft delete: anonymize the email, release the unique phone number and username and keep a tombstone
+		// (same tombstone as the core IUserRepo.SoftDeleteUser, so they can be registered again)
 		if err := tx.Model(&models.User{}).Where(userByID(userID), "ID").Updates(map[string]interface{}{
 			"DeletedAt":   now,
 			"Email":       tombstoneEmail,
 			"PhoneNumber": nil,
+			"Username":    nil,
 		}).Error; err != nil {
 			return fmt.Errorf("delete user: %w", err)
 		}

@@ -16,21 +16,31 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// NewSessionHooks is the API middleware behind plugins.NewSessionEvent: it records the sessions created
-// while a request is handled and, when the successful response sets the cookie of one of them, runs the
-// OnNewSession hooks before the response is written. It is better-auth's after-hook view of
-// ctx.context.newSession + the response Set-Cookie header, available to every core and plugin route.
+// NewSessionHooks is the old name of ResponseHooks.
 //
-// Set-Cookie headers are held back until the status is written so a failing hook can replace the response
-// with its error (without handing out the new session cookie).
+// Deprecated: use ResponseHooks.
 func NewSessionHooks(conf config.AuthConfig, hooks plugins.HookRegistry, cm *cookies.Manager) func(huma.Context, func(huma.Context)) {
+	return ResponseHooks(conf, hooks, cm)
+}
+
+// ResponseHooks is goauth's single after-hook middleware. SetupGoAuth registers it once, before any plugin
+// or core route is mounted, so it wraps every goauth route. Right before a response's status is written it
+//
+//  1. runs the OnNewSession hooks (plugins.NewSessionEvent) when the successful response sets the cookie of
+//     a session created on this request (better-auth's ctx.context.newSession); a failing hook replaces the
+//     response with its error, without handing out the new session cookie;
+//  2. runs the OnResponse hooks (plugins.ResponseEvent, better-auth's hooks.after), which can read the
+//     response cookies/headers and add their own (pluginkit.UseAfterHook registers here).
+//
+// Set-Cookie headers are held back until the status is written so step 1 can still drop them.
+func ResponseHooks(conf config.AuthConfig, hooks plugins.HookRegistry, cm *cookies.Manager) func(huma.Context, func(huma.Context)) {
 	basePath := strings.TrimSuffix(conf.BasePath, "/")
 	if conf.BasePath == "" {
 		basePath = "/api/auth"
 	}
 	return func(ctx huma.Context, next func(huma.Context)) {
 		// Step 1: nothing to do unless a plugin listens, and only for goauth routes (under BasePath)
-		if hooks == nil || cm == nil || !hooks.HasNewSessionHooks() || !strings.HasPrefix(ctx.URL().Path, basePath+"/") {
+		if hooks == nil || cm == nil || (!hooks.HasNewSessionHooks() && !hooks.HasResponseHooks()) || !strings.HasPrefix(ctx.URL().Path, basePath+"/") {
 			next(ctx)
 			return
 		}
@@ -42,6 +52,7 @@ func NewSessionHooks(conf config.AuthConfig, hooks plugins.HookRegistry, cm *coo
 			cookies:        cm,
 			rec:            rec,
 			basePath:       basePath,
+			headers:        http.Header{},
 		}
 		// Step 3: run the endpoint; hooks fire when it writes its status
 		next(w)
@@ -64,6 +75,7 @@ type newSessionWriter struct {
 
 	once      sync.Once
 	setCookie []string
+	headers   http.Header // non-cookie headers written so far (for ResponseEvent.Headers)
 	failed    bool
 }
 
@@ -78,6 +90,7 @@ func (w *newSessionWriter) SetHeader(name, value string) {
 		w.setCookie = []string{value}
 		return
 	}
+	w.headers.Set(name, value)
 	w.wrappedContext.SetHeader(name, value)
 }
 
@@ -89,6 +102,7 @@ func (w *newSessionWriter) AppendHeader(name, value string) {
 		w.setCookie = append(w.setCookie, value)
 		return
 	}
+	w.headers.Add(name, value)
 	w.wrappedContext.AppendHeader(name, value)
 }
 
@@ -112,7 +126,7 @@ func (w *newSessionWriter) BodyWriter() io.Writer {
 func (w *newSessionWriter) finish(status int) {
 	w.once.Do(func() {
 		// Step 1: only successful responses that hand out a session created on this request
-		if status < http.StatusBadRequest {
+		if status < http.StatusBadRequest && w.hooks.HasNewSessionHooks() {
 			if sw := w.newSession(); sw != nil {
 				// Step 2: run the hooks with the (possibly bearer-rewritten) request
 				req := httpRequestOf(w.wrappedContext)
@@ -126,7 +140,14 @@ func (w *newSessionWriter) finish(status int) {
 				}
 			}
 		}
-		// Step 4: forward the buffered cookies
+		// Step 4: the response hooks see the final cookies/headers and may add their own
+		if w.hooks.HasResponseHooks() {
+			ev := plugins.NewResponseEvent(w.wrappedContext.Context(), w.operationPath(), status,
+				w.wrappedContext.Header("Cookie"), w.setCookie, w.headers, w.wrappedContext.SetHeader)
+			w.hooks.TriggerResponse(ev)
+			w.setCookie = ev.SetCookies
+		}
+		// Step 5: forward the buffered cookies
 		for _, c := range w.setCookie {
 			w.wrappedContext.AppendHeader("Set-Cookie", c)
 		}
@@ -156,8 +177,10 @@ func (w *newSessionWriter) newSession() *dtos.SessionWithUser {
 func (w *newSessionWriter) writeError(err error) {
 	w.failed = true
 	ae := autherr.AsAuthError(err)
-	if ae == nil {
-		ae = autherr.ErrInternal
+	if ae == nil || ae.StatusCode >= http.StatusInternalServerError {
+		// unexpected errors are logged with a request ID; the client only gets a generic message
+		ae = autherr.Internal(w.wrappedContext.Context(), err)
+		w.wrappedContext.SetHeader(autherr.RequestIDHeader, ae.RequestID)
 	}
 	status := ae.StatusCode
 	if status == 0 {
@@ -174,4 +197,13 @@ func httpRequestOf(ctx huma.Context) *http.Request {
 	req := &http.Request{Method: ctx.Method(), URL: &u, Host: ctx.Host(), RemoteAddr: ctx.RemoteAddr(), Header: http.Header{}}
 	ctx.EachHeader(func(name, value string) { req.Header.Add(name, value) })
 	return req.WithContext(ctx.Context())
+}
+
+// operationPath returns the operation's path template relative to BasePath (the URL path when the
+// operation is unknown), e.g. "/sign-out".
+func (w *newSessionWriter) operationPath() string {
+	if op := w.wrappedContext.Operation(); op != nil && op.Path != "" {
+		return strings.TrimPrefix(op.Path, w.basePath)
+	}
+	return strings.TrimPrefix(w.wrappedContext.URL().Path, w.basePath)
 }

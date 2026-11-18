@@ -8,7 +8,7 @@ import (
 const characters = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789"
 
 // GenerateRandomString generates a cryptographically secure random alphanumeric string
-func GenerateRandomString(length int) (string, error ){
+func GenerateRandomString(length int) (string, error) {
 	result := make([]byte, length)
 	charLen := big.NewInt(int64(len(characters)))
 	for i := range length {
@@ -18,5 +18,5 @@ func GenerateRandomString(length int) (string, error ){
 		}
 		result[i] = characters[num.Int64()]
 	}
-	return string(result),nil
+	return string(result), nil
 }

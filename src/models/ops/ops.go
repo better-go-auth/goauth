@@ -1,9 +1,9 @@
 package ops
 
 import (
+	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	"github.com/better-go-auth/goauth/src/common/consts"
 )
 
 const (

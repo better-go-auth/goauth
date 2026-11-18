@@ -1,12 +1,12 @@
 package jwt
 
 import (
-	"net/http"
 	"context"
 	"crypto/tls"
 	"fmt"
 	"io"
 	"mime/multipart"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -26,7 +26,6 @@ import (
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"gorm.io/gorm"
 )
-
 
 func safeHumagoUnwrap(ctx huma.Context) (r *http.Request, w http.ResponseWriter) {
 	defer func() {

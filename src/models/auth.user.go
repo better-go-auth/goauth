@@ -5,8 +5,6 @@ import (
 	"strings"
 	"time"
 
-	Imdl "github.com/better-go-auth/goauth/src/common/dtos"
-
 	"github.com/better-go-auth/goauth/src/models/enums"
 )
 
@@ -95,28 +93,8 @@ func AnonymizeEmail(userID string, t time.Time) string {
 	return fmt.Sprintf("deleted_%s_%d@deleted.local", userID, t.Unix())
 }
 
-type UserFilter struct {
-	ID            string              `query:"id"`
-	FirstName     string              `query:"firstName"`
-	LastName      string              `query:"lastName"`
-	Email         string              `query:"email"`
-	Role          enums.Role          `query:"role" enum:"user,admin"`
-	Username      string              `query:"username"`
-	AccountStatus enums.AccountStatus `query:"account_status"`
-	CompanyID     string              `query:"company_id"`
-
-	// Availability    Availability        `query:"availability,omitempty"  enum:"Available,NotAvailable,OnMission"`
-	Country string `query:"country"`
-}
-
-type UserQuery struct {
-	Imdl.PaginationInput `mapstructure:",squash"`
-	UserFilter           `mapstructure:",squash"`
-	Query                string   `query:"q"`
-	Like                 string   `query:"_like"`
-	SelectedFields       []string `query:"_select" enum:"first_name,last_name,email,avatar,company_id,company_role_id,company_role_name,account_status,id,created_at,updated_at"`
-	Sort                 string   `query:"_sort" enum:"first_name,last_name,email,avatar,company_id,account_status,created_at,updated_at"`
-}
+// (the legacy UserFilter / UserQuery with first_name, account_status and company_id query parameters were
+// removed: user listing goes through repo_interfaces.UserFilter and the admin plugin's list-users)
 
 // func (q UserQuery) GetFilter() (f UserFilter, pagi Imdl.PaginationInput, opt *generic.Opt) {
 // 	q.PaginationInput.SortBy = q.Sort

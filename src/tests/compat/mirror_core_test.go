@@ -80,4 +80,3 @@ func TestGoMirror_CoreFlow(t *testing.T) {
 	require.NotNil(t, sessBody.Session)
 	require.Equal(t, email, sessBody.User.Email)
 }
-

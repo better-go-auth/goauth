@@ -66,4 +66,3 @@ func (c *bearerTestClient) post(t *testing.T, path string, body any) *Response {
 	t.Helper()
 	return c.do(t, http.MethodPost, path, body)
 }
-

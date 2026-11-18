@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	access_dto "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
+	access_dto "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 )
 
@@ -25,13 +25,13 @@ func TestAuthHandler_FullFlow(t *testing.T) {
 	var activeRefreshToken string
 
 	t.Run("01 Sign Up", func(t *testing.T) {
-		signUpInput := models.RegisterClientInput{
+		signUpInput := access_dto.RegisterClientInput{
 			FirstName: "John",
 			LastName:  "Doe",
 			Email:     email,
 			Password:  initialPassword,
 		}
-		resp, err := env.AuthHandler.Register(ctx, &humatypes.HumaReqBody[models.RegisterClientInput]{
+		resp, err := env.AuthHandler.Register(ctx, &humatypes.HumaReqBody[access_dto.RegisterClientInput]{
 			Body: signUpInput,
 		})
 		if err != nil {

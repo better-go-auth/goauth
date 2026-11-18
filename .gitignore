@@ -328,3 +328,5 @@ goauth
 *.db-shm
 *.db-wal
 *.yaml
+# built example binary (go build ./src/example)
+/example

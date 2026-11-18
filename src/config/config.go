@@ -55,7 +55,7 @@ type AuthConfig struct {
 	// DisabledOps lists operation IDs that are disabled (skipped during core route registration
 	// and blocked with 404 Not Found on plugin routes).
 	DisabledOps []consts.OperationId
-	Advanced      Advanced
+	Advanced    Advanced
 
 	cachedSecure       *bool
 	cachedCookieDomain string

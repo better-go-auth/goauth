@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"net/http"
 	"testing"
 
@@ -189,8 +190,8 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 				Body struct {
 					Token string `json:"token"`
 					Body  struct {
-						Token      string             `json:"token"`
-						AuthTokens *models.AuthTokens `json:"authTokens"`
+						Token      string                      `json:"token"`
+						AuthTokens *accesstokendtos.AuthTokens `json:"authTokens"`
 					} `json:"body"`
 				} `json:"body"`
 			}

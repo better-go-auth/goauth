@@ -8,6 +8,7 @@ import (
 	"time"
 
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/userdelete"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -196,23 +197,16 @@ func (s *Service) deleteUserNow(ctx context.Context, userID string) error {
 			return err
 		}
 	}
-	// accounts and user go together; the user delete also frees the email (repositories rewrite it)
-	err = s.inTx(ctx, func(ctx context.Context) error {
-		if err := s.repos.DeleteAccounts(ctx, user.ID); err != nil {
-			return err
-		}
-		return s.repos.DeleteUser(ctx, user.ID)
-	})
+	// sessions, plugin rows (UserDeleted hooks), accounts and the user; hard delete like better-auth
+	// unless config User.GoAuth.SoftDelete keeps a tombstone
+	err = userdelete.Run(ctx, userdelete.Deps{
+		Soft:           s.cfg.User.GoAuth.SoftDelete,
+		RevokeSessions: s.sessionMgr.DeleteUserSessions,
+		RemoveRows:     s.removeUserRows,
+		Hooks:          s.Hooks,
+	}, user.ID)
 	if err != nil {
 		return err
-	}
-	// sign the user out on every device (DB and secondary storage)
-	if err := s.sessionMgr.DeleteUserSessions(ctx, user.ID); err != nil {
-		return err
-	}
-	// let plugins drop their per-user rows (two-factor secrets, passkeys, ...); best effort like better-auth's cleanup
-	if s.Hooks != nil {
-		_ = s.Hooks.TriggerUserDeleted(ctx, user.ID)
 	}
 	// config: User.DeleteUser.AfterDelete for cleanup in the app (files, audit log, ...)
 	if opts.AfterDelete != nil {
@@ -299,4 +293,17 @@ func (s *Service) UnlinkAccount(ctx context.Context, current *dtos.SessionWithUs
 		return autherr.ErrAccountNotFound
 	}
 	return s.repos.DeleteAccount(ctx, match.ID)
+}
+
+// removeUserRows deletes the user's accounts and the user row in one transaction (soft: tombstone).
+func (s *Service) removeUserRows(ctx context.Context, userID string, soft bool) error {
+	return s.inTx(ctx, func(ctx context.Context) error {
+		if err := s.repos.DeleteAccounts(ctx, userID); err != nil {
+			return err
+		}
+		if soft {
+			return s.repos.SoftDeleteUser(ctx, userID)
+		}
+		return s.repos.DeleteUser(ctx, userID)
+	})
 }

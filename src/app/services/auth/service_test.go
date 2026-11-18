@@ -10,8 +10,8 @@ import (
 
 	"github.com/better-go-auth/goauth/src/app/repository/memory"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
-	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -189,7 +189,7 @@ func TestRequireEmailVerification(t *testing.T) {
 		t.Fatalf("verify: %+v %v", v, err)
 	}
 	if _, err := e.svc.SignInEmail(ctx, dtos.SignInEmailInput{Email: "bob@example.com", Password: "password123"}, svcint.Meta{}); err != nil {
-		t.Fatalf("sign-in after verification: %v", err		)
+		t.Fatalf("sign-in after verification: %v", err)
 	}
 }
 

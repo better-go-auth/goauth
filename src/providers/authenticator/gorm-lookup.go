@@ -25,9 +25,9 @@ func (g *gormSessionLookup) FindUserByID(ctx context.Context, id string) (*model
 }
 
 // NewDefaultAuthenticatorWithDB is a backward-compatible wrapper that takes a *gorm.DB.
-func NewDefaultAuthenticatorWithDB(accessSecret string, db *gorm.DB) AuthenticateFunc {
+func NewDefaultAuthenticatorWithDB(db *gorm.DB) AuthenticateFunc {
 	if db == nil {
-		return NewDefaultAuthenticator(accessSecret, nil)
+		return NewDefaultAuthenticator(nil)
 	}
-	return NewDefaultAuthenticator(accessSecret, &gormSessionLookup{db: db})
+	return NewDefaultAuthenticator(&gormSessionLookup{db: db})
 }

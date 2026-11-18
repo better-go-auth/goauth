@@ -24,4 +24,3 @@ func NewWithGroup(r *gin.Engine, g *gin.RouterGroup, opts ...adapters.Option) hu
 	// 2. Wrap the Gin router group using humagin adapter
 	return humagin.NewWithGroup(r, g, cfg)
 }
-

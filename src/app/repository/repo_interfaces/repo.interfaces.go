@@ -21,8 +21,13 @@ type IUserRepo interface {
 	FindUserByUsername(ctx context.Context, username string) (*models.User, error)
 	// UpdateUser applies a partial update keyed by Go field name (e.g. "EmailVerified") and returns the updated record.
 	UpdateUser(ctx context.Context, id string, data map[string]interface{}) (*models.User, error)
-	// DeleteUser soft-deletes a user and frees their email.
+	// DeleteUser removes a user like better-auth (hard delete with cascade): the user's sessions and accounts
+	// are deleted together with the user row. Plugin rows are removed by the UserDeleted hooks.
 	DeleteUser(ctx context.Context, id string) error
+	// SoftDeleteUser keeps the user row as a tombstone (deletedAt set, email anonymized, phone number and
+	// username released) so the user disappears from every lookup but can still be audited.
+	// Used instead of DeleteUser when config User.GoAuth.SoftDelete is on.
+	SoftDeleteUser(ctx context.Context, id string) error
 	// ListUsers returns a page of users matching the filter, plus the total count.
 	ListUsers(ctx context.Context, filter UserFilter, pagi dtos.PaginationInput) ([]models.User, int64, error)
 }

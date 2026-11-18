@@ -9,14 +9,48 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version-file: "go.mod" }
+      - name: gofmt
+        # fail on any unformatted file (run `gofmt -w .` locally to fix)
+        run: |
+          unformatted=$(gofmt -l $(git ls-files '*.go'))
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
       - name: go vet
         run: go vet ./...
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        # golangci-lint v2 (built with a recent Go) understands the module's Go version; v1.64 does not
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: v1.64
-  compat:
+          version: v2.6
+
+  test:
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version-file: "go.mod" }
+      - uses: actions/setup-node@v4
+        with: { node-version: "20" }
+      - name: install better-auth client
+        working-directory: src/tests/compat/client
+        # node_modules is a symlink to a sibling project locally; on CI install into a real directory
+        run: rm -f node_modules && npm install --no-audit --no-fund
+      - name: install better-auth passkey client
+        working-directory: src/tests/compat/client-passkey
+        run: npm install --no-audit --no-fund --legacy-peer-deps
+      - name: unit and plugin tests (race detector)
+        run: go test -race ./... -count=1 -timeout 900s
+
+  # The repository contract and the official client suites against every SQL database we support.
+  databases:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        db: [postgres, mysql]
     services:
       postgres:
         image: postgres:15-alpine
@@ -31,22 +65,41 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: testdb
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd "mysqladmin ping -ptestpass"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version-file: "go.mod" }
+      - name: select database
+        run: |
+          if [ "${{ matrix.db }}" = "postgres" ]; then
+            echo "TEST_POSTGRES_URL=postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable" >> "$GITHUB_ENV"
+          else
+            echo "TEST_MYSQL_URL=root:testpass@tcp(localhost:3306)/testdb?parseTime=true" >> "$GITHUB_ENV"
+          fi
+      - name: repository contract
+        run: go test -race ./src/app/repository/... -count=1 -run 'Contract' -v -timeout 300s
       - uses: actions/setup-node@v4
+        if: matrix.db == 'postgres'
         with: { node-version: "20" }
-      - name: install better-auth client
-        working-directory: src/tests/compat/client
-        # node_modules is a symlink to a sibling project locally; on CI install into a real directory
-        run: rm -f node_modules && npm install --no-audit --no-fund
-      - name: install better-auth passkey client
-        working-directory: src/tests/compat/client-passkey
-        run: npm install --no-audit --no-fund --legacy-peer-deps
-      - name: unit and plugin tests
-        run: go test ./... -count=1 -timeout 600s
+      - name: install better-auth clients
+        if: matrix.db == 'postgres'
+        run: |
+          (cd src/tests/compat/client && rm -f node_modules && npm install --no-audit --no-fund)
+          (cd src/tests/compat/client-passkey && npm install --no-audit --no-fund --legacy-peer-deps)
       - name: compat tests (postgres + better-auth clients)
+        if: matrix.db == 'postgres'
         env:
           TEST_DATABASE_URL: "postgres://testuser:testpass@localhost:5432/testdb?sslmode=disable"
         # -p 1: every package shares the one Postgres database

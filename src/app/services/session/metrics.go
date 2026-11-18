@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	meter = otel.Meter("goauth/sessions")
+	meter             = otel.Meter("goauth/sessions")
 	cacheErrorCounter metric.Int64Counter
 )
 

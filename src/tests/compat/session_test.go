@@ -276,4 +276,3 @@ func TestCookieCache_EndToEnd(t *testing.T) {
 		t.Fatalf("disableCookieCache must bypass cache and return null for deleted session: %d %s", r3.Status, r3.Body)
 	}
 }
-

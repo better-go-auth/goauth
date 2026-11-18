@@ -2,12 +2,12 @@ package auth_test
 
 import (
 	"context"
+	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"net/http"
 	"testing"
 
 	bettergoauth "github.com/better-go-auth/goauth"
 	"github.com/better-go-auth/goauth/src/app/repository/memory"
-	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
@@ -97,7 +97,7 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 	// aTprofileSvc := services.NewProfileService(aTVfcSvc, aTsSvc, mockRepos, txMgr, passwords)
 
 	// 1. Register with email
-	regResp, err := aTauthSvc.RegisterWithEmail(ctx, models.RegisterClientInput{
+	regResp, err := aTauthSvc.RegisterWithEmail(ctx, accesstokendtos.RegisterClientInput{
 		FirstName: "Alice",
 		LastName:  "Smith",
 		Email:     "alice@example.com",
@@ -108,8 +108,6 @@ func TestCustomRepositories_AuthAndProfileFlow(t *testing.T) {
 	// assert.Equal(t, "Smith", regResp.User.Name)
 	assert.Equal(t, "alice@example.com", regResp.User.Email)
 	userID := regResp.User.ID
-
-	
 
 	// Verify it persists in mock repository
 	retrieved, err := mockRepos.FindUserByID(ctx, userID)

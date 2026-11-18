@@ -668,7 +668,7 @@ func (s *Service) VerifyBackupCode(ctx context.Context, in tfdtos.VerifyBackupCo
 	found := false
 	remaining := make([]string, 0, len(codes))
 	for _, c := range codes {
-		if c == in.Code {
+		if !found && authcrypto.SecureEqual(c, in.Code) {
 			found = true
 			continue
 		}

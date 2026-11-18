@@ -10,13 +10,13 @@ import (
 	"testing"
 	"time"
 
+	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
 	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
-	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -700,4 +700,3 @@ func TestOrg_InvitationLimit_CountsPendingOnly(t *testing.T) {
 	})
 	require.NoError(t, err)
 }
-

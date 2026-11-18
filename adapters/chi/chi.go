@@ -15,4 +15,3 @@ func New(r chi.Router, opts ...adapters.Option) huma.API {
 	// 2. Wrap the Chi router using humachi adapter
 	return humachi.New(r, cfg)
 }
-

@@ -146,7 +146,8 @@ func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
 	p.service = svc
 	p.middleware = orgmiddleware.New(p.service)
 
-	p.hookService = orgsvc.NewOrgHookService(p.orgRepos.IOrgRepo, p.orgRepos.IMemberRepo)
+	p.hookService = orgsvc.NewOrgHookService(p.orgRepos.IOrgRepo, p.orgRepos.IMemberRepo).
+		WithUserCleanup(p.orgRepos.IInvitationRepo, p.orgRepos.ITeamMemberRepo)
 
 	if ictx != nil {
 		p.authConfig = ictx.Config

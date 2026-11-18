@@ -1,7 +1,8 @@
 package dtos
 
 import (
-	"github.com/better-go-auth/goauth/src/models"
+	"time"
+
 	"github.com/better-go-auth/goauth/src/models/dtos"
 )
 
@@ -27,8 +28,8 @@ type RefreshTokenInput struct {
 
 // TokenResponse represents a token issue response with user payload.
 type TokenResponse struct {
-	AuthTokens *models.AuthTokens `json:"auth_tokens"`
-	UserData   dtos.UserResponse  `json:"user_data"`
+	AuthTokens *AuthTokens       `json:"auth_tokens"`
+	UserData   dtos.UserResponse `json:"user_data"`
 }
 
 // =========================. password reset related
@@ -49,4 +50,41 @@ type PwdResetInput struct {
 type ChangeActiveCompanyInput struct {
 	OrgID     string `json:"org_id,omitempty"`
 	CompanyID string `json:"company_id,omitempty"` // Deprecated: use OrgID instead
+}
+
+// ─── Legacy /signup, /login and /refresh types (moved here from the core models package) ─────────────
+
+// RegisterClientInput is the legacy POST /signup body.
+type RegisterClientInput struct {
+	FirstName string `json:"fName" binding:"required,min=2" `
+	LastName  string `json:"lName" `
+	Email     string `json:"email" binding:"required,email" `
+	Password  string `json:"password" binding:"required,min=6"`
+	Avatar    string `json:"avatar,omitempty" `
+	Country   string `json:"country,omitempty"`
+}
+
+// AuthTokens is the access/refresh JWT pair the legacy /login and /refresh routes return.
+type AuthTokens struct {
+	AccessToken  string `json:"access_token"`
+	RefreshToken string `json:"refresh_token"`
+}
+
+// LegacySignInResponse is the legacy /login and /refresh body: better-auth's sign-in response plus the JWT pair.
+type LegacySignInResponse struct {
+	dtos.SignInResponse
+	AuthTokens *AuthTokens `json:"authTokens,omitempty"`
+}
+
+// SessionOpt are the options of a legacy access/refresh session.
+type SessionOpt struct {
+	ClearSession bool
+	ActiveOrgID  *string
+	OrgRoleID    *string
+	OrgRole      *string
+	DeviceToken  string
+	// ImpersonatedBy marks the session as an admin impersonation.
+	ImpersonatedBy *string
+	// ExpiresIn overrides the session row lifetime (default: refresh token lifetime).
+	ExpiresIn time.Duration
 }

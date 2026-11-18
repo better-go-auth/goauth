@@ -65,7 +65,7 @@ type TestEnv struct {
 	OrgHandler     *humaorg.OrgHandler
 
 	// Direct services for testing/debugging
-	AuthService    *accesstokensvc.AuthService
+	AuthService *accesstokensvc.AuthService
 	// ProfileService *accesstokensvc.ProfileService
 	SessionService *accesstokensvc.SessionService
 	AdminService   adminsvc.IAdminService
@@ -239,7 +239,7 @@ func SetupTestEnvWithDB(t *testing.T, dbType DatabaseType) *TestEnv {
 		AdminHandler:   adminHandler,
 		OrgHandler:     orgHandler,
 		// services
-		AuthService:    authSvc,
+		AuthService: authSvc,
 		// ProfileService: profileServ,
 		SessionService: sSvc,
 		AdminService:   adminService,
@@ -287,7 +287,10 @@ func (e *TestEnv) DeleteJSON(path string, body any, headers ...map[string]string
 }
 
 // doJSONWithT is the test-aware variant that uses t.Helper and t.Fatalf instead of panicking.
-func (e *TestEnv) doJSONWithT(t interface{ Helper(); Fatalf(string, ...any) }, method, path string, body any, headers ...map[string]string) (*http.Response, string) {
+func (e *TestEnv) doJSONWithT(t interface {
+	Helper()
+	Fatalf(string, ...any)
+}, method, path string, body any, headers ...map[string]string) (*http.Response, string) {
 	t.Helper()
 	var bodyReader io.Reader
 	if body != nil {

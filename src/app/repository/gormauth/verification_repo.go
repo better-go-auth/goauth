@@ -105,10 +105,13 @@ func (r *VerificationRepo) DeleteVerificationsByValue(ctx context.Context, ident
 		return nil
 	}
 	db := gormutil.GetDB(ctx, r.db)
-	escaped := strings.ReplaceAll(identifierPrefix, "\\", "\\\\")
-	escaped = strings.ReplaceAll(escaped, "%", "\\%")
-	escaped = strings.ReplaceAll(escaped, "_", "\\_")
-	if err := db.Where("value = ? AND identifier LIKE ? ESCAPE '\\'", value, escaped+"%").Delete(&models.Verification{}).Error; err != nil {
+	// Step 1: escape LIKE wildcards in the prefix. '!' is the escape character because a backslash
+	// literal ('\\') is parsed differently by MySQL (backslash escapes) than by Postgres and SQLite.
+	escaped := strings.ReplaceAll(identifierPrefix, "!", "!!")
+	escaped = strings.ReplaceAll(escaped, "%", "!%")
+	escaped = strings.ReplaceAll(escaped, "_", "!_")
+	// Step 2: delete every row with that value whose identifier starts with the prefix
+	if err := db.Where("value = ? AND identifier LIKE ? ESCAPE '!'", value, escaped+"%").Delete(&models.Verification{}).Error; err != nil {
 		return fmt.Errorf("gorm/verification: delete by value: %w", err)
 	}
 	return nil

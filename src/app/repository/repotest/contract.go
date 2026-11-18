@@ -22,6 +22,8 @@ type Factory func(t *testing.T) repo_interfaces.IAuthRepos
 // Run executes the auth repository contract against the implementation built by newRepos.
 func Run(t *testing.T, newRepos Factory) {
 	t.Run("users", func(t *testing.T) { testUsers(t, newRepos(t)) })
+	t.Run("delete user cascade", func(t *testing.T) { testDeleteUserCascade(t, newRepos(t)) })
+	t.Run("soft delete user", func(t *testing.T) { testSoftDeleteUser(t, newRepos(t)) })
 	t.Run("phone numbers", func(t *testing.T) { testPhoneNumbers(t, newRepos(t)) })
 	t.Run("usernames", func(t *testing.T) { testUsernames(t, newRepos(t)) })
 	t.Run("list users", func(t *testing.T) { testListUsers(t, newRepos(t)) })
@@ -505,4 +507,62 @@ func testVerificationCAS(t *testing.T, r repo_interfaces.IAuthRepos) {
 	ok, err = r.UpdateVerificationValue(ctx, "", "", "x")
 	require.NoError(t, err)
 	require.False(t, ok)
+}
+
+// testDeleteUserCascade: DeleteUser is better-auth's hard delete; sessions and accounts go with the user.
+func testDeleteUserCascade(t *testing.T, r repo_interfaces.IAuthRepos) {
+	ctx := context.Background()
+	// Step 1: a user with a session and an account, and a second user that must be untouched
+	u := mustCreateUser(t, r, "gone@example.com")
+	other := mustCreateUser(t, r, "stays@example.com")
+	_, err := r.CreateSession(ctx, newSession(u.ID, "cascade-token", time.Hour))
+	require.NoError(t, err)
+	_, err = r.CreateSession(ctx, newSession(other.ID, "other-token", time.Hour))
+	require.NoError(t, err)
+	_, err = r.CreateAccount(ctx, &models.Account{UserID: u.ID, AccountID: "gh-cascade", ProviderID: models.ProvGithub})
+	require.NoError(t, err)
+
+	// Step 2: delete
+	require.NoError(t, r.DeleteUser(ctx, u.ID))
+
+	// Step 3: user, session and account are gone; the other user's session stays
+	_, err = r.FindUserByID(ctx, u.ID)
+	require.Error(t, err)
+	_, err = r.FindSession(ctx, "cascade-token")
+	require.Error(t, err, "sessions are deleted with the user")
+	accs, err := r.FindAccounts(ctx, u.ID)
+	require.NoError(t, err)
+	require.Empty(t, accs, "accounts are deleted with the user")
+	_, err = r.FindSession(ctx, "other-token")
+	require.NoError(t, err)
+	require.NoError(t, r.DeleteUser(ctx, u.ID), "deleting a missing user is not an error")
+}
+
+// testSoftDeleteUser: SoftDeleteUser hides the user from lookups and releases its unique fields.
+func testSoftDeleteUser(t *testing.T, r repo_interfaces.IAuthRepos) {
+	ctx := context.Background()
+	phone := "+15550002222"
+	name := "soft_user"
+	// Step 1: a user with every unique field set
+	u := mustCreateUser(t, r, "soft@example.com")
+	_, err := r.UpdateUser(ctx, u.ID, map[string]interface{}{"PhoneNumber": phone, "Username": &name})
+	require.NoError(t, err)
+
+	// Step 2: soft delete
+	require.NoError(t, r.SoftDeleteUser(ctx, u.ID))
+
+	// Step 3: not found by any lookup, and the email, phone number and username are free again
+	_, err = r.FindUserByID(ctx, u.ID)
+	require.Error(t, err)
+	_, err = r.FindUserByEmail(ctx, "soft@example.com")
+	require.Error(t, err)
+	_, err = r.FindUserByPhoneNumber(ctx, phone)
+	require.Error(t, err)
+	_, err = r.FindUserByUsername(ctx, name)
+	require.Error(t, err)
+	again := newUser("soft@example.com")
+	again.PhoneNumber = &phone
+	again.Username = &name
+	_, err = r.CreateUser(ctx, again)
+	require.NoError(t, err, "a soft-deleted user's unique fields can be reused")
 }

@@ -12,17 +12,16 @@ import (
 	"time"
 
 	bettergoauth "github.com/better-go-auth/goauth"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
-	"github.com/better-go-auth/goauth/src/plugins/org"
-	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
+	"github.com/better-go-auth/goauth/src/plugins/org"
 	"github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/danielgtaylor/huma/v2"
@@ -198,7 +197,7 @@ func main() {
 		testPassword := "TestPassword123!"
 
 		// 1. Register with email
-		regRes, err := authSvc.RegisterWithEmail(ctx, models.RegisterClientInput{
+		regRes, err := authSvc.RegisterWithEmail(ctx, accesstokendtos.RegisterClientInput{
 			Email:     testEmail,
 			Password:  testPassword,
 			FirstName: "Legacy",

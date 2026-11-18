@@ -10,21 +10,20 @@ import (
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/models"
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	"github.com/better-go-auth/goauth/src/providers/cookies"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
-	"net/http"
-	"net/http/httptest"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
-	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"net/http"
+	"net/http/httptest"
 )
 
 type mockEmailSender struct {
@@ -118,7 +117,7 @@ func TestAccessTokenPlugin_FullFlow(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Register with email
-	regResp, err := plugin.AuthService().RegisterWithEmail(ctx, models.RegisterClientInput{
+	regResp, err := plugin.AuthService().RegisterWithEmail(ctx, accesstokendtos.RegisterClientInput{
 		FirstName: "John",
 		LastName:  "Doe",
 		Email:     "john.doe@example.com",
@@ -264,7 +263,7 @@ func TestRefreshToken_RejectsAccessTokenJWT(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Create a user and log in to get access token JWT and session refresh token
-	regResp, err := plugin.AuthService().RegisterWithEmail(ctx, models.RegisterClientInput{
+	regResp, err := plugin.AuthService().RegisterWithEmail(ctx, accesstokendtos.RegisterClientInput{
 		FirstName: "Token",
 		LastName:  "Test",
 		Email:     "tokentest@example.com",
@@ -383,7 +382,7 @@ func TestSecretSeparation_CookiesUseCoreSecret(t *testing.T) {
 	ctx := context.Background()
 
 	// 1. Register and login
-	regResp, err := plugin.AuthService().RegisterWithEmail(ctx, models.RegisterClientInput{
+	regResp, err := plugin.AuthService().RegisterWithEmail(ctx, accesstokendtos.RegisterClientInput{
 		FirstName: "Cookie",
 		LastName:  "Test",
 		Email:     "cookietest@example.com",
@@ -472,4 +471,3 @@ func TestScopedProtection_RequireRefreshToken(t *testing.T) {
 	}
 	_ = resp2.Body.Close()
 }
-

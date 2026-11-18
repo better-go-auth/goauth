@@ -11,6 +11,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/multi-session/config"
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 )
 
@@ -105,7 +106,7 @@ func (s *MultiSessionService) hasDeviceCookie(cookieHeader, token string) bool {
 	}
 	v, ok := s.kit.Cookies.ReadSigned(cookieHeader, cookieBase(token))
 	// goauth extra: the cookie must hold the requested token, not just share its lowercased name
-	return ok && v == token
+	return ok && authcrypto.SecureEqual(v, token)
 }
 
 // live returns the session for token when it exists and has not expired.

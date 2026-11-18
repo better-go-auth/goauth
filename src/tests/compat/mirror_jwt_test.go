@@ -132,4 +132,3 @@ func TestGoMirror_JWT(t *testing.T) {
 	badRes.JSON(t, &verBody)
 	require.Nil(t, verBody.Payload)
 }
-

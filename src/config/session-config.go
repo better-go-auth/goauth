@@ -151,15 +151,29 @@ type SessionPatch struct {
 // ToMap converts SessionPatch to the map form used by UpdateSession.
 func (sp SessionPatch) ToMap() map[string]any {
 	m := map[string]any{}
-	if sp.ActiveOrganizationID != nil { m["ActiveOrganizationID"] = sp.ActiveOrganizationID }
-	if sp.ActiveOrganizationRole != nil { m["ActiveOrganizationRole"] = sp.ActiveOrganizationRole }
+	if sp.ActiveOrganizationID != nil {
+		m["ActiveOrganizationID"] = sp.ActiveOrganizationID
+	}
+	if sp.ActiveOrganizationRole != nil {
+		m["ActiveOrganizationRole"] = sp.ActiveOrganizationRole
+	}
 	if sp.ActiveOrganizationType != nil {
 		m["ActiveOrganizationType"] = sp.ActiveOrganizationType
 	}
-	if sp.ActiveTeamID != nil { m["ActiveTeamID"] = sp.ActiveTeamID }
-	if sp.DeviceToken != nil { m["DeviceToken"] = *sp.DeviceToken }
-	if sp.DeviceID != nil { m["DeviceID"] = sp.DeviceID }
-	if sp.DeviceName != nil { m["DeviceName"] = sp.DeviceName }
-	if sp.DeviceType != nil { m["DeviceType"] = sp.DeviceType }
+	if sp.ActiveTeamID != nil {
+		m["ActiveTeamID"] = sp.ActiveTeamID
+	}
+	if sp.DeviceToken != nil {
+		m["DeviceToken"] = *sp.DeviceToken
+	}
+	if sp.DeviceID != nil {
+		m["DeviceID"] = sp.DeviceID
+	}
+	if sp.DeviceName != nil {
+		m["DeviceName"] = sp.DeviceName
+	}
+	if sp.DeviceType != nil {
+		m["DeviceType"] = sp.DeviceType
+	}
 	return m
 }

@@ -14,6 +14,6 @@ func (opts *GoAuthOptions) Validate() error {
 	if opts.Conn == nil && opts.Repositories == nil {
 		return errors.New("goauth: either database connection (Conn) or Repositories must be provided")
 	}
-	
+
 	return opts.AuthConfig.Validate()
 }

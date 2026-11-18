@@ -35,8 +35,6 @@ type Organization struct {
 	Sessions []coremodels.Session `json:"-" gorm:"foreignKey:ActiveOrganizationID;constraint:OnDelete:SET NULL"`
 }
 
-
-
 // OrgMemberRole defines the roles available within an organization.
 type OrgMemberRole string
 
@@ -60,8 +58,6 @@ type Member struct {
 	Organization *Organization    `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
 	User         *coremodels.User `json:"user,omitempty"         gorm:"foreignKey:UserID"                                    bun:"rel:belongs-to,join:user_id=id"`
 }
-
-
 
 // InvitationStatus tracks the state of an invitation.
 type InvitationStatus string
@@ -94,8 +90,6 @@ type Invitation struct {
 	Inviter      *coremodels.User `json:"inviter,omitempty"      gorm:"foreignKey:InviterID"                                 bun:"rel:belongs-to,join:inviter_id=id"`
 }
 
-
-
 // OrgPermission defines a fine-grained permission within an organization.
 // To be deleted: replaced by better-auth's `organizationRole` table (dynamic access control).
 // type OrgPermission struct {
@@ -117,8 +111,6 @@ type Team struct {
 	Organization    *Organization `json:"organization,omitempty" gorm:"foreignKey:OrganizationID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:organization_id=id"`
 }
 
-
-
 // TeamMember is better-auth's `teamMember` model (opt-in via OrgConfig.Teams.Enabled).
 type TeamMember struct {
 	// ===== better-auth fields =====
@@ -128,10 +120,6 @@ type TeamMember struct {
 	Team            *Team            `json:"team,omitempty" gorm:"foreignKey:TeamID;constraint:OnDelete:CASCADE" bun:"rel:belongs-to,join:team_id=id"`
 	User            *coremodels.User `json:"user,omitempty" gorm:"foreignKey:UserID" bun:"rel:belongs-to,join:user_id=id"`
 }
-
-
-
-
 
 // OrganizationRole is better-auth's `organizationRole` model for dynamic access control
 // (opt-in via OrgConfig.DynamicAccessControl.Enabled). It replaces goauth's legacy OrgPermission
@@ -146,8 +134,6 @@ type OrganizationRole struct {
 	// extra field from `better-auth`
 	Ops Operations `json:"ops,omitempty" gorm:"serializer:json;type:text" bun:"ops"`
 }
-
-
 
 // Pagination controls offset-based paginated queries.
 type Pagination struct {

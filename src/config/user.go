@@ -11,6 +11,17 @@ import (
 type UserOptions struct {
 	ChangeEmail ChangeEmailOptions
 	DeleteUser  DeleteUserOptions
+
+	GoAuth UserGoAuth
+}
+
+// UserGoAuth holds user options better-auth doesn't have.
+type UserGoAuth struct {
+	// SoftDelete keeps deleted users as tombstones (deletedAt set, email anonymized, phone number and
+	// username released) instead of removing them. It applies to /delete-user, admin /remove-user and the
+	// anonymous plugin. Default false: better-auth's hard delete, where the user's sessions, accounts and
+	// plugin rows are removed with the user.
+	SoftDelete bool
 }
 
 // ChangeEmailOptions mirrors better-auth's `user.changeEmail`.

@@ -139,7 +139,35 @@ func (r *UserRepo) UpdateUser(ctx context.Context, id string, data map[string]in
 	return &user, nil
 }
 
+// DeleteUser hard-deletes the user row after its sessions and accounts (better-auth's cascade), in one
+// transaction so the foreign keys from session/account never point at a missing user.
 func (r *UserRepo) DeleteUser(ctx context.Context, id string) error {
+	if id == "" {
+		return nil
+	}
+	err := gormutil.GetDB(ctx, r.db).Transaction(func(tx *gorm.DB) error {
+		// Step 1: sessions of the user (and sessions where the user impersonates someone)
+		if err := tx.Where(&models.Session{UserID: id}, "UserID").Delete(&models.Session{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where(&models.Session{ImpersonatedBy: &id}, "ImpersonatedBy").Delete(&models.Session{}).Error; err != nil {
+			return err
+		}
+		// Step 2: linked accounts
+		if err := tx.Where(&models.Account{UserID: id}, "UserID").Delete(&models.Account{}).Error; err != nil {
+			return err
+		}
+		// Step 3: the user row itself
+		return tx.Where(userByID(id), "ID").Delete(&models.User{}).Error
+	})
+	if err != nil {
+		return fmt.Errorf("gorm/user: delete: %w", err)
+	}
+	return nil
+}
+
+// SoftDeleteUser keeps the row as a tombstone: deletedAt is set and the unique columns are released.
+func (r *UserRepo) SoftDeleteUser(ctx context.Context, id string) error {
 	now := models.TimeNow()
 	tombstoneEmail := models.AnonymizeEmail(id, now)
 	result := gormutil.GetDB(ctx, r.db).
@@ -154,7 +182,7 @@ func (r *UserRepo) DeleteUser(ctx context.Context, id string) error {
 			"Username": nil,
 		})
 	if result.Error != nil {
-		return fmt.Errorf("gorm/user: delete: %w", result.Error)
+		return fmt.Errorf("gorm/user: soft delete: %w", result.Error)
 	}
 	return nil
 }

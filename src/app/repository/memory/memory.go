@@ -186,7 +186,32 @@ func (r *Repos) UpdateUser(_ context.Context, id string, data map[string]interfa
 	return &c, nil
 }
 
+// DeleteUser removes the user, their sessions and their accounts (better-auth's cascade).
 func (r *Repos) DeleteUser(_ context.Context, id string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if id == "" {
+		return nil
+	}
+	// Step 1: sessions of the user and sessions the user impersonates
+	for sid, s := range r.sessions {
+		if s.UserID == id || (s.ImpersonatedBy != nil && *s.ImpersonatedBy == id) {
+			delete(r.sessions, sid)
+		}
+	}
+	// Step 2: linked accounts
+	for aid, a := range r.accounts {
+		if a.UserID == id {
+			delete(r.accounts, aid)
+		}
+	}
+	// Step 3: the user
+	delete(r.users, id)
+	return nil
+}
+
+// SoftDeleteUser keeps the user as a tombstone (deletedAt, anonymized email, released unique fields).
+func (r *Repos) SoftDeleteUser(_ context.Context, id string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	u, ok := r.liveUser(id)

@@ -303,8 +303,8 @@ func TestAdminE2E_FullFlow(t *testing.T) {
 	})
 }
 
-// TestAdminRemoveUser_ReleasesPhoneNumber checks that admin remove-user frees the unique phone number,
-// like the core delete-user does, so the number can be registered again.
+// TestAdminRemoveUser_ReleasesPhoneNumber checks that admin remove-user deletes the user (default hard delete)
+// and frees the unique phone number, like the core delete-user does, so the number can be registered again.
 func TestAdminRemoveUser_ReleasesPhoneNumber(t *testing.T) {
 	env := helpers.SetupTestEnv(t, false)
 	_, rawAuthHeader := setupAdminUser(t, env)
@@ -323,13 +323,13 @@ func TestAdminRemoveUser_ReleasesPhoneNumber(t *testing.T) {
 		t.Fatalf("RemoveUser failed: status %d, body: %s", resp.StatusCode, body)
 	}
 
-	// Step 3: the tombstone no longer holds the number
-	var tomb models.User
-	if err := env.DB.Unscoped().Where("id = ?", victim.ID).Take(&tomb).Error; err != nil {
-		t.Fatalf("load tombstone: %v", err)
+	// Step 3: the user row is gone (default hard delete, like better-auth; User.GoAuth.SoftDelete keeps a tombstone)
+	var count int64
+	if err := env.DB.Model(&models.User{}).Where(&models.User{Base: models.Base{ID: victim.ID}}, "ID").Count(&count).Error; err != nil {
+		t.Fatalf("count users: %v", err)
 	}
-	if tomb.PhoneNumber != nil {
-		t.Fatalf("expected phone number to be released, got %q", *tomb.PhoneNumber)
+	if count != 0 {
+		t.Fatalf("expected the user row to be deleted, found %d", count)
 	}
 
 	// Step 4: another user can take the number

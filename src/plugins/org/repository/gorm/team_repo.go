@@ -127,6 +127,17 @@ func (r *TeamMemberRepo) DeleteTeamMember(ctx context.Context, teamID, userID st
 	return nil
 }
 
+// DeleteTeamMembersByUserID removes every team membership of userID (user deletion cleanup).
+func (r *TeamMemberRepo) DeleteTeamMembersByUserID(ctx context.Context, userID string) error {
+	if userID == "" {
+		return nil
+	}
+	if err := getDB(ctx, r.db).Where(&models.TeamMember{UserID: userID}, "UserID").Delete(&models.TeamMember{}).Error; err != nil {
+		return fmt.Errorf("gorm/team-member: delete by user: %w", err)
+	}
+	return nil
+}
+
 // OrganizationRoleRepo implements orgrepo.IOrganizationRoleRepo using GORM.
 type OrganizationRoleRepo struct{ db *gorm.DB }
 

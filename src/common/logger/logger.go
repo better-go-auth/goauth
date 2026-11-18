@@ -59,4 +59,3 @@ func ErrorCtx(ctx context.Context, name string, output any, opt *Opt) {
 // 	frame, _ := frames.Next()
 // 	slog.Error(coloredMsg, slog.String("file", fmt.Sprintf("%s:%d", frame.File, frame.Line)))
 // }
-

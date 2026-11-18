@@ -18,6 +18,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/enums"
 	phoneconfig "github.com/better-go-auth/goauth/src/plugins/phone-number/config"
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
 
 // PasswordResetSuffix is appended to the phone number to build the password reset verification identifier.
@@ -125,7 +126,7 @@ func (s *PhoneNumberService) checkCode(ctx context.Context, identifier, code str
 			return nil, ErrTooManyAttempts
 		}
 		// Step 4: wrong code → count the attempt atomically; retry when another request counted first
-		if stored != code {
+		if !authcrypto.SecureEqual(stored, code) {
 			swapped, err := s.kit.Repos.UpdateVerificationValue(ctx, v.ID, v.Value, stored+":"+strconv.Itoa(attempts+1))
 			if err != nil {
 				return nil, err

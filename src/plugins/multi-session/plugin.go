@@ -2,10 +2,10 @@
 // users at once (one signed `<session_token>_multi-<token>` cookie per session), list them, switch the active
 // one and revoke them.
 //
-// The plugin keeps better-auth's after-hook semantics with a Huma API middleware (pluginkit.UseAfterHook):
+// The plugin keeps better-auth's after-hook semantics with an OnResponse hook (pluginkit.UseAfterHook):
 // every response that sets a new session cookie gets a multi-session cookie, and /sign-out revokes every
-// device session. goauth.New initializes this plugin before the other domain plugins, so the middleware wraps
-// the core routes and every plugin route whatever the order of GoAuthOptions.Plugins.
+// device session. goauth's response-hook middleware runs the hook for the core routes and every plugin
+// route, whatever the order of GoAuthOptions.Plugins.
 //
 // The plugin has no tables, so it has no migrator.
 package multisession

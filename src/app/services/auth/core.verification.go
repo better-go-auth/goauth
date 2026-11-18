@@ -10,8 +10,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
-	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"

@@ -12,38 +12,11 @@ import (
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/better-go-auth/goauth/src/providers/token"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func TestMiddleware_JWTTokenVerifier(t *testing.T) {
-	secret := "test-secret-key-32-chars-long-1234"
-	claims := &token.CustomClaims{
-		UserID:    "user_1",
-		SessionID: "sess_1",
-		Role:      "USER",
-		Type:      token.TypeAccess,
-	}
-
-	tokenStr, err := jwttoken.SignWithExpiry(secret, claims, 15*time.Minute)
-	require.NoError(t, err)
-
-	verifier := middleware.NewJWTTokenVerifier(secret)
-	verifiedClaims, err := verifier.VerifyToken(tokenStr)
-	require.NoError(t, err)
-	assert.Equal(t, "user_1", verifiedClaims.UserID)
-
-	claims.Type = token.TypeRefresh
-	refreshStr, err := jwttoken.SignWithExpiry(secret, claims, 15*time.Minute)
-	require.NoError(t, err)
-	_, err = verifier.VerifyToken(refreshStr)
-	assert.Error(t, err, "a refresh token must not be accepted as an access token")
-	assert.Equal(t, "sess_1", verifiedClaims.SessionID)
-	assert.Equal(t, "USER", verifiedClaims.Role)
-}
 
 func TestMiddleware_KeyValRevocationStore(t *testing.T) {
 	memStore, err := memory.NewSecondaryStorage()

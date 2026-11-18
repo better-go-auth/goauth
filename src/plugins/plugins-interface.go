@@ -30,7 +30,7 @@ type InitContext struct {
 	TxManager interfaces.ITransactionManager
 	// Auth services
 	SessionManager svcint.ISessionManager
-	IAuthSvc svcint.IAuthService
+	IAuthSvc       svcint.IAuthService
 	// INormalAuthServices serv_interfaces.INormalAuthServices
 	// ILegacyAuthServices serv_interfaces.ILegacyAuthServices
 	//
@@ -70,6 +70,12 @@ type Plugin interface {
 	// Return nil if the plugin does not expose any routes (or uses a
 	// framework-specific setup method instead).
 	Routes() []RouteDescriptor
+}
+
+// DependencyProvider is an optional interface for plugins that only work when other plugins are
+// installed too. SetupGoAuth fails when one of the returned plugin IDs is missing from Plugins.
+type DependencyProvider interface {
+	Dependencies() []string
 }
 
 // HookProvider is an optional interface plugins can implement to provide a HookService.

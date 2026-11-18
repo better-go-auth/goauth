@@ -25,8 +25,9 @@ type IAdminRepo interface {
 	BanUser(ctx context.Context, userID string, reason *string, expiresAt *time.Time) (*models.User, error)
 	// UnbanUser clears a user's ban status.
 	UnbanUser(ctx context.Context, userID string) (*models.User, error)
-	// RemoveUser deletes a user, their linked accounts, and their active sessions.
-	RemoveUser(ctx context.Context, userID string) error
+	// RemoveUser deletes a user, their linked accounts, and their active sessions. With soft the user row
+	// is kept as a tombstone (config User.GoAuth.SoftDelete); otherwise it is removed like better-auth.
+	RemoveUser(ctx context.Context, userID string, soft bool) error
 	// ListUserSessions returns all active, non-expired sessions for a user.
 	ListUserSessions(ctx context.Context, userID string) ([]models.Session, error)
 	// RevokeUserSession deletes a single session by its ID or token.

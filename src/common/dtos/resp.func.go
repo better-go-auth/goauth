@@ -6,7 +6,6 @@ import (
 	apperrors "github.com/better-go-auth/goauth/src/common/autherr"
 )
 
-
 func BadReqM[T any](errorMessage string) GResp[T] {
 	return GResp[T]{
 		Status: http.StatusBadRequest,

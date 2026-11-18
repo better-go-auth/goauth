@@ -2,8 +2,6 @@ package bearer
 
 import (
 	"context"
-	"net/http"
-	"log/slog"
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/subtle"
@@ -11,22 +9,23 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"log/slog"
 	"mime/multipart"
+	"net/http"
 	"net/url"
 	"strings"
 	"time"
 
+	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
-	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
-
 
 func safeHumagoUnwrap(ctx huma.Context) (r *http.Request, w http.ResponseWriter) {
 	defer func() {
@@ -150,8 +149,8 @@ func (p *Plugin) Middleware(authCfg config.AuthConfig) func(ctx huma.Context, ne
 		}
 
 		wrapped := &bearerContextWrapper{
-			inner:      ctx,
-			cookieName: cookieName,
+			inner:          ctx,
+			cookieName:     cookieName,
 			injectedCookie: bearerCookieValue(cookieName, signedCookieVal),
 		}
 
@@ -232,7 +231,6 @@ type bearerContextWrapper struct {
 }
 
 var _ huma.Context = (*bearerContextWrapper)(nil)
-
 
 func bearerCookieValue(cookieName, signedCookieVal string) string {
 	if cookieName == "" || signedCookieVal == "" {

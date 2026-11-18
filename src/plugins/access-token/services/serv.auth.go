@@ -22,7 +22,7 @@ import (
 )
 
 // RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
-func (aus *AuthService) RegisterWithEmail(ctx context.Context, input models.RegisterClientInput) (*svcint.SignUpResult, error) {
+func (aus *AuthService) RegisterWithEmail(ctx context.Context, input accesstokendtos.RegisterClientInput) (*svcint.SignUpResult, error) {
 	var res *svcint.SignUpResult
 	var created *models.User
 	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {

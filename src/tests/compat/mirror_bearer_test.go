@@ -82,4 +82,3 @@ func TestGoMirror_Bearer(t *testing.T) {
 	require.NotNil(t, sessBody.Session)
 	require.Equal(t, email, sessBody.User.Email)
 }
-

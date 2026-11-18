@@ -151,4 +151,3 @@ func TestGoMirror_EmailOTP(t *testing.T) {
 	r3 := rlClient.post(t, "/api/auth/email-otp/send-verification-otp", map[string]any{"email": rlEmail, "type": "sign-in"})
 	require.Equal(t, http.StatusTooManyRequests, r3.Status, string(r3.Body))
 }
-

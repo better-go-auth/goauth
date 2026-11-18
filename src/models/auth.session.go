@@ -48,8 +48,6 @@ type SessionQuery struct {
 	dtos.PaginationInput
 }
 
-
-
 // EnsureUTC stores ExpiresAt in UTC; SQLite compares timestamps as text, so mixed zones misorder.
 func (s *Session) EnsureUTC() {
 	if !s.ExpiresAt.IsZero() {

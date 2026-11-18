@@ -11,11 +11,11 @@ import (
 	constant "github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	jwttoken "github.com/better-go-auth/goauth/src/plugins/access-token/jwttoken"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/token"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/danielgtaylor/huma/v2"
 )
 

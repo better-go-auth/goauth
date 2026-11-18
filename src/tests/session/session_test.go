@@ -5,11 +5,11 @@ import (
 	"net/http"
 	"testing"
 
-	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	"github.com/better-go-auth/goauth/src/common/dtos"
 	"github.com/better-go-auth/goauth/src/models"
 	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
+	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
-	"github.com/better-go-auth/goauth/src/common/dtos"
 )
 
 func TestSessionE2E_GetAndDelete(t *testing.T) {
@@ -21,7 +21,7 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 	var sessionId string
 
 	t.Run("Sign Up and Verify Email", func(t *testing.T) {
-		resp, body := env.PostJSON("/api/auth/signup", models.RegisterClientInput{
+		resp, body := env.PostJSON("/api/auth/signup", auth.RegisterClientInput{
 			FirstName: "Session",
 			LastName:  "User",
 			Email:     email,
@@ -49,7 +49,7 @@ func TestSessionE2E_GetAndDelete(t *testing.T) {
 			t.Fatalf("Login failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var loginResp dtos.GResp[authDtos.SignInResponse]
+		var loginResp dtos.GResp[auth.LegacySignInResponse]
 		if err := json.Unmarshal([]byte(body), &loginResp); err != nil {
 			t.Fatalf("Failed to parse login response: %v", err)
 		}

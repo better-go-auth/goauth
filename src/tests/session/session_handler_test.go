@@ -4,11 +4,11 @@ import (
 	"context"
 	"testing"
 
-	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
+	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	jwttoken "github.com/better-go-auth/goauth/src/plugins/access-token/jwttoken"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 )
 
@@ -27,8 +27,8 @@ func TestSessionHandler_GetAndDelete(t *testing.T) {
 	var targetSessionID string
 
 	t.Run("01 Sign Up and Verify Email", func(t *testing.T) {
-		_, err := env.AuthHandler.Register(ctx, &humatypes.HumaReqBody[models.RegisterClientInput]{
-			Body: models.RegisterClientInput{
+		_, err := env.AuthHandler.Register(ctx, &humatypes.HumaReqBody[auth.RegisterClientInput]{
+			Body: auth.RegisterClientInput{
 				FirstName: "Session",
 				LastName:  "User",
 				Email:     email,

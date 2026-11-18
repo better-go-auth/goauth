@@ -23,4 +23,3 @@ func NewWithPrefix(mux humago.Mux, prefix string, opts ...adapters.Option) huma.
 	// 2. Wrap the net/http ServeMux with prefix using humago adapter
 	return humago.NewWithPrefix(mux, prefix, cfg)
 }
-

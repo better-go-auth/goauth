@@ -46,7 +46,7 @@ type RevocationStore struct {
 	cfg         RevocationConfig
 }
 
-//TODO: remove this because it depends on db
+// TODO: remove this because it depends on db
 // NewRevocationStore creates a RevocationStore backed by database and optional key-value storage.
 func NewRevocationStore(db *gorm.DB, secStore sec_storage.SecondaryStorage, cfg RevocationConfig) middleware.RevocationStore {
 	if isNil(secStore) {

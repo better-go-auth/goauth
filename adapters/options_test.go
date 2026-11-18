@@ -72,4 +72,3 @@ func TestBuildConfig_Options(t *testing.T) {
 		require.Equal(t, "Custom description set by callback", cfg.OpenAPI.Info.Description)
 	})
 }
-

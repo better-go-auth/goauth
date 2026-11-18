@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"net/http"
 
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
@@ -115,5 +116,6 @@ func RespondErr(err error) error {
 	if authErr := autherr.AsAuthError(err); authErr != nil {
 		return &autherr.AuthError{StatusCode: authErr.StatusCode, Code: authErr.Code, Message: authErr.Message}
 	}
-	return &autherr.AuthError{StatusCode: http.StatusInternalServerError, Code: "INTERNAL_SERVER_ERROR", Message: err.Error()}
+	// unknown errors (repository/driver errors, ...) are logged with a request ID, never sent to the client
+	return autherr.Internal(context.Background(), err)
 }

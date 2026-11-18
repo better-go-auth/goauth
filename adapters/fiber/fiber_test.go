@@ -75,4 +75,3 @@ func TestFiberAdapter_SetupGoAuth(t *testing.T) {
 	defer resp.Body.Close()
 	require.Equal(t, http.StatusOK, resp.StatusCode)
 }
-

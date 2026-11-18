@@ -1,10 +1,5 @@
 package dtos
 
-import (
-	"github.com/better-go-auth/goauth/src/models"
-)
-
-
 // SignUpResponse is returned after a successful sign-up.
 // Better Auth always includes "token" (null when auto sign-in is skipped).
 type SignUpResponse struct {
@@ -24,8 +19,8 @@ type SignInResponse struct {
 	URL      *string `json:"url,omitempty"`
 
 	// SessionData is populated internally for cookie emission only.
-	SessionData *SessionData       `json:"-"`
-	AuthTokens  *models.AuthTokens `json:"authTokens,omitempty"`
+	SessionData *SessionData `json:"-"`
+	// (the legacy JWT pair lives in the access-token plugin's SignInResponse)
 }
 
 // StatusResponse is standard response payload for status actions in Better Auth.
@@ -59,10 +54,6 @@ type SuccessResponse struct {
 
 // ─── Converters ──────────────────────────────────────────────────────────────
 
-
-
-
-
 // normalizeNilable maps empty strings to nil so optional fields serialize as
 // null, matching Better Auth responses.
 // func normalizeNilable(v *string) *string {
@@ -71,9 +62,6 @@ type SuccessResponse struct {
 // 	}
 // 	return v
 // }
-
-
-
 
 // SessionData is the canonical Better-Auth session shape (unified wire type).
 // type SessionData = BetterAuthSession
@@ -91,12 +79,7 @@ type SuccessResponse struct {
 // 	NeedsRefresh *bool `json:"needsRefresh,omitempty"`
 // }
 
-
-
-
 // FormatTime renders a timestamp in Better Auth's response format (RFC3339 UTC).
 // func FormatTime(t time.Time) string {
 // 	return t.UTC().Format(time.RFC3339)
 // }
-
-

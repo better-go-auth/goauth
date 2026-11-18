@@ -6,15 +6,14 @@ import (
 	"strings"
 	"testing"
 
-	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
-	"github.com/better-go-auth/goauth/src/models"
-	authDtos "github.com/better-go-auth/goauth/src/models/dtos"
-	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/better-go-auth/goauth/src/common/dtos"
+	"github.com/better-go-auth/goauth/src/models"
+	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	"github.com/better-go-auth/goauth/src/tests/helpers"
 )
 
 func TestAuthE2E_FullFlow(t *testing.T) {
-	env := helpers.SetupTestEnv(t,true)
+	env := helpers.SetupTestEnv(t, true)
 
 	email := "e2e_user@example.com"
 	initialPassword := "securePassword123!"
@@ -23,7 +22,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 	var refreshToken string
 
 	t.Run("Sign Up", func(t *testing.T) {
-		signUpInput := models.RegisterClientInput{
+		signUpInput := auth.RegisterClientInput{
 			FirstName: "John",
 			LastName:  "Doe",
 			Email:     email,
@@ -62,7 +61,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 		}
 
 		t.Logf("Login body: %s", body)
-		var loginResp dtos.GResp[authDtos.SignInResponse]
+		var loginResp dtos.GResp[auth.LegacySignInResponse]
 		if err := json.Unmarshal([]byte(body), &loginResp); err != nil {
 			t.Fatalf("Failed to decode login response: %v, raw body: %s", err, body)
 		}
@@ -87,7 +86,7 @@ func TestAuthE2E_FullFlow(t *testing.T) {
 			t.Fatalf("RefreshToken failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var refreshResp dtos.GResp[authDtos.SignInResponse]
+		var refreshResp dtos.GResp[auth.LegacySignInResponse]
 		if err := json.Unmarshal([]byte(body), &refreshResp); err != nil {
 			t.Fatalf("Failed to decode refresh response: %v, raw body: %s", err, body)
 		}

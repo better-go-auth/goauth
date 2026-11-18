@@ -6,10 +6,10 @@ import (
 
 // DocsRenderer constants supported natively by Huma.
 const (
-	DocsRendererStoplight = "stoplight" // Default Stoplight Elements UI
-	DocsRendererScalar    = "scalar"    // Modern Scalar UI
+	DocsRendererStoplight = "stoplight"  // Default Stoplight Elements UI
+	DocsRendererScalar    = "scalar"     // Modern Scalar UI
 	DocsRendererSwaggerUI = "swagger-ui" // Classic Swagger UI
-	DocsRendererRapiDoc   = "rapidoc"   // Fast RapiDoc UI
+	DocsRendererRapiDoc   = "rapidoc"    // Fast RapiDoc UI
 )
 
 // RouterConfig contains configuration for creating a Huma API instance with optional docs.
@@ -234,4 +234,3 @@ func BuildConfig(opts ...Option) huma.Config {
 
 	return cfg
 }
-

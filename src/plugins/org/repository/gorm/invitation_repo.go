@@ -82,6 +82,17 @@ func (r *InvitationRepo) DeleteInvitationByID(ctx context.Context, id string) er
 	return nil
 }
 
+// DeleteInvitationsByInviterID removes every invitation inviterID sent (user deletion cleanup).
+func (r *InvitationRepo) DeleteInvitationsByInviterID(ctx context.Context, inviterID string) error {
+	if inviterID == "" {
+		return nil
+	}
+	if err := getDB(ctx, r.db).Where(&models.Invitation{InviterID: inviterID}, "InviterID").Delete(&models.Invitation{}).Error; err != nil {
+		return fmt.Errorf("gorm/invitation: delete by inviter: %w", err)
+	}
+	return nil
+}
+
 func (r *InvitationRepo) ListInvitationsByOrgID(ctx context.Context, orgID string, pagi models.Pagination) ([]models.Invitation, int64, error) {
 	query := getDB(ctx, r.db).
 		Preload("Inviter").

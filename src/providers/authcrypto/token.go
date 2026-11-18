@@ -17,3 +17,10 @@ func TokenHash(token string) string {
 func TokenMatches(token, storedHash string) bool {
 	return subtle.ConstantTimeCompare([]byte(TokenHash(token)), []byte(storedHash)) == 1
 }
+
+// SecureEqual compares two secrets (OTP codes, backup codes, state values, tokens) in constant time,
+// so the time a comparison takes does not reveal how many leading characters matched.
+// Use it instead of == / != whenever one side comes from the request and the other is a stored secret.
+func SecureEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
+}

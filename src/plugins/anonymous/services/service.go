@@ -9,6 +9,7 @@ import (
 	"net/mail"
 	"strings"
 
+	"github.com/better-go-auth/goauth/src/app/services/userdelete"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -108,27 +109,36 @@ func (s *Service) SignIn(ctx context.Context) (*dtos.SessionWithUser, error) {
 
 // ─── Delete anonymous user ───────────────────────────────────────────────────
 
-// deleteUser removes an anonymous user: sessions, accounts and the user row, then the UserDeleted hooks.
+// deleteUser removes an anonymous user with the shared deletion sequence (sessions, plugin rows through the
+// UserDeleted hooks, accounts and the user row; a tombstone when config User.GoAuth.SoftDelete is on).
 func (s *Service) deleteUser(ctx context.Context, userID string) error {
-	// Step 1: sign the user out everywhere (DB and secondary storage)
-	if err := s.kit.Sessions.DeleteUserSessions(ctx, userID); err != nil {
-		return ErrFailedToDeleteAnonymousUserSessions
-	}
-	// Step 2: accounts and user together
-	err := s.kit.InTx(ctx, func(ctx context.Context) error {
-		if err := s.kit.Repos.DeleteAccounts(ctx, userID); err != nil {
-			return err
-		}
-		return s.kit.Repos.DeleteUser(ctx, userID)
-	})
-	if err != nil {
-		return ErrFailedToDeleteAnonymousUser
-	}
-	// Step 3: let plugins drop their per-user rows (best effort, like core delete-user)
-	if s.kit.Hooks != nil {
-		_ = s.kit.Hooks.TriggerUserDeleted(ctx, userID)
-	}
-	return nil
+	return userdelete.Run(ctx, userdelete.Deps{
+		Soft: s.kit.Conf.User.GoAuth.SoftDelete,
+		// Step 1: sign the user out everywhere (DB and secondary storage)
+		RevokeSessions: func(ctx context.Context, userID string) error {
+			if err := s.kit.Sessions.DeleteUserSessions(ctx, userID); err != nil {
+				return ErrFailedToDeleteAnonymousUserSessions
+			}
+			return nil
+		},
+		// Step 2: accounts and user together
+		RemoveRows: func(ctx context.Context, userID string, soft bool) error {
+			err := s.kit.InTx(ctx, func(ctx context.Context) error {
+				if err := s.kit.Repos.DeleteAccounts(ctx, userID); err != nil {
+					return err
+				}
+				if soft {
+					return s.kit.Repos.SoftDeleteUser(ctx, userID)
+				}
+				return s.kit.Repos.DeleteUser(ctx, userID)
+			})
+			if err != nil {
+				return ErrFailedToDeleteAnonymousUser
+			}
+			return nil
+		},
+		Hooks: s.kit.Hooks,
+	}, userID)
 }
 
 // DeleteAnonymousUser mirrors POST /delete-anonymous-user (behind the fresh-session middleware).

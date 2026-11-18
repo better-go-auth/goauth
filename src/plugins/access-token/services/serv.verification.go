@@ -25,8 +25,6 @@ type VerificationService struct {
 
 var _ interfaces.IVerificationService = (*VerificationService)(nil)
 
-
-
 // NewVerificationService creates a VerificationService backed by any IVerificationRepo implementation.
 func NewVerificationService(repo repo_interfaces.IVerificationRepo, config config.EmailVerification) *VerificationService {
 	return &VerificationService{
@@ -35,8 +33,6 @@ func NewVerificationService(repo repo_interfaces.IVerificationRepo, config confi
 		Config: config,
 	}
 }
-
-
 
 func (vSvc *VerificationService) SendVerification(ctx context.Context, identifier string, purpose models.VerificationPurpose, opt *interfaces.VerOpt) (dtos.GResp[bool], error) {
 	if vSvc.Config.GoAuth.CodeSender == nil {
@@ -50,10 +46,10 @@ func (vSvc *VerificationService) SendVerification(ctx context.Context, identifie
 		verificationCode = vSvc.Config.GoAuth.CodeGenerator()
 	} else {
 		code, err := util.GenerateRandomString(6)
-		if err!=nil{
+		if err != nil {
 			return dtos.InternalErrMS[bool]("could not generate random verification code"), errors.New("could not generate random verification code")
 		}
-		verificationCode=code
+		verificationCode = code
 	}
 
 	codeHash, err := authcrypto.HashPasswordBcrypt(verificationCode)
@@ -82,7 +78,7 @@ func (vSvc *VerificationService) SendVerification(ctx context.Context, identifie
 		UserID:     userID,
 	})
 	if err != nil {
-		logger.ErrorCtx(ctx, "error creating verification", err,nil)
+		logger.ErrorCtx(ctx, "error creating verification", err, nil)
 		return dtos.InternalErrMS[bool]("creating Error"), err
 	}
 	return dtos.SuccessCreated(true, 1), nil

@@ -29,17 +29,4 @@ func HasRole(roles string, want ...string) bool {
 	return false
 }
 
-//=================================   !  AccountStatus  ============================
-
-type AccountStatus string
-
-const (
-	AccountPendingVerification = AccountStatus("pending_verification")
-	AccountActive              = AccountStatus("active")
-	AccountDisabled            = AccountStatus("disabled") // when blocked by the admin
-	AccountDeleted             = AccountStatus("deleted")  // When the user deletes his own account
-)
-
-func (r AccountStatus) S() string {
-	return string(r)
-}
+// (the legacy AccountStatus enum was removed: account state is better-auth's banned / banReason / banExpires)

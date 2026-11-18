@@ -7,6 +7,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 )
 
 // AppleOptions configures the Apple provider.
@@ -82,7 +84,7 @@ func (p *apple) VerifyIDToken(ctx context.Context, token, nonce string) (bool, e
 			return false
 		}
 		sum := sha256.Sum256([]byte(nonce))
-		return jwtNonce == nonce || jwtNonce == hex.EncodeToString(sum[:])
+		return authcrypto.SecureEqual(jwtNonce, nonce) || authcrypto.SecureEqual(jwtNonce, hex.EncodeToString(sum[:]))
 	})
 }
 

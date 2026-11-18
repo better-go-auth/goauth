@@ -518,30 +518,30 @@ func TestOrgConfig_OrganizationHooks(t *testing.T) {
 	ctx := context.Background()
 
 	var (
-		beforeCreateOrgCalled      bool
-		afterCreateOrgCalled       bool
-		beforeUpdateOrgCalled      bool
-		afterUpdateOrgCalled       bool
-		beforeDeleteOrgCalled      bool
-		afterDeleteOrgCalled       bool
-		beforeCreateInviteCalled   bool
-		afterCreateInviteCalled    bool
-		beforeAcceptInviteCalled   bool
-		afterAcceptInviteCalled    bool
-		beforeAddMemberCalled      bool
-		afterAddMemberCalled       bool
+		beforeCreateOrgCalled        bool
+		afterCreateOrgCalled         bool
+		beforeUpdateOrgCalled        bool
+		afterUpdateOrgCalled         bool
+		beforeDeleteOrgCalled        bool
+		afterDeleteOrgCalled         bool
+		beforeCreateInviteCalled     bool
+		afterCreateInviteCalled      bool
+		beforeAcceptInviteCalled     bool
+		afterAcceptInviteCalled      bool
+		beforeAddMemberCalled        bool
+		afterAddMemberCalled         bool
 		beforeUpdateMemberRoleCalled bool
 		afterUpdateMemberRoleCalled  bool
-		beforeRemoveMemberCalled   bool
-		afterRemoveMemberCalled    bool
-		beforeCreateTeamCalled     bool
-		afterCreateTeamCalled      bool
-		beforeUpdateTeamCalled     bool
-		afterUpdateTeamCalled      bool
-		beforeDeleteTeamCalled     bool
-		afterDeleteTeamCalled      bool
-		beforeAddTeamMemberCalled  bool
-		afterAddTeamMemberCalled   bool
+		beforeRemoveMemberCalled     bool
+		afterRemoveMemberCalled      bool
+		beforeCreateTeamCalled       bool
+		afterCreateTeamCalled        bool
+		beforeUpdateTeamCalled       bool
+		afterUpdateTeamCalled        bool
+		beforeDeleteTeamCalled       bool
+		afterDeleteTeamCalled        bool
+		beforeAddTeamMemberCalled    bool
+		afterAddTeamMemberCalled     bool
 		beforeRemoveTeamMemberCalled bool
 		afterRemoveTeamMemberCalled  bool
 	)

@@ -34,7 +34,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-func TestUserRepo_DeleteUser_AnonymizesEmail(t *testing.T) {
+func TestUserRepo_SoftDeleteUser_AnonymizesEmail(t *testing.T) {
 	db := setupTestDB(t)
 	repo := gormauth.NewUserRepo(db)
 	ctx := context.Background()
@@ -63,7 +63,7 @@ func TestUserRepo_DeleteUser_AnonymizesEmail(t *testing.T) {
 	require.Equal(t, created.ID, foundByEmail.ID)
 
 	// Soft delete the user
-	err = repo.DeleteUser(ctx, created.ID)
+	err = repo.SoftDeleteUser(ctx, created.ID)
 	require.NoError(t, err)
 
 	// User should no longer be found by active queries

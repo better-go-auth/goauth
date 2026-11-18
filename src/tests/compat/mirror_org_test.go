@@ -439,4 +439,3 @@ func TestGoMirror_Org(t *testing.T) {
 		require.Contains(t, joinedHooks, expected)
 	}
 }
-

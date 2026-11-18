@@ -9,9 +9,9 @@ import (
 )
 
 const (
-	RegisterUser        = constant.OperationId("Au-1-Register")
-	LoginUser           = constant.OperationId("Au-3-Login")
-	RefreshTokenUser    = constant.OperationId("Au-4-RefreshToken")
+	RegisterUser     = constant.OperationId("Au-1-Register")
+	LoginUser        = constant.OperationId("Au-3-Login")
+	RefreshTokenUser = constant.OperationId("Au-4-RefreshToken")
 	// GetMySessions       = constant.OperationId("Se-1-GetMySessions")
 	// DeleteMySessionById = constant.OperationId("Ad-2-DeleteMySessionById")
 )
@@ -24,7 +24,6 @@ func SetupAccessTokenRoutes(api huma.API, handler *AccessTokenHandler, mdlware *
 
 	authTags := []string{"01-auth"}
 	// sessionTags := []string{"session"}
-
 
 	// ─── Auth Endpoints ──────────────────────────────────────────────────────────
 	huma.Register(api, huma.Operation{

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/userdelete"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -201,18 +202,27 @@ func (s *AdminService) RemoveUser(ctx context.Context, input admindtos.AdminRemo
 		return autherr.New(autherr.BadRequest, "userId is required", http.StatusBadRequest)
 	}
 
-	if s.sessionMgr != nil {
-		if err := s.sessionMgr.DeleteUserSessions(ctx, input.UserID); err != nil {
-			return fmt.Errorf("adminsvc: revoke user sessions: %w", err)
-		}
-	}
-	if err := s.adminRepo.RemoveUser(ctx, input.UserID); err != nil {
-		return fmt.Errorf("adminsvc: remove user: %w", err)
-	}
-	if s.hooks != nil {
-		_ = s.hooks.TriggerUserDeleted(ctx, input.UserID)
-	}
-	return nil
+	// shared deletion sequence: sessions, plugin rows (UserDeleted hooks), accounts and the user row;
+	// config User.GoAuth.SoftDelete keeps a tombstone instead
+	return userdelete.Run(ctx, userdelete.Deps{
+		Soft: s.authConfig.User.GoAuth.SoftDelete,
+		RevokeSessions: func(ctx context.Context, userID string) error {
+			if s.sessionMgr == nil {
+				return nil
+			}
+			if err := s.sessionMgr.DeleteUserSessions(ctx, userID); err != nil {
+				return fmt.Errorf("adminsvc: revoke user sessions: %w", err)
+			}
+			return nil
+		},
+		RemoveRows: func(ctx context.Context, userID string, soft bool) error {
+			if err := s.adminRepo.RemoveUser(ctx, userID, soft); err != nil {
+				return fmt.Errorf("adminsvc: remove user: %w", err)
+			}
+			return nil
+		},
+		Hooks: s.hooks,
+	}, input.UserID)
 }
 
 // BanUser bans a user and terminates all active sessions.

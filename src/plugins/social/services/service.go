@@ -106,7 +106,7 @@ func (s *Service) SignInSocial(ctx context.Context, in socialdtos.SignInSocialIn
 		LoginHint:    in.LoginHint,
 	})
 	if err != nil {
-		return nil, pluginkit.NewError(http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", err.Error())
+		return nil, autherr.Internal(ctx, err)
 	}
 	res := &SignInResult{Body: socialdtos.SignInSocialResponse{URL: u.String(), Redirect: !in.DisableRedirect}, Cookies: st.Cookies}
 	if !in.DisableRedirect {
@@ -209,7 +209,7 @@ func (s *Service) LinkSocial(ctx context.Context, current *dtos.SessionWithUser,
 		Scopes:       in.Scopes,
 	})
 	if err != nil {
-		return nil, pluginkit.NewError(http.StatusInternalServerError, "INTERNAL_SERVER_ERROR", err.Error())
+		return nil, autherr.Internal(ctx, err)
 	}
 	res := &LinkResult{Body: socialdtos.LinkSocialResponse{URL: u.String(), Redirect: !in.DisableRedirect}, Cookies: st.Cookies}
 	if !in.DisableRedirect {

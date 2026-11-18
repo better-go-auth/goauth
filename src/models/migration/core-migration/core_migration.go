@@ -94,14 +94,20 @@ func dropUserProviderIndex(db *gorm.DB) error {
 	return nil
 }
 
-// caseSensitiveTokens gives session tokens a binary collation on MySQL, whose default
+// caseSensitiveTokens gives session tokens and usernames a binary collation on MySQL, whose default
 // collations compare case-insensitively (Postgres and SQLite already compare exactly).
 func caseSensitiveTokens(db *gorm.DB) error {
 	if db.Dialector.Name() != "mysql" {
 		return nil
 	}
-	return db.Exec("ALTER TABLE ? MODIFY ? VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
-		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelSession)}, clause.Column{Name: "token"}).Error
+	// Step 1: session tokens
+	if err := db.Exec("ALTER TABLE ? MODIFY ? VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
+		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelSession)}, clause.Column{Name: "token"}).Error; err != nil {
+		return err
+	}
+	// Step 2: usernames (nullable); lookups are exact, the username plugin normalizes before querying
+	return db.Exec("ALTER TABLE ? MODIFY ? VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL",
+		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelUser)}, clause.Column{Name: "username"}).Error
 }
 
 // PrepareLegacyColumns renames and merges pre-better-auth columns. It must run before AutoMigrate

@@ -55,6 +55,18 @@ type ITeamRepo interface {
 	DeleteTeam(ctx context.Context, id string) error
 }
 
+// IUserTeamMembersCleaner is optionally implemented by ITeamMemberRepo: it removes every team membership of
+// a user (run when the user is deleted, like better-auth's teamMember.userId onDelete: "cascade").
+type IUserTeamMembersCleaner interface {
+	DeleteTeamMembersByUserID(ctx context.Context, userID string) error
+}
+
+// IInviterInvitationsCleaner is optionally implemented by IInvitationRepo: it removes every invitation a user
+// sent (run when the user is deleted, like better-auth's invitation.inviterId onDelete: "cascade").
+type IInviterInvitationsCleaner interface {
+	DeleteInvitationsByInviterID(ctx context.Context, inviterID string) error
+}
+
 // ITeamMemberRepo defines the repository interface for TeamMember persistence.
 type ITeamMemberRepo interface {
 	CreateTeamMember(ctx context.Context, m *models.TeamMember) (*models.TeamMember, error)

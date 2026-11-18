@@ -2,8 +2,8 @@
 package compattest
 
 import (
-	"context"
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,16 +11,17 @@ import (
 	"net/http/cookiejar"
 	"net/http/httptest"
 	"os"
+	"sync"
 	"testing"
 
 	goauth "github.com/better-go-auth/goauth"
 	"github.com/better-go-auth/goauth/src/config"
+	plugin "github.com/better-go-auth/goauth/src/plugins"
+	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
+	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
-	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
-	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
-	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/google/uuid"
 	gormpostgres "gorm.io/driver/postgres"
 	"gorm.io/driver/sqlite"
@@ -82,6 +83,12 @@ func WithDB(db *gorm.DB) Option {
 }
 
 // NewServer starts goauth on sqlite (or TEST_DATABASE_URL) + in-memory secondary storage; it is closed on test cleanup.
+// resetPostgresOnce empties the TEST_DATABASE_URL schema once per test process.
+var (
+	resetPostgresOnce sync.Once
+	resetPostgresErr  error
+)
+
 func NewServer(t testing.TB, opts ...Option) *Server {
 	t.Helper()
 	store, err := memory.NewSecondaryStorage()
@@ -95,6 +102,14 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 		db, err = gorm.Open(gormpostgres.Open(dsn), &gorm.Config{Logger: logger.Discard})
 		if err != nil {
 			t.Fatalf("compattest: open postgres from TEST_DATABASE_URL: %v", err)
+		}
+		// every test package (one process each, run with -p 1) starts from an empty schema, so suites that
+		// share fixtures (e.g. the fake OAuth provider's user) do not see each other's rows
+		resetPostgresOnce.Do(func() {
+			resetPostgresErr = db.Exec("DROP SCHEMA public CASCADE; CREATE SCHEMA public").Error
+		})
+		if resetPostgresErr != nil {
+			t.Fatalf("compattest: reset postgres schema: %v", resetPostgresErr)
 		}
 	} else {
 		var err error

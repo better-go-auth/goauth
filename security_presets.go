@@ -52,4 +52,3 @@ func DefaultStrictSecurityConfig() config.SecurityConfig {
 		CheckOriginOnPluginMutations: true,
 	}
 }
-

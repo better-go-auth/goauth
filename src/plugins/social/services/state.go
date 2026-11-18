@@ -229,7 +229,7 @@ func (s *Service) parseState(ctx context.Context, state string) (*StateData, []h
 		if err != nil {
 			return nil, nil, &StateError{Code: "state_invalid", Message: "State invalid: Failed to decrypt or parse auth state"}
 		}
-		if data.OAuthState == "" || data.OAuthState != state {
+		if data.OAuthState == "" || !authcrypto.SecureEqual(data.OAuthState, state) {
 			return nil, nil, &StateError{Code: "state_mismatch", ErrorURL: data.ErrorURL, Message: "State mismatch: OAuth state parameter does not match stored state"}
 		}
 		cookies = append(cookies, s.kit.Cookies.ExpireCookie(OAuthStateCookie))
@@ -237,7 +237,8 @@ func (s *Service) parseState(ctx context.Context, state string) (*StateData, []h
 		// Step 2b: database strategy: load the verification row
 		v, err := pluginkit.AcceptNotFound(s.kit.Repos.FindVerificationValue(ctx, state))
 		if err != nil {
-			return nil, nil, &StateError{Code: "internal_server_error", Message: err.Error()}
+			// the repository error is logged with a request ID, never put in the redirect URL
+			return nil, nil, &StateError{Code: "internal_server_error", Message: autherr.Internal(ctx, err).Message}
 		}
 		if v == nil {
 			return nil, nil, &StateError{Code: "state_mismatch", Message: "State mismatch: verification not found"}
@@ -245,14 +246,14 @@ func (s *Service) parseState(ctx context.Context, state string) (*StateData, []h
 		data, err = parseStateData(v.Value)
 		if err != nil {
 			// a schema error is not a StateError upstream, so it maps to internal_server_error
-			return nil, nil, &StateError{Code: "internal_server_error", Message: err.Error()}
+			return nil, nil, &StateError{Code: "internal_server_error", Message: autherr.Internal(ctx, err).Message}
 		}
-		if data.OAuthState != "" && data.OAuthState != state {
+		if data.OAuthState != "" && !authcrypto.SecureEqual(data.OAuthState, state) {
 			return nil, nil, &StateError{Code: "state_mismatch", ErrorURL: data.ErrorURL, Message: "State mismatch: OAuth state parameter does not match stored state"}
 		}
 		// Step 3b: the signed state cookie binds the flow to the browser that started it
 		if !s.cfg.SkipStateCookieCheck {
-			if cv, ok := s.kit.Cookies.ReadSigned(cookieHeader, StateCookie); !ok || cv != state {
+			if cv, ok := s.kit.Cookies.ReadSigned(cookieHeader, StateCookie); !ok || !authcrypto.SecureEqual(cv, state) {
 				return nil, nil, &StateError{Code: "state_mismatch", ErrorURL: data.ErrorURL, Message: "State mismatch: State not persisted correctly"}
 			}
 		}

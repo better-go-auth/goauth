@@ -93,4 +93,3 @@ func TestMuxAdapter_SetupGoAuth(t *testing.T) {
 	defer res.Body.Close()
 	require.Equal(t, http.StatusOK, res.StatusCode)
 }
-

@@ -45,4 +45,3 @@ func (v *Verification) IsExpired() bool {
 func (v *Verification) EnsureUTC() {
 	v.ExpiresAt = v.ExpiresAt.UTC()
 }
-

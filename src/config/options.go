@@ -2,7 +2,10 @@ package config
 
 import (
 	"net/url"
+	"os"
 	"strings"
+
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 )
 
 const (
@@ -13,7 +16,41 @@ const (
 	BaseURLEnvVar       = "BETTER_AUTH_URL"
 	NextBaseURLEnvVar   = "NEXT_PUBLIC_BETTER_AUTH_URL"
 	MinSecretLength     = 32
+	// DefaultDevSecret is better-auth's development fallback secret (DEFAULT_SECRET). It is public, so
+	// Validate refuses it (and the other well-known example secrets) when running in production.
+	DefaultDevSecret = "better-auth-secret-12345678901234567890"
 )
+
+// knownDevSecrets are secrets that appear in better-auth/goauth docs, examples and tests.
+var knownDevSecrets = []string{
+	DefaultDevSecret,
+	"better-auth-secret-123456789012345678901234567890",
+	"test-secret-must-be-32-chars-long!",
+}
+
+// productionEnvVars are read (in order) to decide whether the process runs in production,
+// like better-auth's isProduction (NODE_ENV === "production").
+var productionEnvVars = []string{"GOAUTH_ENV", "GO_ENV", "APP_ENV", "NODE_ENV"}
+
+// IsProduction reports whether one of GOAUTH_ENV, GO_ENV, APP_ENV or NODE_ENV is "production".
+func IsProduction() bool {
+	for _, k := range productionEnvVars {
+		if strings.EqualFold(strings.TrimSpace(os.Getenv(k)), "production") {
+			return true
+		}
+	}
+	return false
+}
+
+// IsDevSecret reports whether secret is one of the public development/example secrets.
+func IsDevSecret(secret string) bool {
+	for _, s := range knownDevSecrets {
+		if secret == s {
+			return true
+		}
+	}
+	return false
+}
 
 // Advanced mirrors better-auth's `advanced` options.
 type Advanced struct {
@@ -26,20 +63,35 @@ type Advanced struct {
 	DisableOriginCheck    bool
 	// Database mirrors better-auth's `advanced.database.generateId`.
 	// Set GenerateID to override the default 32-char alphanumeric ID generator.
-	Database AdvancedDatabase
-	IPAddress  IPAddress
+	Database  AdvancedDatabase
+	IPAddress IPAddress
 
 	GoAuth AdvancedGoAuth
 }
 
 // AdvancedDatabase mirrors better-auth's `advanced.database`.
 type AdvancedDatabase struct {
-	// GenerateID overrides the default ID generator for new records.
+	// GenerateID overrides the ID generator for new records (better-auth's generateId function).
+	// It wins over IDFormat.
 	GenerateID func() string
+	// IDFormat picks a built-in ID format: "random" (default, better-auth's 32-char [a-zA-Z0-9] IDs),
+	// "uuid" (better-auth's generateId: "uuid") or "ulid" (26-char sortable IDs, goauth's old default).
+	IDFormat string
+}
+
+// IDGenerator returns the generator for new record IDs: GenerateID when set, else the IDFormat generator.
+func (d AdvancedDatabase) IDGenerator() (func() string, error) {
+	if d.GenerateID != nil {
+		return d.GenerateID, nil
+	}
+	return idgen.ForFormat(idgen.Format(d.IDFormat))
 }
 
 // AdvancedGoAuth holds advanced options better-auth doesn't have.
-func WithStoreInDatabase(s *Session, v bool) { s.StoreSessionInDatabase = v; s.StoreSessionInDatabaseSet = true }
+func WithStoreInDatabase(s *Session, v bool) {
+	s.StoreSessionInDatabase = v
+	s.StoreSessionInDatabaseSet = true
+}
 
 type AdvancedGoAuth struct {
 	// OverrideHumaErrors formats every Huma error in the process (including host routes) as {"code","message"}.

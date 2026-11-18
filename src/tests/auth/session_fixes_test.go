@@ -5,15 +5,15 @@ import (
 	"testing"
 	"time"
 
-	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
-	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
+	humaaccesstoken "github.com/better-go-auth/goauth/src/plugins/access-token/adapters/huma"
+	auth "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
+	jwttoken "github.com/better-go-auth/goauth/src/plugins/access-token/jwttoken"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
-	jwttoken "github.com/better-go-auth/goauth/src/providers/token/jwt-token"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 )
 
@@ -38,7 +38,7 @@ func createActiveUser(t *testing.T, env *helpers.TestEnv, email, password string
 	return usr
 }
 
-func login(t *testing.T, env *helpers.TestEnv, email, password string) *models.AuthTokens {
+func login(t *testing.T, env *helpers.TestEnv, email, password string) *auth.AuthTokens {
 	t.Helper()
 	res, err := env.AuthService.Login(context.Background(), auth.LoginData{LoginInfo: email, Password: password})
 	if err != nil || res.Body.AuthTokens == nil {

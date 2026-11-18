@@ -255,4 +255,3 @@ func TestEmailOTP_BothRegistrationFlows(t *testing.T) {
 		otpOnlyMu.Unlock()
 	})
 }
-

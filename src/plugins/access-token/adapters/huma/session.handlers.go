@@ -3,7 +3,7 @@ package humaaccesstoken
 // import (
 // 	"context"
 // 	"net/http"
-// 
+//
 // 	"github.com/better-go-auth/goauth/src/common/dtos"
 // 	"github.com/better-go-auth/goauth/src/common/types"
 // 	"github.com/better-go-auth/goauth/src/models"

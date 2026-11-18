@@ -22,6 +22,7 @@ import (
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 	"github.com/better-go-auth/goauth/src/providers/origin"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"gorm.io/gorm"
@@ -137,11 +138,16 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		return nil, errors.New("goauth: either Conn (*gorm.DB) or Repositories (repo_interfaces.IAuthRepos) must be provided")
 	}
 
-	// 1. Resolve Repositories
-	var repoOpts []gormauth.RepoOption
-	if opts.Advanced.Database.GenerateID != nil {
-		repoOpts = append(repoOpts, gormauth.WithGenerateID(opts.Advanced.Database.GenerateID))
+	// 0. Resolve the ID generator (Advanced.Database.GenerateID, else IDFormat; default better-auth's random
+	// 32-char IDs). It is installed process-wide so plugins calling idgen.GenerateID use the same format.
+	generateID, err := opts.Advanced.Database.IDGenerator()
+	if err != nil {
+		return nil, fmt.Errorf("goauth: %w", err)
 	}
+	idgen.SetGenerator(generateID)
+
+	// 1. Resolve Repositories
+	repoOpts := []gormauth.RepoOption{gormauth.WithGenerateID(generateID)}
 	repos := opts.Repositories
 	if repos == nil && opts.Conn != nil {
 		repos = gormauth.NewAuthRepos(opts.Conn, repoOpts...)
@@ -187,19 +193,20 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 
 	// one session store for cookie, bearer and legacy JWT clients
 	cookieMgr := cookies.New(opts.AuthConfig)
-	var sessOpts []sessionsvc.ManagerOption
-	if opts.Advanced.Database.GenerateID != nil {
-		sessOpts = append(sessOpts, sessionsvc.WithGenerateID(opts.Advanced.Database.GenerateID))
-	}
+	sessOpts := []sessionsvc.ManagerOption{sessionsvc.WithGenerateID(generateID)}
 	sessionMgr := sessionsvc.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks, sessOpts...)
 	mdlWare.WithSessions(humaadapter.NewSessionClaims(sessionMgr, cookieMgr, repos))
 
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
 	//=============   Register the better-auth compatable routes
 	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager, Hooks: hooks})
+	// Validate the plugin list before anything is initialized: unique IDs and installed dependencies
+	if err := validatePlugins(opts.Plugins); err != nil {
+		return nil, err
+	}
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
-	authenticate := authenticator.NewDefaultAuthenticator(opts.Secret, repos)
+	authenticate := authenticator.NewDefaultAuthenticator(repos)
 	initCtx := &plugin.InitContext{
 		Ctx:              ctx,
 		Api:              api,
@@ -214,16 +221,12 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		SecondaryStorage: opts.SecondaryStorage,
 		DB:               opts.Conn,
 		CookieManager:    cookieMgr,
-		GenerateID:       opts.Advanced.Database.GenerateID,
+		GenerateID:       generateID,
 	}
 
 	// Phase 1: Initialize plugins (transport/middleware plugins first so global middlewares wrap all plugin routes)
 	isTransportPlugin := func(id string) bool {
 		return id == "bearer" || id == "access-token" || id == "jwt"
-	}
-	// plugins whose after-hook middleware (pluginkit.UseAfterHook) must wrap every domain plugin route
-	isAfterHookPlugin := func(id string) bool {
-		return id == "multi-session" || id == "one-time-token"
 	}
 	initPlugin := func(p plugin.Plugin) error {
 		if p == nil {
@@ -254,23 +257,14 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// access-token resolve credentials first) and before domain plugins / core routes snapshot middlewares.
 	origins := origin.New(opts.AuthConfig)
 	api.UseMiddleware(humaadapter.SecurityMiddleware(opts.AuthConfig, sessionMgr, cookieMgr, origins))
-	// fire plugins' OnNewSession hooks when a response hands out a session created on that request
-	// (e.g. anonymous account linking); registered before any domain plugin or core route is mounted
-	api.UseMiddleware(humaadapter.NewSessionHooks(opts.AuthConfig, hooks, cookieMgr))
+	// goauth's one after-hook middleware: OnNewSession hooks (e.g. anonymous account linking) and OnResponse
+	// hooks (multi-session cookies, one-time-token header, pluginkit.UseAfterHook). It is registered before
+	// any domain plugin or core route is mounted, so it wraps every route whatever the plugin order.
+	api.UseMiddleware(humaadapter.ResponseHooks(opts.AuthConfig, hooks, cookieMgr))
 
-	// 1b. Init response after-hook plugins (multi-session, one-time-token) before the other domain plugins,
-	// so their Huma middlewares observe every plugin route regardless of the order in opts.Plugins
+	// 1b. Init all remaining plugins
 	for _, p := range opts.Plugins {
-		if p != nil && isAfterHookPlugin(p.ID()) {
-			if err := initPlugin(p); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	// 1c. Init all remaining plugins
-	for _, p := range opts.Plugins {
-		if p != nil && !isTransportPlugin(p.ID()) && !isAfterHookPlugin(p.ID()) {
+		if p != nil && !isTransportPlugin(p.ID()) {
 			if err := initPlugin(p); err != nil {
 				return nil, err
 			}
@@ -296,6 +290,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		Conf: opts.AuthConfig, Auth: authService, Sessions: sessionMgr, Cookies: cookieMgr, Resolver: resolver,
 		Origins: origins,
 	})
+	// fail when two plugins (or a plugin and core) registered the same route or operation ID
+	if err := types.RegistrationError(api); err != nil {
+		return nil, fmt.Errorf("goauth: conflicting routes: %w", err)
+	}
 
 	return &GoAuth{
 		options: opts,
@@ -314,6 +312,35 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		sessionResolver:    resolver,
 		cookies:            cookieMgr,
 	}, nil
+}
+
+// validatePlugins fails when two plugins share an ID or a plugin's Dependencies() are not installed.
+func validatePlugins(list []plugin.Plugin) error {
+	// Step 1: collect IDs; the same ID twice means two plugins would register the same routes
+	ids := make(map[string]bool, len(list))
+	for _, p := range list {
+		if p == nil {
+			continue
+		}
+		if ids[p.ID()] {
+			return fmt.Errorf("goauth: plugin %q is registered twice", p.ID())
+		}
+		ids[p.ID()] = true
+	}
+	// Step 2: every declared dependency must be installed
+	var errs []error
+	for _, p := range list {
+		dp, ok := p.(plugin.DependencyProvider)
+		if p == nil || !ok {
+			continue
+		}
+		for _, dep := range dp.Dependencies() {
+			if !ids[dep] {
+				errs = append(errs, fmt.Errorf("goauth: plugin %q requires plugin %q, which is not installed", p.ID(), dep))
+			}
+		}
+	}
+	return errors.Join(errs...)
 }
 
 // StartCleanup deletes expired sessions and expired verifications every interval until ctx is cancelled.

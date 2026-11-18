@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"strings"
 
-	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/providers/origin"
 	"github.com/danielgtaylor/huma/v2"
@@ -29,7 +29,10 @@ func RequestContext() func(huma.Context, func(huma.Context)) {
 		req := &http.Request{Method: ctx.Method(), URL: &u, Host: ctx.Host(), RemoteAddr: ctx.RemoteAddr(), Header: http.Header{}}
 		ctx.EachHeader(func(name, value string) { req.Header.Add(name, value) })
 		req = req.WithContext(ctx.Context())
-		next(huma.WithContext(ctx, config.WithHTTPRequest(ctx.Context(), req)))
+		c := config.WithHTTPRequest(ctx.Context(), req)
+		// keep a proxy-assigned request ID so internal errors are logged under the same ID
+		c = autherr.WithRequestID(c, ctx.Header(autherr.RequestIDHeader))
+		next(huma.WithContext(ctx, c))
 	}
 }
 
