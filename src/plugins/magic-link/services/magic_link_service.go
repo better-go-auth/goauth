@@ -116,10 +116,10 @@ func (s *MagicLinkService) StoredToken(token string) (string, error) {
 
 // VerifyURL builds the link sent to the user, reproducing better-auth's pathname/basePath logic:
 // the path of ctx.context.baseURL is used when it is not "/", otherwise options.basePath.
-func (s *MagicLinkService) VerifyURL(token string, in *dtos.SignInMagicLinkInput) string {
+func (s *MagicLinkService) VerifyURL(ctx context.Context, token string, in *dtos.SignInMagicLinkInput) string {
 	// Step 1: split ctx.context.baseURL into origin and pathname
-	origin, pathname := s.kit.BaseURL(), ""
-	if u, err := url.Parse(s.kit.BaseURL()); err == nil {
+	origin, pathname := s.kit.BaseURL(ctx), ""
+	if u, err := url.Parse(s.kit.BaseURL(ctx)); err == nil {
 		origin = u.Scheme + "://" + u.Host
 		pathname = u.EscapedPath()
 		if pathname == "" || pathname == "/" {
@@ -185,7 +185,7 @@ func (s *MagicLinkService) SendMagicLink(ctx context.Context, in *dtos.SignInMag
 	}
 
 	// Step 5: build the verification URL and deliver it
-	link := s.VerifyURL(token, in)
+	link := s.VerifyURL(ctx, token, in)
 	if s.cfg.SendMagicLink == nil {
 		return autherr.ErrInternal
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/repository/verifycleanup"
+	"github.com/better-go-auth/goauth/src/app/repository/verifyidentifier"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/autherr"
@@ -141,6 +142,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// store the *http.Request in ctx for every goauth and plugin route registered below, so plugin handlers
 	// get the client IP / user agent for new sessions and user callbacks receive the request
 	api.UseMiddleware(humaadapter.RequestContext())
+	// config: DynamicBaseURL resolves the base URL from each request's host (better-auth's allowedHosts)
+	if opts.DynamicBaseURL != nil {
+		api.UseMiddleware(humaadapter.DynamicBaseURL(opts.AuthConfig))
+	}
 	// config: OnAPIError.OnError / Throw receive the errors better-auth's router hands to onError
 	api.UseMiddleware(humaadapter.APIErrorReporter(opts.OnAPIError))
 	// config: RateLimit — one limiter in front of every core and plugin route (better-auth's router onRequest)
@@ -176,6 +181,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	if repos == nil && opts.Conn != nil {
 		repos = gormauth.NewAuthRepos(opts.Conn, repoOpts...)
 	}
+	// config: Verification.StoreIdentifier stores verification identifiers hashed (better-auth's storeIdentifier)
+	repos = verifyidentifier.Wrap(repos, opts.Verification)
 	// delete expired verifications whenever one is read, like better-auth (opt out with Verification.DisableCleanup)
 	if !opts.Verification.DisableCleanup {
 		repos = verifycleanup.Wrap(repos)
@@ -225,6 +232,11 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	//=============   Register the better-auth compatable routes
 	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager, Hooks: hooks})
 	// Validate the plugin list before anything is initialized: unique IDs and installed dependencies
+	// config: SocialProviders installs the social plugin (better-auth's core socialProviders); generic-oauth
+	// providers are registered as social providers too
+	if opts.Plugins, err = withSocialPlugin(opts); err != nil {
+		return nil, err
+	}
 	if err := validatePlugins(opts.Plugins); err != nil {
 		return nil, err
 	}

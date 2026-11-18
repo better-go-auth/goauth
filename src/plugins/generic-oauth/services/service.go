@@ -63,8 +63,8 @@ func (s *Service) Provider(id string) (*gproviders.Provider, bool) {
 }
 
 // callbackURI is "<baseURL>/oauth2/callback/<providerId>".
-func (s *Service) callbackURI(providerID string) string {
-	return s.kit.BaseURL() + "/oauth2/callback/" + providerID
+func (s *Service) callbackURI(ctx context.Context, providerID string) string {
+	return s.kit.BaseURL(ctx) + "/oauth2/callback/" + providerID
 }
 
 // ─── POST /sign-in/oauth2 ────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ func (s *Service) SignIn(ctx context.Context, in godtos.SignInOAuth2Input) (*Sta
 	u, err := p.BuildAuthorizationURL(authURL, gproviders.AuthURLRequest{
 		State:        st.State,
 		CodeVerifier: st.CodeVerifier,
-		RedirectURI:  s.callbackURI(cfg.ProviderID),
+		RedirectURI:  s.callbackURI(ctx, cfg.ProviderID),
 		Scopes:       scopes,
 		Prompt:       cfg.Prompt,
 		AccessType:   cfg.AccessType,
@@ -177,7 +177,7 @@ func (s *Service) Link(ctx context.Context, current *dtos.SessionWithUser, in go
 	u, err := p.BuildAuthorizationURL(authURL, gproviders.AuthURLRequest{
 		State:        st.State,
 		CodeVerifier: st.CodeVerifier,
-		RedirectURI:  s.callbackURI(cfg.ProviderID),
+		RedirectURI:  s.callbackURI(ctx, cfg.ProviderID),
 		Scopes:       scopes,
 		Prompt:       cfg.Prompt,
 		AccessType:   cfg.AccessType,
@@ -203,7 +203,7 @@ type CallbackParams struct {
 // Callback is better-auth's oAuth2Callback. Every outcome is a redirect except the configuration errors
 // (unknown provider), which better-auth throws as 400 JSON errors.
 func (s *Service) Callback(ctx context.Context, providerID string, q CallbackParams) (*socialsvc.Redirect, error) {
-	defaultErrorURL := s.oauth.DefaultErrorURL()
+	defaultErrorURL := s.oauth.DefaultErrorURL(ctx)
 
 	// Step 1: provider error or missing code: straight to the default error URL (the state is not read)
 	if q.Error != "" || q.Code == "" {
@@ -278,7 +278,7 @@ func (s *Service) Callback(ctx context.Context, providerID string, q CallbackPar
 		TokenURL:     tokenURL,
 		Code:         q.Code,
 		CodeVerifier: state.CodeVerifier,
-		RedirectURI:  s.callbackURI(cfg.ProviderID),
+		RedirectURI:  s.callbackURI(ctx, cfg.ProviderID),
 		Extra:        p.TokenParams(ctx),
 	})
 	if err != nil || tokens == nil {
@@ -320,7 +320,7 @@ func (s *Service) Callback(ctx context.Context, providerID string, q CallbackPar
 	if result.IsRegister && state.NewUserURL != "" {
 		target = state.NewUserURL
 	}
-	return &socialsvc.Redirect{Location: target, Cookies: append(cookies, s.kit.SessionCookies(result.Session, false)...)}, nil
+	return &socialsvc.Redirect{Location: target, Cookies: append(cookies, s.oauth.SignInCookies(ctx, result)...)}, nil
 }
 
 // userInfo is the handleUserInfo step of better-auth's callback: the profile, mapProfileToUser on top, and the

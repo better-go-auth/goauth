@@ -188,6 +188,13 @@ These `config.AuthConfig` fields port better-auth's options of the same name:
 | `OnAPIError` | `onAPIError` | `ErrorURL` replaces the `<baseURL><basePath>/error` page (OAuth callbacks, `GET /error`); `OnError(err, r)` receives unexpected errors and errors raised before the endpoint (origin check, before hooks); `Throw` panics with them instead. |
 | `Logger` | `logger` | `Level` (`debug` … `error`, default `warn`), `Disabled`, custom `Log` func; default output is `slog`. |
 | `Advanced.BackgroundTasks.Handler` | `advanced.backgroundTasks.handler` | Runs senders (verification/reset e-mails, OTPs, magic links, invitations) without blocking the response, e.g. `func(task func()) { go task() }`; their errors are then logged. Default: synchronous. |
+| `Secrets` (`[]config.SecretVersion{{Version, Value}}`, or `$BETTER_AUTH_SECRETS` = `"2:new,1:old"`) | `secrets` | Secret rotation. The first entry signs cookies / tokens and encrypts new data as `$ba$<version>$<hex>` envelopes (two-factor secrets and backup codes, OTPs, OAuth tokens, JWKS private keys, OAuth state, JWE cookie caches); older versions still decrypt, and the old `Secret` decrypts bare-hex data written before rotation. goauth also accepts cookie signatures made with older versions, so users stay signed in across a rotation (better-auth only checks the current secret). Data and cookies written by a TypeScript better-auth with the same secrets are read as is. |
+| `SocialProviders` (`[]providers.Provider`) + `Account.*` | `socialProviders` + `account` | Installs the social plugin (`/sign-in/social`, `/callback/{id}`, `/link-social`, `/get-access-token`, `/refresh-token`, `/account-info`) configured from `Account` (`AccountLinking`, `EncryptOAuthTokens`, `UpdateAccountOnSignIn`, `StoreStateStrategy`, `SkipStateCookieCheck`). Passing `social.New(...)` as well merges the providers (the same id twice is an error). generic-oauth providers are social providers too (their callback is `/oauth2/callback/{id}`). |
+| `Account.StoreAccountCookie` | `account.storeAccountCookie` | Keeps the signed-in provider account in the encrypted `account_data` cookie (JWE, chunked above 4 KB): `/account-info` works without `accountId`, `/get-access-token` and `/refresh-token` read and refresh it; sign-out deletes it. |
+| `TrustedOriginsFunc func(*http.Request) []string` | `trustedOrigins: (request) => [...]` | Origins computed per request, used by the origin/CSRF check and redirect validation (`TrustedOrigins` stays the static list). |
+| `DynamicBaseURL` (`AllowedHosts`, `Fallback`, `Protocol`) | `baseURL: { allowedHosts, fallback, protocol }` | The base URL is taken from the request host (`X-Forwarded-Host`/`-Proto` trusted unless `Advanced.TrustedProxyHeaders` is false) when it matches an allowed host pattern (`*.vercel.app`); otherwise the fallback, or `400 HOST_NOT_ALLOWED`. Links in e-mails, OAuth redirect URIs, error redirects and trusted origins follow the request host. |
+| `Advanced.Cookies` / `Advanced.DefaultCookieAttributes` | `advanced.cookies` / `advanced.defaultCookieAttributes` | Per-cookie name and attributes (`Domain`, `Path`, `Secure`, `HTTPOnly`, `SameSite`, `Partitioned`), keyed by the cookie name without prefix (`session_token`, `session_data`, `dont_remember`, `account_data`, ...); renamed cookies keep the `__Secure-` prefix rule. |
+| `Verification.StoreIdentifier` / `StoreIdentifierOverrides` | `verification.storeIdentifier` (`plain` / `hashed` / `{hash}`, `{default, overrides}`) | Verification identifiers (reset tokens, OTP keys, OAuth state, ...) are stored as SHA-256 base64url (or a custom hash); rows written before keep working through a plain fallback lookup. |
 
 ```go
 cfg := config.AuthConfig{
@@ -209,6 +216,30 @@ cfg := config.AuthConfig{
 	OnAPIError: config.OnAPIErrorOptions{ErrorURL: "https://app.example.com/auth-error"},
 	Logger:     logger.Options{Level: logger.LevelInfo},
 	Advanced:   config.Advanced{BackgroundTasks: config.BackgroundTasks{Handler: func(task func()) { go task() }}},
+}
+```
+
+```go
+// betterAuth({ secrets, socialProviders, account, baseURL: { allowedHosts }, trustedOrigins, advanced, verification })
+cfg := config.AuthConfig{
+	Secrets: []config.SecretVersion{
+		{Version: 2, Value: os.Getenv("AUTH_SECRET_V2")}, // signs and encrypts
+		{Version: 1, Value: os.Getenv("AUTH_SECRET_V1")}, // still decrypts / verifies
+	},
+	SocialProviders: []providers.Provider{
+		providers.GitHub(providers.GitHubOptions{ProviderOptions: providers.ProviderOptions{ClientID: id, ClientSecret: secret}}),
+	},
+	Account: config.AccountOptions{StoreAccountCookie: true, EncryptOAuthTokens: true},
+	DynamicBaseURL: &config.DynamicBaseURL{
+		AllowedHosts: []string{"myapp.com", "*.vercel.app"},
+		Fallback:     "https://myapp.com",
+	},
+	TrustedOriginsFunc: func(r *http.Request) []string { return tenantOrigins(r) },
+	Advanced: config.Advanced{
+		DefaultCookieAttributes: &config.CookieAttributes{SameSite: "none", Secure: new(true), Partitioned: new(true)},
+		Cookies: map[string]config.CookieOverride{"session_token": {Name: "myapp.sid"}},
+	},
+	Verification: config.VerificationOptions{StoreIdentifier: config.StoreIdentifierOption{Mode: config.StoreIdentifierHashed}},
 }
 ```
 

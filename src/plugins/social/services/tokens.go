@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"time"
 
@@ -60,21 +61,26 @@ func timePtr(t *time.Time) *dtos.Time {
 }
 
 // validAccessToken is better-auth's getValidAccessToken: refresh (and persist) the access token when it expires
-// within five seconds and a refresh token is stored.
-func (s *Service) validAccessToken(ctx context.Context, userID, providerID, accountID string, account *models.Account) (*socialdtos.AccessTokenResponse, error) {
+// within five seconds and a refresh token is stored. With account.storeAccountCookie the account_data cookie is
+// read first and rewritten after a refresh (the returned cookies).
+func (s *Service) validAccessToken(ctx context.Context, userID, providerID, accountID string, account *models.Account) (*socialdtos.AccessTokenResponse, []http.Cookie, error) {
+	var setCookies []http.Cookie
 	// Step 1: the provider and the account
 	p, ok := s.Provider(providerID)
 	if !ok {
-		return nil, errProviderNotSupported(providerID)
+		return nil, nil, errProviderNotSupported(providerID)
 	}
 	if account == nil {
-		var err error
-		if account, err = s.findAccount(ctx, userID, providerID, accountID); err != nil {
-			return nil, err
+		// the account_data cookie when it matches, else the database
+		if account = s.accountFromCookie(ctx, userID, providerID, accountID); account == nil {
+			var err error
+			if account, err = s.findAccount(ctx, userID, providerID, accountID); err != nil {
+				return nil, nil, err
+			}
 		}
 	}
 	if account == nil {
-		return nil, autherr.ErrAccountNotFound
+		return nil, nil, autherr.ErrAccountNotFound
 	}
 
 	// Step 2: refresh when (almost) expired
@@ -83,11 +89,11 @@ func (s *Service) validAccessToken(ctx context.Context, userID, providerID, acco
 	if account.RefreshToken != nil && *account.RefreshToken != "" && expired && providers.CanRefresh(p) {
 		rt, err := s.decryptToken(*account.RefreshToken)
 		if err != nil {
-			return nil, ErrFailedToGetAccessToken
+			return nil, nil, ErrFailedToGetAccessToken
 		}
 		fresh, err = p.RefreshAccessToken(ctx, rt)
 		if err != nil || fresh == nil {
-			return nil, ErrFailedToGetAccessToken
+			return nil, nil, ErrFailedToGetAccessToken
 		}
 		// Step 3: persist the new tokens, keeping the old refresh token / id token when none is returned
 		update := map[string]interface{}{}
@@ -113,6 +119,8 @@ func (s *Service) validAccessToken(ctx context.Context, userID, providerID, acco
 				account = updated
 			}
 		}
+		// with storeAccountCookie the refreshed account goes back into account_data
+		setCookies = s.AccountCookies(ctx, account)
 	}
 
 	// Step 4: the answer (fresh values first, then the stored ones)
@@ -126,7 +134,7 @@ func (s *Service) validAccessToken(ctx context.Context, userID, providerID, acco
 		}
 		at, err := s.decryptToken(stored)
 		if err != nil {
-			return nil, ErrFailedToGetAccessToken
+			return nil, nil, ErrFailedToGetAccessToken
 		}
 		out.AccessToken = at
 	}
@@ -140,51 +148,55 @@ func (s *Service) validAccessToken(ctx context.Context, userID, providerID, acco
 	} else if account.IDToken != nil {
 		out.IDToken = account.IDToken
 	}
-	return out, nil
+	return out, setCookies, nil
 }
 
-// GetAccessToken is better-auth's POST /get-access-token.
-func (s *Service) GetAccessToken(ctx context.Context, in socialdtos.AccountTokenInput) (*socialdtos.AccessTokenResponse, error) {
+// GetAccessToken is better-auth's POST /get-access-token. The cookies rewrite account_data after a refresh.
+func (s *Service) GetAccessToken(ctx context.Context, in socialdtos.AccountTokenInput) (*socialdtos.AccessTokenResponse, []http.Cookie, error) {
 	userID, err := s.ResolveUserID(ctx, in.UserID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	return s.validAccessToken(ctx, userID, in.ProviderID, in.AccountID, nil)
 }
 
-// RefreshToken is better-auth's POST /refresh-token: always refresh, persist and return the new tokens.
-func (s *Service) RefreshToken(ctx context.Context, in socialdtos.AccountTokenInput) (*socialdtos.RefreshTokenResponse, error) {
-	// Step 1: caller, provider and account
+// RefreshToken is better-auth's POST /refresh-token: always refresh, persist and return the new tokens. When the
+// account came from the account_data cookie (account.storeAccountCookie) the cookie is rewritten too.
+func (s *Service) RefreshToken(ctx context.Context, in socialdtos.AccountTokenInput) (*socialdtos.RefreshTokenResponse, []http.Cookie, error) {
+	// Step 1: caller, provider and account (the account_data cookie when it matches, else the database)
 	userID, err := s.ResolveUserID(ctx, in.UserID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	p, ok := s.Provider(in.ProviderID)
 	if !ok {
-		return nil, errProviderNotSupported(in.ProviderID)
+		return nil, nil, errProviderNotSupported(in.ProviderID)
 	}
 	if !providers.CanRefresh(p) {
-		return nil, errTokenRefreshNotSupported(in.ProviderID)
+		return nil, nil, errTokenRefreshNotSupported(in.ProviderID)
 	}
-	account, err := s.findAccount(ctx, userID, in.ProviderID, in.AccountID)
-	if err != nil {
-		return nil, err
+	account := s.accountFromCookie(ctx, userID, in.ProviderID, in.AccountID)
+	usedAccountCookie := account != nil
+	if account == nil {
+		if account, err = s.findAccount(ctx, userID, in.ProviderID, in.AccountID); err != nil {
+			return nil, nil, err
+		}
 	}
 	if account == nil {
-		return nil, autherr.ErrAccountNotFound
+		return nil, nil, autherr.ErrAccountNotFound
 	}
 	if account.RefreshToken == nil || *account.RefreshToken == "" {
-		return nil, ErrRefreshTokenNotFound
+		return nil, nil, ErrRefreshTokenNotFound
 	}
 
 	// Step 2: refresh with the (decrypted) refresh token
 	decrypted, err := s.decryptToken(*account.RefreshToken)
 	if err != nil {
-		return nil, ErrFailedToRefreshAccessToken
+		return nil, nil, ErrFailedToRefreshAccessToken
 	}
 	tokens, err := p.RefreshAccessToken(ctx, decrypted)
 	if err != nil || tokens == nil {
-		return nil, ErrFailedToRefreshAccessToken
+		return nil, nil, ErrFailedToRefreshAccessToken
 	}
 
 	// Step 3: persist (keep the stored refresh token / scope / id token when none is returned)
@@ -192,7 +204,7 @@ func (s *Service) RefreshToken(ctx context.Context, in socialdtos.AccountTokenIn
 	if tokens.RefreshToken != "" {
 		enc, err := s.setToken(tokens.RefreshToken)
 		if err != nil {
-			return nil, ErrFailedToRefreshAccessToken
+			return nil, nil, ErrFailedToRefreshAccessToken
 		}
 		storedRefresh = *enc
 	}
@@ -225,8 +237,13 @@ func (s *Service) RefreshToken(ctx context.Context, in socialdtos.AccountTokenIn
 	if idToken != nil {
 		update["IDToken"] = *idToken
 	}
-	if _, err := s.kit.Repos.UpdateAccount(ctx, account.ID, update); err != nil {
-		return nil, ErrFailedToRefreshAccessToken
+	updated, err := s.kit.Repos.UpdateAccount(ctx, account.ID, update)
+	if err != nil {
+		return nil, nil, ErrFailedToRefreshAccessToken
+	}
+	var setCookies []http.Cookie
+	if usedAccountCookie {
+		setCookies = s.AccountCookies(ctx, updated)
 	}
 
 	// Step 4: the answer
@@ -243,7 +260,7 @@ func (s *Service) RefreshToken(ctx context.Context, in socialdtos.AccountTokenIn
 	if out.RefreshToken == "" {
 		out.RefreshToken = decrypted
 	}
-	return out, nil
+	return out, setCookies, nil
 }
 
 // AccountInfoQuery is the query of GET /account-info.
@@ -253,19 +270,24 @@ type AccountInfoQuery struct {
 	UserID     string
 }
 
-// AccountInfo is better-auth's GET /account-info: the provider's current view of the user.
-func (s *Service) AccountInfo(ctx context.Context, q AccountInfoQuery) (*socialdtos.AccountInfoResponse, error) {
+// AccountInfo is better-auth's GET /account-info: the provider's current view of the user. Without accountId the
+// account comes from the account_data cookie (account.storeAccountCookie).
+func (s *Service) AccountInfo(ctx context.Context, q AccountInfoQuery) (*socialdtos.AccountInfoResponse, []http.Cookie, error) {
 	// Step 1: caller
 	userID, err := s.ResolveUserID(ctx, q.UserID)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	// Step 2: the account (goauth has no account cookie, so accountId is required)
+	// Step 2: the account: the account_data cookie without accountId, else the matching database row
 	var account *models.Account
-	if q.AccountID != "" {
+	if q.AccountID == "" {
+		if s.storeAccountCookie() {
+			account = s.readAccountCookie(ctx)
+		}
+	} else {
 		accounts, err := s.kit.Repos.FindAccounts(ctx, userID)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		var matching []*models.Account
 		for i := range accounts {
@@ -275,26 +297,26 @@ func (s *Service) AccountInfo(ctx context.Context, q AccountInfoQuery) (*sociald
 			}
 		}
 		if len(matching) > 1 {
-			return nil, ErrAmbiguousAccount
+			return nil, nil, ErrAmbiguousAccount
 		}
 		if len(matching) == 1 {
 			account = matching[0]
 		}
 	}
 	if account == nil || account.UserID != userID {
-		return nil, autherr.ErrAccountNotFound
+		return nil, nil, autherr.ErrAccountNotFound
 	}
 	// Step 3: the provider and a valid access token
 	p, ok := s.Provider(string(account.ProviderID))
 	if !ok {
-		return nil, ErrProviderNotConfigured
+		return nil, nil, ErrProviderNotConfigured
 	}
-	tokens, err := s.validAccessToken(ctx, userID, string(account.ProviderID), account.AccountID, account)
+	tokens, setCookies, err := s.validAccessToken(ctx, userID, string(account.ProviderID), account.AccountID, account)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if tokens.AccessToken == "" {
-		return nil, ErrAccessTokenNotFound
+		return nil, nil, ErrAccessTokenNotFound
 	}
 	// Step 4: ask the provider
 	in := providers.UserInfoInput{OAuth2Tokens: providers.OAuth2Tokens{AccessToken: tokens.AccessToken, Scopes: tokens.Scopes}}
@@ -303,12 +325,12 @@ func (s *Service) AccountInfo(ctx context.Context, q AccountInfoQuery) (*sociald
 	}
 	info, err := p.GetUserInfo(ctx, in)
 	if err != nil || info == nil {
-		return nil, nil
+		return nil, setCookies, nil
 	}
 	return &socialdtos.AccountInfoResponse{
 		User: socialdtos.AccountInfoUser{
 			ID: info.User.ID, Name: info.User.Name, Email: info.User.Email, Image: info.User.Image, EmailVerified: info.User.EmailVerified,
 		},
 		Data: info.Data,
-	}, nil
+	}, setCookies, nil
 }

@@ -180,7 +180,7 @@ func (s *Service) generateState(ctx context.Context, link *StateLink, in stateRe
 
 	// Step 3a: cookie strategy: the whole payload, encrypted, in oauth_state
 	if s.cfg.Strategy() == socialconfig.StateCookie {
-		enc, err := authcrypto.SymmetricEncrypt(s.kit.Conf.Secret, payload)
+		enc, err := s.kit.Cookies.Keys().Encrypt(payload)
 		if err != nil {
 			return nil, ErrUnableToCreateVerification
 		}
@@ -222,7 +222,7 @@ func (s *Service) parseState(ctx context.Context, state string) (*StateData, []h
 		if !ok || enc == "" {
 			return nil, nil, &StateError{Code: "state_mismatch", Message: "State mismatch: auth state cookie not found"}
 		}
-		plain, err := authcrypto.SymmetricDecrypt(s.kit.Conf.Secret, enc)
+		plain, err := s.kit.Cookies.Keys().Decrypt(enc)
 		if err == nil {
 			data, err = parseStateData(plain)
 		}

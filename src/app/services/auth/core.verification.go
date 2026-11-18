@@ -48,17 +48,18 @@ func (s *Service) emailVerificationToken(email, updateTo, requestType string) (s
 
 // verifyURL builds the link put in emails: <base>/verify-email?token=...&callbackURL=...
 // The callback URL is where the browser is redirected after verification ("/" by default).
-func (s *Service) verifyURL(token, callbackURL string) string {
+func (s *Service) verifyURL(ctx context.Context, token, callbackURL string) string {
 	if callbackURL == "" {
 		callbackURL = "/"
 	}
-	return s.baseURL() + "/verify-email?token=" + token + "&callbackURL=" + url.QueryEscape(callbackURL)
+	return s.baseURL(ctx) + "/verify-email?token=" + token + "&callbackURL=" + url.QueryEscape(callbackURL)
 }
 
 // baseURL is better-auth's ctx.context.baseURL: BaseURL + BasePath.
-// config: BaseURL (e.g. https://app.com) and BasePath (default /api/auth).
-func (s *Service) baseURL() string {
-	return strings.TrimRight(s.cfg.BaseURL, "/") + s.cfg.BasePath
+// config: BaseURL (e.g. https://app.com) and BasePath (default /api/auth); with DynamicBaseURL the origin
+// resolved for the current request.
+func (s *Service) baseURL(ctx context.Context) string {
+	return s.cfg.AuthBaseURL(ctx)
 }
 
 // hasVerificationSender reports whether core EmailVerification.SendVerificationEmail or a plugin override is configured.
@@ -85,7 +86,7 @@ func (s *Service) dispatchVerificationEmail(ctx context.Context, user *models.Us
 		return nil
 	}
 	// config: Advanced.BackgroundTasks.Handler runs the sender without blocking the response
-	data := config.EmailVerificationData{User: *user, URL: s.verifyURL(tok, callbackURL), Token: tok}
+	data := config.EmailVerificationData{User: *user, URL: s.verifyURL(ctx, tok, callbackURL), Token: tok}
 	return s.cfg.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error { return send(data, request(ctx)) })
 }
 
@@ -378,7 +379,7 @@ func (s *Service) ChangeEmail(ctx context.Context, current *dtos.SessionWithUser
 			return nil, err
 		}
 		// config: User.ChangeEmail.SendChangeEmailConfirmation sends it (through Advanced.BackgroundTasks)
-		data := config.ChangeEmailConfirmationData{User: *user, NewEmail: newEmail, URL: s.verifyURL(tok, callbackURL), Token: tok}
+		data := config.ChangeEmailConfirmationData{User: *user, NewEmail: newEmail, URL: s.verifyURL(ctx, tok, callbackURL), Token: tok}
 		return nil, s.cfg.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
 			return ce.SendChangeEmailConfirmation(data, request(ctx))
 		})

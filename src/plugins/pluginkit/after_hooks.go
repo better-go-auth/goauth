@@ -77,7 +77,7 @@ func (hc *AfterHookContext) NewSessionToken() (string, bool) {
 		if c.MaxAge < 0 || c.Value == "" {
 			continue
 		}
-		if v, ok := cookies.VerifyCookieValue(cookies.DecodeCookieValue(c.Value), hc.kit.Cookies.Secret()); ok {
+		if v, ok := hc.kit.Cookies.Verify(cookies.DecodeCookieValue(c.Value)); ok {
 			token = v
 		}
 	}

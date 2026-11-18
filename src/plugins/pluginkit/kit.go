@@ -138,6 +138,10 @@ type Route struct {
 	SkipOriginCheck bool
 	// Hidden keeps the operation out of the OpenAPI document.
 	Hidden bool
+	// ValidateFirst checks the request body / query before the Session / FreshSession requirement, like
+	// better-call (validation runs before an endpoint's `use` middlewares): an anonymous request with an invalid
+	// body gets 400 VALIDATION_ERROR instead of 401 UNAUTHORIZED.
+	ValidateFirst bool
 }
 
 // Path returns the full mount path of a route path ("/sign-in/x" → "/api/auth/sign-in/x").
@@ -184,6 +188,12 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 			PathMatcher: routeMatcher(r.Path), Window: r.RateLimit.Window, Max: r.RateLimit.Max,
 		})
 	}
+	// ValidateFirst: resolve the session optionally in the middleware chain and enforce it in the handler,
+	// which Huma only calls once the body and query are valid
+	if r.ValidateFirst && (r.Access == Session || r.Access == FreshSession) {
+		handler = requireInHandler(k, r.Access, handler)
+		r.Access = OptionalSession
+	}
 	huma.Register(api, huma.Operation{
 		OperationID: r.OperationID,
 		Method:      r.Method,
@@ -194,6 +204,21 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 		Metadata:    map[string]any{types.RawBodyMetaKey: true},
 		Middlewares: k.Middlewares(r),
 	}, handler)
+}
+
+// requireInHandler wraps handler with the Session / FreshSession check (401 UNAUTHORIZED, 403
+// SESSION_NOT_FRESH) for routes registered with ValidateFirst.
+func requireInHandler[I, O any](k *Kit, access Access, handler func(context.Context, *I) (*O, error)) func(context.Context, *I) (*O, error) {
+	return func(ctx context.Context, in *I) (*O, error) {
+		sw := k.Current(ctx)
+		if sw == nil {
+			return nil, autherr.ErrUnauthorized
+		}
+		if access == FreshSession && !k.Sessions.IsFresh(sw) {
+			return nil, autherr.ErrSessionNotFresh
+		}
+		return handler(ctx, in)
+	}
 }
 
 // routeMatcher matches request paths against a route path whose {param} segments match any one segment.
@@ -393,31 +418,33 @@ func (k *Kit) HasPassword(ctx context.Context, userID string) bool {
 // ─── Redirect helpers ────────────────────────────────────────────────────────
 
 // IsTrustedURL reports whether a client-supplied redirect target is allowed (relative paths are).
-func (k *Kit) IsTrustedURL(raw string) bool {
+func (k *Kit) IsTrustedURL(ctx context.Context, raw string) bool {
 	if raw == "" || k.Conf.Advanced.DisableOriginCheck {
 		return true
 	}
-	return k.Origins.IsTrusted(raw, true)
+	// TrustedOriginsFunc sees the current request
+	return k.Origins.IsTrustedFor(k.Request(ctx), raw, true)
 }
 
 // CheckURL returns invalid when raw is not a trusted redirect target.
-func (k *Kit) CheckURL(raw string, invalid *autherr.AuthError) error {
-	if !k.IsTrustedURL(raw) {
+func (k *Kit) CheckURL(ctx context.Context, raw string, invalid *autherr.AuthError) error {
+	if !k.IsTrustedURL(ctx, raw) {
 		return invalid
 	}
 	return nil
 }
 
-// BaseURL returns "<BaseURL><BasePath>" (better-auth's ctx.context.baseURL).
-func (k *Kit) BaseURL() string { return strings.TrimRight(k.Conf.BaseURL, "/") + k.BasePath }
+// BaseURL returns "<BaseURL><BasePath>" (better-auth's ctx.context.baseURL); with a DynamicBaseURL the origin
+// is the one resolved for the current request.
+func (k *Kit) BaseURL(ctx context.Context) string { return k.Conf.RequestBaseURL(ctx) + k.BasePath }
 
 // ResolveURL resolves a (possibly relative) callback URL against the app's BaseURL origin, like
 // better-auth's new URL(callbackURL, ctx.context.baseURL).
-func (k *Kit) ResolveURL(raw string) string {
+func (k *Kit) ResolveURL(ctx context.Context, raw string) string {
 	if raw == "" {
 		raw = "/"
 	}
-	base, err := parseURL(k.BaseURL())
+	base, err := parseURL(k.BaseURL(ctx))
 	if err != nil {
 		return raw
 	}

@@ -19,6 +19,10 @@ func (opts *AuthConfig) SetDefaults() {
 			opts.BaseURL = os.Getenv(NextBaseURLEnvVar)
 		}
 	}
+	// with a dynamic base URL the static BaseURL (used outside requests) is the fallback origin
+	if opts.BaseURL == "" && opts.DynamicBaseURL != nil {
+		opts.BaseURL = originOf(opts.DynamicBaseURL.Fallback)
+	}
 	// 2. Set default application name and routes mount path
 	if opts.AppName == "" {
 		opts.AppName = DefaultAppName
@@ -29,6 +33,9 @@ func (opts *AuthConfig) SetDefaults() {
 	// 3. Resolve Secret like better-auth: options.secret || $BETTER_AUTH_SECRET || $AUTH_SECRET ||
 	// DEFAULT_SECRET. The development default is refused in production by Validate; with
 	// Advanced.GoAuth.RequireSecret a missing secret is an error everywhere (goauth's old behaviour).
+	// With versioned Secrets (or $BETTER_AUTH_SECRETS) the first entry becomes Secret and the old single
+	// secret is kept as the legacy secret for bare-hex payloads (better-auth's secret rotation).
+	opts.resolveSecrets()
 	if opts.Secret == "" {
 		opts.Secret = os.Getenv(SecretEnvVar)
 	}
@@ -113,13 +120,27 @@ var devSecretWarning sync.Once
 
 // Validate verifies that required options are present and valid.
 func (opts *AuthConfig) Validate() error {
-	// 1. Validate BaseURL (required in Better Auth; checked here or from environment)
-	if opts.BaseURL == "" {
+	// 1. Validate BaseURL (required in Better Auth; checked here or from environment), or the dynamic base URL
+	if d := opts.DynamicBaseURL; d != nil {
+		if len(d.AllowedHosts) == 0 {
+			return errors.New(`goauth: DynamicBaseURL.AllowedHosts cannot be empty; provide at least one allowed host pattern (e.g. "myapp.com", "*.vercel.app")`)
+		}
+		switch d.Protocol {
+		case "", "auto", "http", "https":
+		default:
+			return fmt.Errorf("goauth: DynamicBaseURL.Protocol %q must be http, https or auto", d.Protocol)
+		}
+		if d.Fallback != "" && originOf(d.Fallback) == "" {
+			return fmt.Errorf("goauth: DynamicBaseURL.Fallback %q must be an absolute URL", d.Fallback)
+		}
+	} else if opts.BaseURL == "" {
 		return fmt.Errorf("goauth: BaseURL (or $%s) is required", BaseURLEnvVar)
 	}
-	u, err := url.Parse(opts.BaseURL)
-	if err != nil || u.Scheme == "" || u.Host == "" {
-		return fmt.Errorf("goauth: BaseURL %q must be an absolute URL", opts.BaseURL)
+	if opts.BaseURL != "" {
+		u, err := url.Parse(opts.BaseURL)
+		if err != nil || u.Scheme == "" || u.Host == "" {
+			return fmt.Errorf("goauth: BaseURL %q must be an absolute URL", opts.BaseURL)
+		}
 	}
 
 	// 2. Validate CrossSubDomainCookies requirements
@@ -127,7 +148,20 @@ func (opts *AuthConfig) Validate() error {
 		return errors.New("goauth: CrossSubDomainCookies requires Domain or BaseURL")
 	}
 
-	// 3. Validate Secret presence and recommended length
+	// 3. Validate Secret presence and recommended length (versioned Secrets first, like better-auth's
+	// validateSecretsArray)
+	if opts.secrets.envErr != nil {
+		return fmt.Errorf("goauth: %w", opts.secrets.envErr)
+	}
+	if len(opts.Secrets) > 0 {
+		warnings, err := validateSecrets(opts.Secrets)
+		if err != nil {
+			return err
+		}
+		for _, w := range warnings {
+			logger.Warn(w)
+		}
+	}
 	if opts.Secret == "" {
 		return fmt.Errorf("goauth: Secret (or $%s / $%s) is required", SecretEnvVar, AuthSecretEnvVar)
 	}

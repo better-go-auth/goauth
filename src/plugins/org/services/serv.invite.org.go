@@ -190,7 +190,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 		if org != nil {
 			orgName = org.Name
 		}
-		inviteURL := fmt.Sprintf("%s%s/organization/accept-invitation?invitationId=%s", s.Cfg.BaseURL, s.Cfg.BasePath, created.ID)
+		inviteURL := fmt.Sprintf("%s/organization/accept-invitation?invitationId=%s", s.Cfg.AuthBaseURL(ctx), created.ID)
 		go func() {
 			_ = s.Config.SendOrgInvitation(context.Background(), input.Email, inviterName, orgName, inviteURL)
 		}()

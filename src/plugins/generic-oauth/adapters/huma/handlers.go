@@ -41,7 +41,7 @@ func (h *Handler) SignIn(ctx context.Context, in *signInInput) (*startOutput, er
 		{in.Body.ErrorCallbackURL, autherr.ErrInvalidErrorCallbackURL},
 		{in.Body.NewUserCallbackURL, autherr.ErrInvalidNewUserCallbackURL},
 	} {
-		if err := kit.CheckURL(c.url, c.err); err != nil {
+		if err := kit.CheckURL(ctx, c.url, c.err); err != nil {
 			return nil, err
 		}
 	}
@@ -63,10 +63,10 @@ type linkInput struct {
 func (h *Handler) Link(ctx context.Context, in *linkInput) (*startOutput, error) {
 	// Step 1: trusted redirect targets
 	kit := h.Service.Kit()
-	if err := kit.CheckURL(in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
+	if err := kit.CheckURL(ctx, in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
-	if err := kit.CheckURL(in.Body.ErrorCallbackURL, autherr.ErrInvalidErrorCallbackURL); err != nil {
+	if err := kit.CheckURL(ctx, in.Body.ErrorCallbackURL, autherr.ErrInvalidErrorCallbackURL); err != nil {
 		return nil, err
 	}
 	// Step 2: the session user (the route requires a session)

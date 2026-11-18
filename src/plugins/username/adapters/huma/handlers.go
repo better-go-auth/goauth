@@ -42,7 +42,7 @@ func (h *Handler) SignIn(ctx context.Context, in *signInInput) (*signInOutput, e
 	kit := h.Service.Kit()
 	// Step 1: reject untrusted callback URLs before doing any work
 	if in.Body.CallbackURL != nil {
-		if err := kit.CheckURL(*in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
+		if err := kit.CheckURL(ctx, *in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 			return nil, err
 		}
 	}

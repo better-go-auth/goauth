@@ -11,8 +11,15 @@ import (
 	"testing"
 	"time"
 
+	goauth "github.com/better-go-auth/goauth"
+	"github.com/better-go-auth/goauth/src/app/repository/memory"
+	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/plugins"
+	phonenumber "github.com/better-go-auth/goauth/src/plugins/phone-number"
 	phoneconfig "github.com/better-go-auth/goauth/src/plugins/phone-number/config"
+	"github.com/danielgtaylor/huma/v2"
+	"github.com/danielgtaylor/huma/v2/adapters/humago"
 )
 
 func TestSendOTPStoresCodeWithAttempts(t *testing.T) {
@@ -212,12 +219,27 @@ func TestSignUpOnVerification(t *testing.T) {
 	}
 }
 
+func TestSignUpOnVerificationRequiresGetTempEmail(t *testing.T) {
+	// better-auth's signUpOnVerification type requires getTempEmail: setup fails instead of inventing an email
+	p := phonenumber.New(phoneconfig.PhoneNumberConfig{SignUpOnVerification: &phoneconfig.SignUpOnVerification{}})
+	_, err := goauth.SetupGoAuth(context.Background(), humago.New(http.NewServeMux(), huma.DefaultConfig("t", "1")), goauth.GoAuthOptions{
+		AuthConfig:   config.AuthConfig{BaseURL: "http://localhost:3000", Secret: "phone-number-test-secret-0123456789"},
+		Repositories: memory.New(),
+		Plugins:      []plugins.Plugin{p},
+	})
+	if err == nil || !strings.Contains(err.Error(), "GetTempEmail is required") {
+		t.Fatalf("expected a GetTempEmail error, got %v", err)
+	}
+}
+
 func TestSignUpOnVerificationDefaultsAndExtraFields(t *testing.T) {
-	h := newHarness(t, phoneconfig.PhoneNumberConfig{SignUpOnVerification: &phoneconfig.SignUpOnVerification{}})
+	h := newHarness(t, phoneconfig.PhoneNumberConfig{SignUpOnVerification: &phoneconfig.SignUpOnVerification{
+		GetTempEmail: func(p string) string { return p + "@phone.invalid" },
+	}})
 	phone := "+15550000006"
 	// Step 1: input:false plugin fields cannot be set on sign-up
 	expectError(t, h.sendAndVerify(t, phone, map[string]any{"phoneNumberVerified": true}), http.StatusBadRequest, "FIELD_NOT_ALLOWED")
-	// Step 2: unknown extra fields are ignored; defaults fill email and name
+	// Step 2: unknown extra fields are ignored; GetTempEmail fills the email, the name defaults to the number
 	r := h.sendAndVerify(t, phone, map[string]any{"name": "ignored", "favoriteColor": "blue"})
 	expectOK(t, r)
 	var body struct {

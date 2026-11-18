@@ -22,7 +22,7 @@ import (
 // JWTService handles key generation, JWKS publication, and JWT signing/verification.
 type JWTService struct {
 	config  jwtconfig.JWTConfig
-	secret  string
+	keys    authcrypto.SecretKeys
 	baseURL string
 	repo    repository.IJwksRepo
 }
@@ -41,12 +41,19 @@ type SignJWTOptions struct {
 // NewJWTService creates a new instance of JWTService.
 // An invalid Jwks.KeyPairConfig is reported by CreateKey (the plugin rejects it earlier, in Init).
 func NewJWTService(cfg jwtconfig.JWTConfig, secret, baseURL string, repo repository.IJwksRepo) *JWTService {
+	return NewJWTServiceWithKeys(cfg, authcrypto.SingleSecret(secret), baseURL, repo)
+}
+
+// NewJWTServiceWithKeys is NewJWTService with the full secret configuration (secret rotation): private keys are
+// encrypted with the current secret and still decrypted after the secret is rotated (better-auth's
+// symmetricEncrypt/Decrypt with ctx.context.secretConfig).
+func NewJWTServiceWithKeys(cfg jwtconfig.JWTConfig, keys authcrypto.SecretKeys, baseURL string, repo repository.IJwksRepo) *JWTService {
 	if kp, err := cfg.Jwks.KeyPairConfig.Normalize(); err == nil {
 		cfg.Jwks.KeyPairConfig = kp
 	}
 	return &JWTService{
 		config:  cfg,
-		secret:  secret,
+		keys:    keys,
 		baseURL: baseURL,
 		repo:    repo,
 	}
@@ -77,8 +84,8 @@ func (s *JWTService) CreateKey(ctx context.Context) (*models.JWK, error) {
 	}
 
 	var storedPrivKey string
-	if !s.config.Jwks.DisablePrivateKeyEncryption && s.secret != "" {
-		enc, err := authcrypto.SymmetricEncrypt(s.secret, string(privBytes))
+	if !s.config.Jwks.DisablePrivateKeyEncryption && s.keys.CurrentSecret() != "" {
+		enc, err := s.keys.Encrypt(string(privBytes))
 		if err != nil {
 			return nil, fmt.Errorf("jwt: encrypt private key: %w", err)
 		}
@@ -144,12 +151,12 @@ func (s *JWTService) GetOrCreateActiveKey(ctx context.Context) (*models.JWK, err
 
 func (s *JWTService) decryptPrivateKey(key *models.JWK) (crypto.Signer, error) {
 	privStr := key.PrivateKey
-	if !s.config.Jwks.DisablePrivateKeyEncryption && s.secret != "" {
+	if !s.config.Jwks.DisablePrivateKeyEncryption && s.keys.CurrentSecret() != "" {
 		var hexStr string
 		if err := json.Unmarshal([]byte(privStr), &hexStr); err == nil {
 			privStr = hexStr
 		}
-		dec, err := authcrypto.SymmetricDecrypt(s.secret, privStr)
+		dec, err := s.keys.Decrypt(privStr)
 		if err != nil {
 			return nil, fmt.Errorf("jwt: decrypt private key: %w", err)
 		}

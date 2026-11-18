@@ -96,6 +96,13 @@ type Provider interface {
 	Options() *ProviderOptions
 }
 
+// CallbackPather is implemented by providers whose OAuth callback is not the social "/callback/<id>" route:
+// generic-oauth providers return "/oauth2/callback/<id>", the redirect URI better-auth uses for them even
+// when the flow starts at /sign-in/social or /link-social.
+type CallbackPather interface {
+	CallbackPath() string
+}
+
 // IDTokenVerifier is implemented by providers supporting direct id_token sign-in (better-auth's verifyIdToken).
 type IDTokenVerifier interface {
 	VerifyIDToken(ctx context.Context, token, nonce string) (bool, error)

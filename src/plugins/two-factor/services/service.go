@@ -73,7 +73,12 @@ func (s *Service) SetClock(now func() time.Time) {
 	}
 }
 
-func (s *Service) secret() string { return s.kit.Conf.Secret }
+// secret is the current auth secret (better-auth's ctx.context.secret): it signs trust-device tokens.
+func (s *Service) secret() string { return s.kit.Cookies.Secret() }
+
+// keys is the secret configuration (better-auth's secretConfig) that encrypts TOTP secrets, backup codes and
+// OTPs: the current version encrypts, older versions still decrypt after a rotation.
+func (s *Service) keys() authcrypto.SecretKeys { return s.kit.Cookies.Keys() }
 
 func (s *Service) appName() string {
 	if s.kit.Conf.AppName != "" {
@@ -178,7 +183,7 @@ func (s *Service) findVerification(ctx context.Context, identifier string) (*mod
 }
 
 func (s *Service) decryptSecret(row *tfmodels.TwoFactor) (string, error) {
-	return authcrypto.SymmetricDecrypt(s.secret(), row.Secret)
+	return s.keys().Decrypt(row.Secret)
 }
 
 func strPtr(v string) *string { return &v }
@@ -187,6 +192,17 @@ func strPtr(v string) *string { return &v }
 const maxOTPCASRetries = 10
 
 // ─── Sign-in interception ────────────────────────────────────────────────────
+
+// trustTokenValid checks a trust_device HMAC against the current secret and, after a secret rotation, the
+// older ones (goauth extension; better-auth only accepts the current secret).
+func (s *Service) trustTokenValid(token, userID, identifier string) bool {
+	for _, secret := range s.keys().VerifySecrets() {
+		if subtle.ConstantTimeCompare([]byte(token), []byte(TrustDeviceToken(secret, userID, identifier))) == 1 {
+			return true
+		}
+	}
+	return false
+}
 
 // AfterSignIn is better-auth's two-factor after-hook on /sign-in/email, /sign-in/username and
 // /sign-in/phone-number: users with 2FA enabled get {twoFactorRedirect: true} instead of a session,
@@ -206,8 +222,7 @@ func (s *Service) AfterSignIn(ctx context.Context, ev plugins.SignInEvent) (*plu
 	// Step 2: a valid trust_device cookie skips 2FA; the trust record and cookie are rotated
 	if raw, ok := s.kit.Cookies.ReadSigned(cookieHeader, TrustDeviceCookie); ok {
 		token, identifier, _ := strings.Cut(raw, "!")
-		if token != "" && identifier != "" &&
-			subtle.ConstantTimeCompare([]byte(token), []byte(TrustDeviceToken(s.secret(), userID, identifier))) == 1 {
+		if token != "" && identifier != "" && s.trustTokenValid(token, userID, identifier) {
 			rec, err := s.findVerification(ctx, identifier)
 			if err != nil {
 				return nil, err
@@ -277,6 +292,8 @@ type pending struct {
 	key          string
 	identifier   string
 	dontRemember bool
+	// verificationID is the 2fa-* row of a pending sign-in, deleted atomically when it completes
+	verificationID string
 }
 
 func (p *pending) isSignIn() bool { return p.session == nil }
@@ -296,7 +313,9 @@ func (s *Service) resolve(ctx context.Context) (*pending, error) {
 	if err != nil {
 		return nil, err
 	}
-	if rec == nil || !rec.ExpiresAt.After(s.now()) {
+	// like better-auth, the row's expiresAt is not checked here: the two_factor cookie's max-age bounds the
+	// pending sign-in, and findVerificationValue returns a row it is about to clean up as expired
+	if rec == nil {
 		return nil, ErrInvalidTwoFactorCookie
 	}
 	user, err := pluginkit.AcceptNotFound(s.kit.Repos.FindUserByID(ctx, rec.Value))
@@ -308,11 +327,12 @@ func (s *Service) resolve(ctx context.Context) (*pending, error) {
 	}
 	// Step 3: remember rememberMe=false from the sign-in
 	return &pending{
-		user:         dtos.UserFromModel(user),
-		userModel:    user,
-		key:          identifier,
-		identifier:   identifier,
-		dontRemember: s.requestDontRemember(ctx),
+		user:           dtos.UserFromModel(user),
+		userModel:      user,
+		key:            identifier,
+		identifier:     identifier,
+		dontRemember:   s.requestDontRemember(ctx),
+		verificationID: rec.ID,
 	}, nil
 }
 
@@ -323,12 +343,14 @@ func (s *Service) valid(ctx context.Context, p *pending, trustDevice bool) (*Res
 	if !p.isSignIn() {
 		return &Result{Body: tfdtos.TokenUserResponse{Token: strPtr(p.session.Session.Token), User: p.session.User}}, nil
 	}
-	// Step 2: consume the pending sign-in atomically, so concurrent verifications create one session only
-	consumed, err := pluginkit.AcceptNotFound(s.kit.Repos.ConsumeVerificationValue(ctx, p.identifier))
+	// Step 2: consume the pending sign-in atomically, so concurrent verifications create one session only.
+	// The row is deleted by id and value whether or not it expired: like better-auth (which deletes it by
+	// identifier), only the two_factor cookie's max-age bounds the pending sign-in.
+	consumed, err := s.kit.Repos.DeleteVerificationIfValue(ctx, p.verificationID, p.userModel.ID)
 	if err != nil {
 		return nil, err
 	}
-	if consumed == nil {
+	if !consumed {
 		return nil, ErrInvalidTwoFactorCookie
 	}
 	// Step 3: create the session (rememberMe=false is carried by the dont_remember cookie)
@@ -364,12 +386,12 @@ func (s *Service) Enable(ctx context.Context, current *dtos.SessionWithUser, in 
 	}
 	// Step 2: new secret (stored encrypted) and backup codes
 	secret := RandomString(32, defaultAlphabet)
-	encSecret, err := authcrypto.SymmetricEncrypt(s.secret(), secret)
+	encSecret, err := s.keys().Encrypt(secret)
 	if err != nil {
 		return nil, err
 	}
 	codes := GenerateBackupCodeList(s.cfg.BackupCodeOptions)
-	storedCodes, err := EncodeBackupCodes(codes, s.secret(), s.cfg.BackupCodeOptions)
+	storedCodes, err := EncodeBackupCodes(codes, s.keys(), s.cfg.BackupCodeOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -555,7 +577,7 @@ func (s *Service) SendOTP(ctx context.Context) (*Result, error) {
 	}
 	// Step 3: new code stored as "<stored>:<attempts>"
 	code := RandomString(s.cfg.OTPOptions.Digits, digits09)
-	stored, err := StoreOTP(code, s.secret(), s.cfg.OTPOptions.StoreOTP)
+	stored, err := StoreOTP(code, s.keys(), s.cfg.OTPOptions.StoreOTP)
 	if err != nil {
 		return nil, err
 	}
@@ -613,7 +635,7 @@ func (s *Service) VerifyOTP(ctx context.Context, in tfdtos.VerifyCodeInput) (*Re
 			return nil, ErrTooManyAttempts
 		}
 		// Step 4: wrong code → count the attempt (retry the check when another request counted first)
-		if !OTPMatches(stored, in.Code, s.secret(), s.cfg.OTPOptions.StoreOTP) {
+		if !OTPMatches(stored, in.Code, s.keys(), s.cfg.OTPOptions.StoreOTP) {
 			swapped, err := s.kit.Repos.UpdateVerificationValue(ctx, rec.ID, rec.Value, stored+":"+strconv.Itoa(counter+1))
 			if err != nil {
 				return nil, err
@@ -663,7 +685,7 @@ func (s *Service) VerifyBackupCode(ctx context.Context, in tfdtos.VerifyBackupCo
 	if row == nil {
 		return nil, ErrBackupCodesNotEnabled
 	}
-	codes := DecodeBackupCodes(row.BackupCodes, s.secret(), s.cfg.BackupCodeOptions)
+	codes := DecodeBackupCodes(row.BackupCodes, s.keys(), s.cfg.BackupCodeOptions)
 	if codes == nil {
 		return nil, ErrInvalidBackupCode
 	}
@@ -681,7 +703,7 @@ func (s *Service) VerifyBackupCode(ctx context.Context, in tfdtos.VerifyBackupCo
 		return nil, ErrInvalidBackupCode
 	}
 	// Step 4: compare-and-swap so a concurrent request cannot reuse the same code
-	updated, err := EncodeBackupCodes(remaining, s.secret(), s.cfg.BackupCodeOptions)
+	updated, err := EncodeBackupCodes(remaining, s.keys(), s.cfg.BackupCodeOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -722,7 +744,7 @@ func (s *Service) GenerateBackupCodes(ctx context.Context, current *dtos.Session
 	}
 	// Step 3: new codes replace the old ones
 	codes := GenerateBackupCodeList(s.cfg.BackupCodeOptions)
-	stored, err := EncodeBackupCodes(codes, s.secret(), s.cfg.BackupCodeOptions)
+	stored, err := EncodeBackupCodes(codes, s.keys(), s.cfg.BackupCodeOptions)
 	if err != nil {
 		return nil, err
 	}
@@ -743,7 +765,7 @@ func (s *Service) ViewBackupCodes(ctx context.Context, userID string) ([]string,
 		return nil, ErrBackupCodesNotEnabled
 	}
 	// Step 2: decode the stored list
-	codes := DecodeBackupCodes(row.BackupCodes, s.secret(), s.cfg.BackupCodeOptions)
+	codes := DecodeBackupCodes(row.BackupCodes, s.keys(), s.cfg.BackupCodeOptions)
 	if codes == nil {
 		return nil, ErrInvalidBackupCodeView
 	}

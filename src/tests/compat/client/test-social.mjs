@@ -5,6 +5,8 @@
 //   GOAUTH_APP_BASE  goauth's configured BaseURL (callback URLs / redirect_uri use it)
 //   GOAUTH_ID_TOKEN  an id_token signed by the fake provider (for id_token sign-in)
 //   GOAUTH_ID_EMAIL  the email inside GOAUTH_ID_TOKEN
+//   GOAUTH_ACCOUNT_COOKIE  "1" when goauth runs with account.storeAccountCookie (socialProviders configured in
+//                          core, src/tests/compat/socialcoreclient): accountInfo() then works without accountId
 import { createAuthClient } from "better-auth/client";
 
 const baseURL = process.env.GOAUTH_URL || "http://127.0.0.1:8080";
@@ -12,6 +14,7 @@ const appBase = process.env.GOAUTH_APP_BASE || "http://localhost:3000";
 const idToken = process.env.GOAUTH_ID_TOKEN || "";
 const idEmail = process.env.GOAUTH_ID_EMAIL || "";
 const providerEmail = process.env.GOAUTH_PROVIDER_EMAIL || "fake.user@example.com";
+const accountCookie = process.env.GOAUTH_ACCOUNT_COOKIE === "1";
 
 console.log("Running official better-auth/client social sign-in test against:", baseURL);
 
@@ -143,6 +146,15 @@ async function main() {
   assert(at2.data?.accessToken === rt.data.accessToken, "getAccessToken should return the refreshed token");
   const info = await client.accountInfo({ query: { accountId: fakeAcc.accountId } });
   assert(!info.error && info.data?.user?.email === providerEmail && info.data?.data, `accountInfo: ${JSON.stringify(info)}`);
+  if (accountCookie) {
+    // account.storeAccountCookie: the encrypted account_data cookie identifies the account
+    assert(Array.from(c.cookies.keys()).some((k) => k.endsWith("account_data")), "account_data cookie not stored");
+    const fromCookie = await client.accountInfo();
+    assert(!fromCookie.error && fromCookie.data?.user?.email === providerEmail, `accountInfo without accountId: ${JSON.stringify(fromCookie)}`);
+  } else {
+    const noCookie = await client.accountInfo();
+    assert(noCookie.error?.status === 400 && noCookie.error.code === "ACCOUNT_NOT_FOUND", `accountInfo without accountId: ${JSON.stringify(noCookie)}`);
+  }
 
   // 6. second sign-in goes to callbackURL (existing user)
   console.log("\n[6] second sign-in...");
@@ -180,9 +192,10 @@ async function main() {
     assert(badTok.error?.status === 401 && badTok.error.code === "INVALID_TOKEN", `bad idToken: ${JSON.stringify(badTok.error)}`);
   }
 
-  // 10. sign out
+  // 10. sign out (also drops the account_data cookie with storeAccountCookie)
   const out = await client.signOut();
   assert(!out.error, `signOut: ${JSON.stringify(out.error)}`);
+  assert(!Array.from(c.cookies.keys()).some((k) => k.endsWith("account_data")), "account_data cookie must be deleted on sign-out");
 
   console.log("\nAll social sign-in client checks passed.");
 }

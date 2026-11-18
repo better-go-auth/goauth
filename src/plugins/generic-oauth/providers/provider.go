@@ -86,6 +86,10 @@ func (p *Provider) Name() string { return p.cfg.ProviderID }
 // Options returns the sign-up and user-info policies in the social plugin's format.
 func (p *Provider) Options() *socialproviders.ProviderOptions { return &p.opts }
 
+// CallbackPath is the generic-oauth callback route: flows started by /sign-in/social or /link-social come back
+// to /oauth2/callback/<providerId>, like better-auth's generic providers in ctx.socialProviders.
+func (p *Provider) CallbackPath() string { return "/oauth2/callback/" + p.cfg.ProviderID }
+
 func (p *Provider) client() *http.Client {
 	if p.cfg.HTTPClient != nil {
 		return p.cfg.HTTPClient

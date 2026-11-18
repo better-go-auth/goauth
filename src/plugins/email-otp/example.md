@@ -108,6 +108,10 @@ curl $H -d '{"email":"vera@example.com","otp":"123456","password":"NewPassword45
 ## Notes
 
 - Codes are single use. Requesting a new code replaces the previous one (with the `"rotate"` strategy).
+- `/email-otp/request-email-change` and `/email-otp/change-email` run behind better-auth's
+  `sensitiveSessionMiddleware`: the session is read from the session store, never from the cookie cache, so a
+  revoked session that is still cached in `session_data` gets 401 `UNAUTHORIZED`.
+- With `StoreOTP` `"encrypted"` the codes are encrypted with the current `AuthConfig.Secrets` version.
 - A successful OTP sign-in also marks an existing user's email as verified. Banned users (admin plugin) get 403 `BANNED_USER` (like better-auth).
 - An OTP-created user has no password. They can set one with the password reset flow, which creates
   the credential account.

@@ -115,10 +115,15 @@ curl -b jar2 http://localhost:8080/api/example/me
 | `AUTHENTICATION_FAILED` | 400 / 401 | The assertion did not verify (bad signature: 401) |
 | `UNAUTHORIZED` | 401 | `delete-passkey` of another user's passkey, or no session |
 | `SESSION_NOT_FRESH` | 403 | Registration with a session older than `Session.FreshAge` |
-| `BAD_REQUEST` | 400 | `verify-authentication` with no `Origin` header and no `Origin` option (`origin missing`), or `delete-passkey` without `id` |
+| (no code) | 400 | `verify-authentication` with no `Origin` header and no `Origin` option: the body is exactly `{"message":"origin missing"}`, as better-auth's `new APIError("BAD_REQUEST", { message: "origin missing" })` |
+| `BAD_REQUEST` | 400 | `delete-passkey` without `id` |
+| `VALIDATION_ERROR` | 400 | Invalid body / query. It is checked before the session (better-call order), so an anonymous request with an invalid body gets 400, not 401 |
 
 ## Notes
 
 - The signature counter is stored on every sign-in. Authenticators that always report 0 keep working.
+- `generate-register-options`, `verify-registration`, `delete-passkey` and `update-passkey` validate the request
+  before requiring the session (`pluginkit.Route.ValidateFirst`), like better-call runs validation before an
+  endpoint's `use` middlewares.
 - `RPID` must be the page's domain or a parent of it. During local development use `localhost`.
 - Deleting a user deletes their passkeys.

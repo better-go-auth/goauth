@@ -79,18 +79,25 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
 - [ ] **3.4 `databaseHooks`** (`user/session/account/verification` × `create/update/delete` × `before/after`,
   where `before` can change or cancel), with the existing typed hooks as wrappers. Also fixes "username not
   validated on admin update-user". *(01 §2.2)* – after 2.1
-- [ ] **3.5 Secret rotation:** `AuthConfig.Secrets []{Version, Value}` with `$ba$<v>$` envelopes for cookies and
+- [x] **3.5 Secret rotation:** `AuthConfig.Secrets []{Version, Value}` with `$ba$<v>$` envelopes for cookies and
   encrypted data in every plugin. Blocker B7. *(03 B7, audit plan)*
 - [x] **3.6 `onAPIError`** (`ErrorURL` replacing the hard-coded `<base>/error`, `OnError`, `Throw`). *(01 §2.4)*
-- [ ] **3.7 `SocialProviders` in core** that installs the social plugin automatically, and generic-oauth providers
+- [x] **3.7 `SocialProviders` in core** that installs the social plugin automatically, and generic-oauth providers
   registered as social providers automatically. Blocker B4.
-- [ ] **3.8 Remaining organization routes:** `/organization/get-active-member`, `/get-active-member-role`,
+- [x] **3.8 Remaining organization routes:** `/organization/get-active-member`, `/get-active-member-role`,
   `/list-user-teams`. Blocker B8.
 - [ ] **3.9 Update-user unknown keys:** ignore unknown fields in compat mode; plugins can mark fields as
   "cannot be updated" with their own error (`PHONE_NUMBER_CANNOT_BE_UPDATED`). Blocker B9. – after 2.3
 - [ ] **3.10 Smaller core options** (S each): `trustedOrigins` as a function of the request, dynamic `baseURL`
   with `allowedHosts`, `advanced.cookies` / `defaultCookieAttributes`, `generateId: false | "uuid" | "serial"`,
   `verification.storeIdentifier` (hashed tokens), `account.storeAccountCookie`. *(03 §2, audit plan)*
+  **Partly done (2026-11-18):** `TrustedOriginsFunc`, `DynamicBaseURL` (+ `Advanced.TrustedProxyHeaders`),
+  `Advanced.Cookies` / `DefaultCookieAttributes`, `Verification.StoreIdentifier(+Overrides)` and
+  `Account.StoreAccountCookie` are done. **Remaining:** `generateId: false | "serial"` (needs the schema
+  registry / adapter wiring); with a `DynamicBaseURL` the cookie domain of `crossSubDomainCookies`, the passkey
+  RP ID / expected origin and the JWT issuer still come from the static `BaseURL` (fallback); `session_data` is
+  not written chunked above 4 KB (it is read chunked); `Advanced.Cookies` has no `maxAge` override and the
+  multi-session cookie names ignore a `session_token` rename.
 - [x] **3.11 Logger and background tasks:** injectable `AuthConfig.Logger` (levels, disabled) and
   `Advanced.BackgroundTasks` used by every `Send*` callback; add `ctx` to sender signatures in the next
   breaking release. *(01 §3)*
@@ -98,7 +105,7 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
   check keys and defaults, so drift is caught in CI. *(audit plan)* – after 3.5–3.10
 - [ ] **3.13 Move older plugins onto `pluginkit`** (org, admin, jwt, access-token): one session resolver, one
   cookie manager, same CSRF/disabled-route/rate-limit handling. *(01 §2.6)*
-- [ ] **3.14 Small behaviour differences:** email-otp `request-email-change` needs a fresh session; two-factor
+- [x] **3.14 Small behaviour differences:** email-otp `request-email-change` needs a fresh session; two-factor
   expired `2fa-*` row handling; social account cookie. *(03 §4)*
 
 ## Stage 4 – Shared-database compatibility (M)

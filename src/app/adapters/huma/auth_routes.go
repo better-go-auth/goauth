@@ -28,7 +28,7 @@ type signUpOutput struct {
 }
 
 func (h *handler) SignUpEmail(ctx context.Context, in *signUpInput) (*signUpOutput, error) {
-	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
+	if err := h.checkCallbackURL(ctx, in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
 	// pass the extra body fields (e.g. the username plugin's username) to the service
@@ -75,7 +75,7 @@ type signInOutput struct {
 
 func (h *handler) SignInEmail(ctx context.Context, in *signInInput) (*signInOutput, error) {
 	// Step 1: reject untrusted callback URLs before doing any work
-	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
+	if err := h.checkCallbackURL(ctx, in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
 	// Step 2: verify the credentials and create the session
@@ -139,7 +139,7 @@ type sendVerificationEmailInput struct {
 }
 
 func (h *handler) SendVerificationEmail(ctx context.Context, in *sendVerificationEmailInput) (*statusOutput, error) {
-	if err := h.checkURL(in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
+	if err := h.checkURL(ctx, in.Body.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
 	if err := h.Auth.SendVerificationEmail(ctx, current(ctx), in.Body); err != nil {
@@ -168,7 +168,7 @@ type verifyEmailBody struct {
 // VerifyEmail mirrors GET /verify-email: with a callbackURL every outcome is a redirect
 // (errors as ?error=CODE), otherwise JSON.
 func (h *handler) VerifyEmail(ctx context.Context, in *verifyEmailInput) (*verifyEmailOutput, error) {
-	if err := h.checkURL(in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
+	if err := h.checkURL(ctx, in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
 	res, err := h.Auth.VerifyEmail(ctx, current(ctx), in.Token, in.CallbackURL, h.meta(ctx))
@@ -196,7 +196,7 @@ type changeEmailInput struct {
 }
 
 func (h *handler) ChangeEmail(ctx context.Context, in *changeEmailInput) (*statusOutput, error) {
-	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
+	if err := h.checkCallbackURL(ctx, in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
 	sw, err := h.Auth.ChangeEmail(ctx, current(ctx), in.Body)

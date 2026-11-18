@@ -41,8 +41,8 @@ type CallbackOnVerificationFunc func(data VerificationData, request *http.Reques
 
 // SignUpOnVerification creates a user when an unknown phone number is verified.
 type SignUpOnVerification struct {
-	// GetTempEmail returns the placeholder email of the new user (required by better-auth; email stays
-	// required and unique). Defaults to "<phoneNumber>@phone.invalid" when nil.
+	// GetTempEmail returns the placeholder email of the new user. It is required, as in better-auth's
+	// signUpOnVerification type (the user email stays required and unique); Init fails without it.
 	GetTempEmail func(phoneNumber string) string
 	// GetTempName returns the new user's name. Defaults to the phone number.
 	GetTempName func(phoneNumber string) string

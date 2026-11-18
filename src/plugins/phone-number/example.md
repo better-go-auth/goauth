@@ -56,7 +56,7 @@ identifier is the phone number, or `<phone>-request-password-reset` for reset co
 | `ExpiresIn` | 300s | How long a code is valid |
 | `AllowedAttempts` | 3 | Wrong guesses allowed before `TOO_MANY_ATTEMPTS` |
 | `RequireVerification` | false | Password sign-in of an unverified number fails with `PHONE_NUMBER_NOT_VERIFIED`, and a new code is sent |
-| `SignUpOnVerification` | nil (off) | Create users for unknown numbers on verify. `GetTempEmail` (default `<phone>@phone.invalid`) and `GetTempName` (default the number) |
+| `SignUpOnVerification` | nil (off) | Create users for unknown numbers on verify. `GetTempEmail` (required, like better-auth's `getTempEmail`; setup fails without it) and `GetTempName` (default the number) |
 | `CallbackOnVerification` | none | Runs after every successful verification. An error aborts the request |
 
 Each field also has a functional option, for example `phonenumber.WithOTPLength(4)` or

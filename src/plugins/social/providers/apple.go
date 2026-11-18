@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/providers/authcrypto"
+	"crypto/subtle"
 )
 
 // AppleOptions configures the Apple provider.
@@ -84,9 +84,13 @@ func (p *apple) VerifyIDToken(ctx context.Context, token, nonce string) (bool, e
 			return false
 		}
 		sum := sha256.Sum256([]byte(nonce))
-		return authcrypto.SecureEqual(jwtNonce, nonce) || authcrypto.SecureEqual(jwtNonce, hex.EncodeToString(sum[:]))
+		return secureEqual(jwtNonce, nonce) || secureEqual(jwtNonce, hex.EncodeToString(sum[:]))
 	})
 }
+
+// secureEqual compares nonces in constant time (crypto/subtle directly: this package must not import goauth
+// packages that depend on config, because config.AuthConfig.SocialProviders references it).
+func secureEqual(a, b string) bool { return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1 }
 
 func (p *apple) GetUserInfo(ctx context.Context, tokens UserInfoInput) (*UserInfoResult, error) {
 	// Step 1: user override

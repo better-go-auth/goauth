@@ -26,7 +26,7 @@ func RequestContext() func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		// always rebuild: transport middlewares (bearer) may have rewritten headers since an earlier copy
 		u := ctx.URL()
-		req := &http.Request{Method: ctx.Method(), URL: &u, Host: ctx.Host(), RemoteAddr: ctx.RemoteAddr(), Header: http.Header{}}
+		req := &http.Request{Method: ctx.Method(), URL: &u, Host: ctx.Host(), RemoteAddr: ctx.RemoteAddr(), Header: http.Header{}, TLS: ctx.TLS()}
 		ctx.EachHeader(func(name, value string) { req.Header.Add(name, value) })
 		req = req.WithContext(ctx.Context())
 		c := config.WithHTTPRequest(ctx.Context(), req)
@@ -171,34 +171,34 @@ func validateOrigin(ctx huma.Context, origins *origin.Checker, formCSRF bool) *a
 	if o == "" || o == "null" {
 		return autherr.ErrMissingOrNullOrigin
 	}
-	if origins != nil && !origins.IsTrusted(o, false) {
+	if origins != nil && !origins.IsTrustedFor(req, o, false) {
 		return autherr.ErrInvalidOrigin
 	}
 	return nil
 }
 
 // checkURL validates a client-supplied redirect target against the trusted origins (relative paths allowed).
-func (h *handler) checkURL(raw string, invalid *autherr.AuthError) error {
+func (h *handler) checkURL(ctx context.Context, raw string, invalid *autherr.AuthError) error {
 	if raw == "" || h.Conf.Advanced.DisableOriginCheck {
 		return nil
 	}
-	if !h.Origins.IsTrusted(raw, true) {
+	if !h.Origins.IsTrustedFor(requestOf(ctx), raw, true) {
 		return invalid
 	}
 	return nil
 }
 
-func (h *handler) checkCallbackURL(raw *string) error {
+func (h *handler) checkCallbackURL(ctx context.Context, raw *string) error {
 	if raw == nil {
 		return nil
 	}
-	return h.checkURL(*raw, autherr.ErrInvalidCallbackURL)
+	return h.checkURL(ctx, *raw, autherr.ErrInvalidCallbackURL)
 }
 
 // resolveRedirect is better-auth's redirectCallback: callbackURL resolved against <BaseURL><BasePath>,
 // with query parameters set.
-func (h *handler) resolveRedirect(callbackURL string, query map[string]string) string {
-	base, err := url.Parse(strings.TrimRight(h.Conf.BaseURL, "/") + h.Conf.BasePath)
+func (h *handler) resolveRedirect(ctx context.Context, callbackURL string, query map[string]string) string {
+	base, err := url.Parse(h.Conf.AuthBaseURL(ctx))
 	if err != nil {
 		return callbackURL
 	}
@@ -215,11 +215,11 @@ func (h *handler) resolveRedirect(callbackURL string, query map[string]string) s
 }
 
 // errorRedirect is better-auth's redirectError: callbackURL (or <base>/error) with ?error=CODE.
-func (h *handler) errorRedirect(callbackURL, code string) string {
+func (h *handler) errorRedirect(ctx context.Context, callbackURL, code string) string {
 	if callbackURL == "" {
-		callbackURL = strings.TrimRight(h.Conf.BaseURL, "/") + h.Conf.BasePath + "/error"
+		callbackURL = h.Conf.AuthBaseURL(ctx) + "/error"
 	}
-	return h.resolveRedirect(callbackURL, map[string]string{"error": code})
+	return h.resolveRedirect(ctx, callbackURL, map[string]string{"error": code})
 }
 
 // errorCode returns the better-auth code of err, or INTERNAL_SERVER_ERROR.

@@ -2,6 +2,7 @@
 package origin
 
 import (
+	"net/http"
 	"net/url"
 	"os"
 	"regexp"
@@ -13,18 +14,25 @@ import (
 // TrustedOriginsEnvVar adds comma-separated trusted origins, as in better-auth.
 const TrustedOriginsEnvVar = "BETTER_AUTH_TRUSTED_ORIGINS"
 
-// Checker holds the trusted origin patterns: the BaseURL origin, config.TrustedOrigins and the env var.
+// Checker holds the trusted origin patterns: the BaseURL origin (or the DynamicBaseURL allowed hosts),
+// config.TrustedOrigins, the env var, and config.TrustedOriginsFunc evaluated per request.
 type Checker struct {
 	patterns []string
 	compiled map[string]*regexp.Regexp
+	// fn is config.TrustedOriginsFunc (better-auth's trustedOrigins as a function of the request)
+	fn func(r *http.Request) []string
 }
 
-// New builds the trusted origin list from conf.
+// New builds the trusted origin list from conf, like better-auth's getTrustedOrigins.
 func New(conf config.AuthConfig) *Checker {
+	// Step 1: the base URL: every allowed host of a dynamic base URL, else the static BaseURL origin
 	var patterns []string
-	if o := originOf(conf.BaseURL); o != "" {
+	if d := conf.DynamicBaseURL; d != nil {
+		patterns = append(patterns, d.DynamicTrustedOrigins()...)
+	} else if o := originOf(conf.BaseURL); o != "" {
 		patterns = append(patterns, o)
 	}
+	// Step 2: the static list and $BETTER_AUTH_TRUSTED_ORIGINS
 	patterns = append(patterns, conf.TrustedOrigins...)
 	for _, p := range strings.Split(os.Getenv(TrustedOriginsEnvVar), ",") {
 		if p = strings.TrimSpace(p); p != "" {
@@ -39,14 +47,30 @@ func New(conf config.AuthConfig) *Checker {
 			}
 		}
 	}
-	return &Checker{patterns: patterns, compiled: compiled}
+	return &Checker{patterns: patterns, compiled: compiled, fn: conf.TrustedOriginsFunc}
 }
 
 // IsTrusted reports whether raw matches a trusted pattern. Relative paths ("/dashboard") are
 // accepted only with allowRelative, and never protocol-relative or encoded-slash paths.
+// TrustedOriginsFunc is called with a nil request; use IsTrustedFor inside a request.
 func (c *Checker) IsTrusted(raw string, allowRelative bool) bool {
+	return c.IsTrustedFor(nil, raw, allowRelative)
+}
+
+// IsTrustedFor is IsTrusted for request r: the origins TrustedOriginsFunc returns for r are trusted too.
+func (c *Checker) IsTrustedFor(r *http.Request, raw string, allowRelative bool) bool {
+	// Step 1: the static patterns
 	for _, p := range c.patterns {
 		if c.matchesCached(raw, p, allowRelative) {
+			return true
+		}
+	}
+	// Step 2: origins computed for this request (empty entries ignored, like better-auth's filter(Boolean))
+	if c.fn == nil {
+		return false
+	}
+	for _, p := range c.fn(r) {
+		if p != "" && c.matchesCached(raw, p, allowRelative) {
 			return true
 		}
 	}

@@ -24,7 +24,7 @@ type requestPasswordResetOutput struct {
 }
 
 func (h *handler) RequestPasswordReset(ctx context.Context, in *requestPasswordResetInput) (*requestPasswordResetOutput, error) {
-	if err := h.checkURL(in.Body.RedirectTo, autherr.ErrInvalidRedirectURL); err != nil {
+	if err := h.checkURL(ctx, in.Body.RedirectTo, autherr.ErrInvalidRedirectURL); err != nil {
 		return nil, err
 	}
 	if err := h.Auth.RequestPasswordReset(ctx, in.Body); err != nil {
@@ -50,15 +50,15 @@ type redirectOutput struct {
 // ResetPasswordCallback is the link in the reset email: it redirects to callbackURL with ?token= when the
 // token is valid, or ?error=INVALID_TOKEN.
 func (h *handler) ResetPasswordCallback(ctx context.Context, in *resetPasswordCallbackInput) (*redirectOutput, error) {
-	if err := h.checkURL(in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
+	if err := h.checkURL(ctx, in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
 	out := &redirectOutput{Status: http.StatusFound}
 	if in.Token == "" || in.CallbackURL == "" || h.Auth.ValidateResetToken(ctx, in.Token) != nil {
-		out.Location = h.errorRedirect(in.CallbackURL, "INVALID_TOKEN")
+		out.Location = h.errorRedirect(ctx, in.CallbackURL, "INVALID_TOKEN")
 		return out, nil
 	}
-	out.Location = h.resolveRedirect(in.CallbackURL, map[string]string{"token": in.Token})
+	out.Location = h.resolveRedirect(ctx, in.CallbackURL, map[string]string{"token": in.Token})
 	return out, nil
 }
 
@@ -159,7 +159,7 @@ type deleteUserOutput struct {
 }
 
 func (h *handler) DeleteUser(ctx context.Context, in *deleteUserInput) (*deleteUserOutput, error) {
-	if err := h.checkCallbackURL(in.Body.CallbackURL); err != nil {
+	if err := h.checkCallbackURL(ctx, in.Body.CallbackURL); err != nil {
 		return nil, err
 	}
 	msg, err := h.Auth.DeleteUser(ctx, current(ctx), in.Body)
@@ -190,7 +190,7 @@ type deleteUserCallbackOutput struct {
 }
 
 func (h *handler) DeleteUserCallback(ctx context.Context, in *deleteUserCallbackInput) (*deleteUserCallbackOutput, error) {
-	if err := h.checkURL(in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
+	if err := h.checkURL(ctx, in.CallbackURL, autherr.ErrInvalidCallbackURL); err != nil {
 		return nil, err
 	}
 	if err := h.Auth.DeleteUserCallback(ctx, current(ctx), in.Token); err != nil {

@@ -7,6 +7,7 @@ import (
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	authint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
 	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
@@ -15,7 +16,6 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/email-otp/services"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
-	"github.com/danielgtaylor/huma/v2"
 )
 
 type EmailOTPHandler struct {
@@ -241,6 +241,41 @@ func (h *EmailOTPHandler) getSession(ctx context.Context, auth types.AuthHeaders
 	return nil, false
 }
 
+// sensitiveSession is better-auth's sensitiveSessionMiddleware (used by /email-otp/request-email-change and
+// /email-otp/change-email): the session behind the signed session cookie or bearer token is loaded from the
+// session store, ignoring the cookie cache and any session an earlier middleware attached from it, so a revoked
+// session that is still cached cannot change the email. Without a session it answers 401 UNAUTHORIZED.
+func (h *EmailOTPHandler) sensitiveSession(ctx context.Context, auth types.AuthHeaders) (*modeldtos.SessionWithUser, error) {
+	// Step 1: the session token: the signed cookie, then the bearer token the bearer plugin verified
+	cookieHeader := auth.Cookie
+	if req := config.GetHTTPRequest(ctx); cookieHeader == "" && req != nil {
+		cookieHeader = req.Header.Get("Cookie")
+	}
+	var tok string
+	if h.Cookies != nil {
+		tok, _ = h.Cookies.SessionToken(cookieHeader)
+	}
+	if tok == "" {
+		tok, _ = humaadapter.FromBearerContext(ctx)
+	}
+	// Step 2: no session token: other goauth transports (access-token JWTs) authenticate the request
+	if tok == "" {
+		if sw, ok := h.getSession(ctx, auth); ok && sw != nil {
+			return sw, nil
+		}
+		return nil, autherr.ErrUnauthorized
+	}
+	// Step 3: the session store (database / secondary storage), never the cookie cache
+	if h.Service == nil || h.Service.SessionManager() == nil {
+		return nil, autherr.ErrUnauthorized
+	}
+	sw, err := h.Service.SessionManager().Get(ctx, tok)
+	if err != nil || sw == nil {
+		return nil, autherr.ErrUnauthorized
+	}
+	return sw, nil
+}
+
 type requestEmailChangeInput struct {
 	types.AuthHeaders
 	Body dtos.RequestEmailChangeInput
@@ -253,10 +288,10 @@ type requestEmailChangeOutput struct {
 
 func (h *EmailOTPHandler) RequestEmailChange(ctx context.Context, in *requestEmailChangeInput) (*requestEmailChangeOutput, error) {
 	// Step 1: rate limiting (/email-otp/request-email-change) is done by goauth's global limiter, see Plugin.RateLimitRules
-	// Step 2: Require authenticated session
-	sw, ok := h.getSession(ctx, in.AuthHeaders)
-	if !ok || sw == nil {
-		return nil, huma.NewError(http.StatusUnauthorized, "Unauthorized")
+	// Step 2: Require a session read from the session store, not the cookie cache (sensitiveSessionMiddleware)
+	sw, err := h.sensitiveSession(ctx, in.AuthHeaders)
+	if err != nil {
+		return nil, err
 	}
 	// Step 3: Dispatch email change OTP
 	req := config.GetHTTPRequest(ctx)
@@ -281,10 +316,10 @@ type changeEmailOutput struct {
 
 func (h *EmailOTPHandler) ChangeEmail(ctx context.Context, in *changeEmailInput) (*changeEmailOutput, error) {
 	// Step 1: rate limiting (/email-otp/change-email) is done by goauth's global limiter, see Plugin.RateLimitRules
-	// Step 2: Require authenticated session
-	sw, ok := h.getSession(ctx, in.AuthHeaders)
-	if !ok || sw == nil {
-		return nil, huma.NewError(http.StatusUnauthorized, "Unauthorized")
+	// Step 2: Require a session read from the session store, not the cookie cache (sensitiveSessionMiddleware)
+	sw, err := h.sensitiveSession(ctx, in.AuthHeaders)
+	if err != nil {
+		return nil, err
 	}
 	// Step 3: Verify OTP and update user's email
 	updated, err := h.Service.ChangeEmail(ctx, sw.User.ID, in.Body.NewEmail, in.Body.OTP)
