@@ -21,6 +21,8 @@ import (
 	anonconfig "github.com/better-go-auth/goauth/src/plugins/anonymous/config"
 	"github.com/better-go-auth/goauth/src/plugins/bearer"
 	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
+	deviceauthorization "github.com/better-go-auth/goauth/src/plugins/device-authorization"
+	daconfig "github.com/better-go-auth/goauth/src/plugins/device-authorization/config"
 	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	jwtplugin "github.com/better-go-auth/goauth/src/plugins/jwt"
@@ -37,6 +39,8 @@ import (
 	pkconfig "github.com/better-go-auth/goauth/src/plugins/passkey/config"
 	phonenumber "github.com/better-go-auth/goauth/src/plugins/phone-number"
 	phoneconfig "github.com/better-go-auth/goauth/src/plugins/phone-number/config"
+	"github.com/better-go-auth/goauth/src/plugins/siwe"
+	siweconfig "github.com/better-go-auth/goauth/src/plugins/siwe/config"
 	twofactor "github.com/better-go-auth/goauth/src/plugins/two-factor"
 	tfconfig "github.com/better-go-auth/goauth/src/plugins/two-factor/config"
 	"github.com/better-go-auth/goauth/src/plugins/username"
@@ -141,6 +145,7 @@ func plugins(t *testing.T, db *gorm.DB) []plugin.Plugin {
 		adminPlugin,
 		anonymous.New(anonconfig.AnonymousConfig{}),
 		bearer.New(bearerconfig.BearerConfig{}),
+		deviceauthorization.New(daconfig.DeviceAuthorizationConfig{}),
 		emailotp.New(emailotpconfig.EmailOTPConfig{SendVerificationOTP: func(emailotpconfig.SendVerificationOTPData, *http.Request) error { return nil }}),
 		jwtplugin.New(jwtconfig.JWTConfig{}),
 		magiclink.New(magiclinkconfig.MagicLinkConfig{SendMagicLink: func(magiclinkconfig.SendMagicLinkData, *http.Request) error { return nil }}),
@@ -149,6 +154,7 @@ func plugins(t *testing.T, db *gorm.DB) []plugin.Plugin {
 		orgPlugin,
 		passkey.New(pkconfig.PasskeyConfig{RPID: "localhost", RPName: "parity", Origin: []string{"http://localhost:3000"}}),
 		phonenumber.New(phoneconfig.PhoneNumberConfig{SendOTP: func(phoneconfig.OTPData, *http.Request) error { return nil }}),
+		siwe.New(siweconfig.SIWEConfig{Domain: "localhost:3000"}),
 		twofactor.New(tfconfig.Config{Issuer: "parity"}),
 		username.New(usernameconfig.UsernameConfig{}),
 	}

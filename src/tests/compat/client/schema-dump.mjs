@@ -10,6 +10,7 @@ import {
 	admin,
 	anonymous,
 	bearer,
+	deviceAuthorization,
 	emailOTP,
 	genericOAuth,
 	jwt,
@@ -18,6 +19,7 @@ import {
 	oneTimeToken,
 	organization,
 	phoneNumber,
+	siwe,
 	twoFactor,
 	username,
 } from "better-auth/plugins";
@@ -43,6 +45,8 @@ const options = {
 		admin(),
 		anonymous(),
 		bearer(),
+		// better-auth 1.6.16 parses `schema` as required, so it is passed explicitly
+		deviceAuthorization({ schema: {} }),
 		emailOTP({ sendVerificationOTP: async () => {} }),
 		genericOAuth({ config: [] }),
 		jwt(),
@@ -51,6 +55,7 @@ const options = {
 		oneTimeToken(),
 		organization({ teams: { enabled: true }, dynamicAccessControl: { enabled: true } }),
 		phoneNumber({ sendOTP: async () => {} }),
+		siwe({ domain: "localhost:3000", getNonce: async () => "nonce1234", verifyMessage: async () => true }),
 		twoFactor(),
 		username(),
 		...(passkeyPlugin ? [passkeyPlugin] : []),

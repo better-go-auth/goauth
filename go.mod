@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/danielgtaylor/huma/v2 v2.39.1
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/fxamacker/cbor/v2 v2.9.4
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-chi/chi/v5 v5.3.1
