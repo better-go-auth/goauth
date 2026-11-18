@@ -16,6 +16,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/phone-number/config"
 	"github.com/better-go-auth/goauth/src/plugins/phone-number/services"
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
+	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 )
 
 // PluginID is better-auth's plugin id.
@@ -32,7 +33,13 @@ type Plugin struct {
 	handler *humaphone.Handler
 }
 
-var _ plugins.Plugin = (*Plugin)(nil)
+var (
+	_ plugins.Plugin            = (*Plugin)(nil)
+	_ plugins.RateLimitProvider = (*Plugin)(nil)
+)
+
+// RateLimitRules is better-auth's phone-number rule: paths starting with /phone-number, 10 requests per 60 s.
+func (p *Plugin) RateLimitRules() []ratelimit.PathRule { return humaphone.RateLimitRules() }
 
 // Option configures the plugin.
 type Option func(*Plugin)

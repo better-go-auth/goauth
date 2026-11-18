@@ -15,6 +15,7 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/email-otp/services"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 	"github.com/danielgtaylor/huma/v2"
 )
 
@@ -31,9 +32,47 @@ type Plugin struct {
 }
 
 var (
-	_ plugins.Plugin       = (*Plugin)(nil)
-	_ plugins.HookProvider = (*Plugin)(nil)
+	_ plugins.Plugin            = (*Plugin)(nil)
+	_ plugins.HookProvider      = (*Plugin)(nil)
+	_ plugins.RateLimitProvider = (*Plugin)(nil)
 )
+
+// rateLimitPaths are the endpoints better-auth's email-otp plugin declares rate-limit rules for.
+var rateLimitPaths = []string{
+	"/email-otp/send-verification-otp",
+	"/email-otp/check-verification-otp",
+	"/email-otp/verify-email",
+	"/sign-in/email-otp",
+	"/email-otp/request-password-reset",
+	"/email-otp/reset-password",
+	"/forget-password/email-otp",
+	"/email-otp/request-email-change",
+	"/email-otp/change-email",
+}
+
+// RateLimitRules are better-auth's email-otp rules: every OTP endpoint gets RateLimit.Window / Max
+// (default 3 requests per 60 s). They apply while the global limiter (AuthConfig.RateLimit) is enabled;
+// RateLimit.Enabled = false drops them (the paths then use the special and global rules).
+func (p *Plugin) RateLimitRules() []ratelimit.PathRule {
+	rl := p.config.RateLimit
+	if rl.Enabled != nil && !*rl.Enabled {
+		return nil
+	}
+	// better-auth: window || 60, max || 3
+	window, max := rl.Window, rl.Max
+	if window <= 0 {
+		window = 60 * time.Second
+	}
+	if max <= 0 {
+		max = 3
+	}
+	rules := make([]ratelimit.PathRule, 0, len(rateLimitPaths))
+	for _, path := range rateLimitPaths {
+		path := path
+		rules = append(rules, ratelimit.PathRule{PathMatcher: func(p string) bool { return p == path }, Window: window, Max: max})
+	}
+	return rules
+}
 
 // Option configures the Email OTP Plugin.
 type Option func(*Plugin)
@@ -208,9 +247,6 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		passwords,
 		ictx.TxManager,
 	)
-	if ictx.SecondaryStorage != nil {
-		p.service.SetSecondaryStorage(ictx.SecondaryStorage)
-	}
 	// OTP sign-up runs the user lifecycle hooks like core sign-up
 	p.service.SetHooks(ictx.Hooks)
 

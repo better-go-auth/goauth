@@ -12,7 +12,7 @@ import (
 )
 
 func TestRateLimitPhoneNumberPaths(t *testing.T) {
-	h := newHarness(t, phoneconfig.PhoneNumberConfig{}, func(c *config.AuthConfig) { c.RateLimit.Enabled = true })
+	h := newHarness(t, phoneconfig.PhoneNumberConfig{}, func(c *config.AuthConfig) { c.RateLimit.Enabled = new(true) })
 	// Step 1: /phone-number/* allows 10 requests per 60s
 	for i := 0; i < 10; i++ {
 		expectOK(t, h.Post(t, "/api/auth/phone-number/send-otp", map[string]any{"phoneNumber": "+15550003000"}))

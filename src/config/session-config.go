@@ -2,6 +2,8 @@ package config
 
 import (
 	"time"
+
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 type CookieCacheStrategy string
@@ -106,15 +108,12 @@ type Session struct {
 	// CookieCache configures stateless session caching in the session_data cookie.
 	CookieCache *CookieCache
 
-	// ModelName overrides the session table/model name.
-	// not supported: use plugin additionalFields or TableNames
+	// ModelName renames the session table (better-auth's session.modelName). It wins over GoAuth.TableNames.
 	ModelName string
-	// Fields maps session field names.
-	// not supported: use plugin additionalFields
+	// Fields renames session columns: field name → column name, used as is (better-auth's session.fields).
 	Fields map[string]string
-	// AdditionalFields defines extra session schema attributes.
-	// not supported: use plugin additionalFields
-	AdditionalFields map[string]any
+	// AdditionalFields adds session fields stored in real columns (better-auth's session.additionalFields).
+	AdditionalFields map[string]schema.Field
 
 	// GoAuth holds goauth-only session extensions (SingleSession, UpdatableFields).
 	GoAuth SessionGoAuth

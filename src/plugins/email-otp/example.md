@@ -51,7 +51,7 @@ The plugin has no tables of its own. Codes are stored in the core `verification`
 | `StoreOTP` | `{Mode: "plain"}` | `"hashed"`, `"encrypted"`, or custom `Hash` / `Encrypt`+`Decrypt` |
 | `ResendStrategy` | `"rotate"` | `"reuse"` resends the current code if it is still valid (not possible with hashed storage) |
 | `ChangeEmail` | disabled | `{Enabled, VerifyCurrentEmail}` for the change-email endpoints |
-| `RateLimit` | off | Per-endpoint limit per client IP. On when `Window`/`Max` is set or `AuthConfig.RateLimit.Enabled` is true. Then the defaults are 3 requests per 60s |
+| `RateLimit` | 3 requests / 60s | Plugin rules (better-auth's) for every OTP endpoint, per client IP and path. Enforced by goauth's global limiter, so only while `AuthConfig.RateLimit` is enabled (default: production only). `Enabled: false` drops the plugin rules |
 
 Each field also has a functional option, for example `emailotp.WithAllowedAttempts(5)` or
 `emailotp.WithRateLimit(time.Minute, 3)`.
@@ -102,7 +102,7 @@ curl $H -d '{"email":"vera@example.com","otp":"123456","password":"NewPassword45
 | `INVALID_EMAIL` | 400 | Malformed address on a send endpoint |
 | `USER_NOT_FOUND` | 400 | `check-verification-otp` for an unregistered address |
 | `PASSWORD_TOO_SHORT` / `PASSWORD_TOO_LONG` | 400 | `reset-password` outside `EmailAndPassword.Min/MaxPasswordLength` (8..128). Checked before the code |
-| `TOO_MANY_REQUESTS` | 429 | The plugin rate limit was hit |
+| (no code) | 429 | Rate limit hit: better-auth's `{"message":"Too many requests. Please try again later."}` with `X-Retry-After` |
 | `CHANGE_EMAIL_DISABLED`, `EMAIL_IS_THE_SAME`, `EMAIL_ALREADY_IN_USE`, `CURRENT_EMAIL_OTP_REQUIRED` | 400 | Change-email endpoints |
 
 ## Notes

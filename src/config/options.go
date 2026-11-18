@@ -66,6 +66,8 @@ type Advanced struct {
 	// Set GenerateID to override the default 32-char alphanumeric ID generator.
 	Database  AdvancedDatabase
 	IPAddress IPAddress
+	// BackgroundTasks mirrors better-auth's `advanced.backgroundTasks` (non-blocking senders).
+	BackgroundTasks BackgroundTasks
 
 	GoAuth AdvancedGoAuth
 }

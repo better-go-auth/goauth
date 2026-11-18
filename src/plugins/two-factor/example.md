@@ -74,7 +74,8 @@ better-auth's server-only `generateTOTP` and `viewBackupCodes`.
 | `/two-factor/disable` | fresh session | `password` | `{ status: true }` |
 
 `password` is required unless `AllowPasswordless` is on and the user has no password. When
-`AuthConfig.RateLimit.Enabled` is set, each path allows 3 requests per 10 seconds.
+goauth's global limiter is enabled (`AuthConfig.RateLimit`, default: production only), each `/two-factor/*`
+path allows 3 requests per 10 seconds (the plugin's rule).
 
 When a user with 2FA on signs in through `/sign-in/email`, `/sign-in/username` or
 `/sign-in/phone-number`, no session is created. The response is

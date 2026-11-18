@@ -41,14 +41,17 @@ the stage follows doc 04 §7.
   DeleteUser / CreateSession / LinkAccount / verification API used by core *and* plugins, replacing direct
   `repos.CreateUser` calls (core sign-up, email-otp, admin, org) and the duplicated delete in admin.
   *(01 §2.1)*
-- [ ] **2.2 Schema registry** `src/schema` with logical types only and name resolution (`ModelName`, `Fields`,
+- [x] **2.2 Schema registry** `src/schema` with logical types only and name resolution (`ModelName`, `Fields`,
   prefix, `ColumnCase`); no GORM import. *(04 §7 step 1, 02 step 1)*
-- [ ] **2.3 `ParseInput` + output rules** (better-auth's additionalFields input/output rules and error codes).
+- [x] **2.3 `ParseInput` + output rules** (better-auth's additionalFields input/output rules and error codes).
   *(04 §7 step 2, 02 steps 2–3)* – after 2.2
-- [ ] **2.4 Generic adapter contract + memory adapter + `adapterrepo`**; run `repotest` against it. *(04 §7 step 3)*
+- [x] **2.4 Generic adapter contract + memory adapter + `adapterrepo`**; run `repotest` against it. *(04 §7 step 3)*
   – after 2.2
 - [ ] **2.5 GORM adapter** becomes the default `IAuthRepos` once `repotest` and the compat suite pass on SQLite,
   Postgres and MySQL; the old `gormauth` stays as an escape hatch. Riskiest step. *(04 §7 step 4)* – after 2.4
+  - [x] GORM adapter (`src/adapter/gormadapter`) passing the adapter contract and `repotest` (via `adapterrepo`)
+    on SQLite, Postgres and MySQL.
+  - [ ] Switch `SetupGoAuth`'s default repositories to `adapterrepo(gormadapter)` and run the compat suites.
 - [ ] **2.6 `additionalFields` end to end:** sign-up, update-user, update-session, plugin sign-ups, admin
   create-user; official client test with `inferAdditionalFields`. Fixes blocker B2. *(02 step 6)* – after 2.3, 2.5
 - [ ] **2.7 Migrations:** SQL renderer, additive migrator, `Migrations.Mode = auto | verify | off`,
@@ -65,19 +68,20 @@ the stage follows doc 04 §7.
 
 These make a `betterAuth({...})` config port 1:1 and remove the remaining compatibility blockers.
 
-- [ ] **3.1 Global rate limiter** for core and plugin routes: 100 req / 10 s default, special rules for
+- [x] **3.1 Global rate limiter** for core and plugin routes: 100 req / 10 s default, special rules for
   `/sign-in*`, `/sign-up*`, `/change-password`, `/change-email`, `RateLimit.CustomRules`; the email-otp private
   limiter is replaced. Blocker B5. *(01 §2.5)*
 - [ ] **3.2 Rate-limit storage** `memory | secondary-storage | database` (`rateLimit` table) and
-  `CustomStorage`. Blocker B6. – after 3.1 and 2.7
-- [ ] **3.3 Endpoint `hooks.before/after`** (`AuthConfig.Hooks` and plugin hooks) on one Huma middleware;
+  `CustomStorage`. Blocker B6. – after 3.1 and 2.7 *(memory, secondary-storage and `CustomStorage` done with
+  3.1; left: the `rateLimit` table and a `ratelimit.Storage` on it, see `ratelimit.StorageDatabase`)*
+- [x] **3.3 Endpoint `hooks.before/after`** (`AuthConfig.Hooks` and plugin hooks) on one Huma middleware;
   rebuild `OnAfterSignIn` and the 1.7 mechanism on it. *(01 §2.3)* – after 1.7
 - [ ] **3.4 `databaseHooks`** (`user/session/account/verification` × `create/update/delete` × `before/after`,
   where `before` can change or cancel), with the existing typed hooks as wrappers. Also fixes "username not
   validated on admin update-user". *(01 §2.2)* – after 2.1
 - [ ] **3.5 Secret rotation:** `AuthConfig.Secrets []{Version, Value}` with `$ba$<v>$` envelopes for cookies and
   encrypted data in every plugin. Blocker B7. *(03 B7, audit plan)*
-- [ ] **3.6 `onAPIError`** (`ErrorURL` replacing the hard-coded `<base>/error`, `OnError`, `Throw`). *(01 §2.4)*
+- [x] **3.6 `onAPIError`** (`ErrorURL` replacing the hard-coded `<base>/error`, `OnError`, `Throw`). *(01 §2.4)*
 - [ ] **3.7 `SocialProviders` in core** that installs the social plugin automatically, and generic-oauth providers
   registered as social providers automatically. Blocker B4.
 - [ ] **3.8 Remaining organization routes:** `/organization/get-active-member`, `/get-active-member-role`,
@@ -87,7 +91,7 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
 - [ ] **3.10 Smaller core options** (S each): `trustedOrigins` as a function of the request, dynamic `baseURL`
   with `allowedHosts`, `advanced.cookies` / `defaultCookieAttributes`, `generateId: false | "uuid" | "serial"`,
   `verification.storeIdentifier` (hashed tokens), `account.storeAccountCookie`. *(03 §2, audit plan)*
-- [ ] **3.11 Logger and background tasks:** injectable `AuthConfig.Logger` (levels, disabled) and
+- [x] **3.11 Logger and background tasks:** injectable `AuthConfig.Logger` (levels, disabled) and
   `Advanced.BackgroundTasks` used by every `Send*` callback; add `ctx` to sender signatures in the next
   breaking release. *(01 §3)*
 - [ ] **3.12 Config compat test:** build `AuthConfig` from a JSON fixture shaped like `BetterAuthOptions` and

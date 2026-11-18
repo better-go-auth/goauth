@@ -105,6 +105,6 @@ curl -b jar http://localhost:8080/api/example/notes      # ["buy milk"]
 - An error from `OnLinkAccount` is sent as the response, but the new session has already been created, as
   in better-auth. If deleting the anonymous user fails after linking, the error is logged and the sign-in
   still succeeds.
-- `/sign-in/anonymous` has better-auth's `/sign-in/*` rate limit rule (3 requests per 10 seconds) when
-  rate limiting is enabled.
+- `/sign-in/anonymous` gets the global limiter's `/sign-in` special rule (3 requests per 10 seconds) while
+  `AuthConfig.RateLimit` is enabled (default: production only).
 - With `User.GoAuth.SoftDelete` on, deleted anonymous users are soft-deleted like any other user.

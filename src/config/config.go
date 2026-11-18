@@ -6,9 +6,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
-	"time"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
+	"github.com/better-go-auth/goauth/src/common/logger"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 type AuthConfig struct {
@@ -69,6 +70,12 @@ type AuthConfig struct {
 	Verification      VerificationOptions
 	RateLimit         RateLimitOptions
 	Security          SecurityConfig
+	// Hooks are better-auth's endpoint `hooks.before` / `hooks.after` (see hooks.go).
+	Hooks HooksOptions
+	// OnAPIError is better-auth's `onAPIError` (errorURL, onError, throw; see api_error.go).
+	OnAPIError OnAPIErrorOptions
+	// Logger is better-auth's `logger` option (level, disabled, custom log function).
+	Logger logger.Options
 
 	GoAuth GoAuthConfig
 }
@@ -76,14 +83,13 @@ type AuthConfig struct {
 // VerificationOptions mirrors better-auth's `verification` options.
 type VerificationOptions struct {
 	DisableCleanup bool
-}
 
-// RateLimitOptions mirrors better-auth's `rateLimit` options.
-type RateLimitOptions struct {
-	Enabled bool
-	Window  time.Duration
-	Max     int
-	Storage string
+	// ModelName renames the verification table (better-auth's verification.modelName).
+	ModelName string
+	// Fields renames verification columns: field name → column name (better-auth's verification.fields).
+	Fields map[string]string
+	// AdditionalFields adds verification fields (better-auth's verification.additionalFields).
+	AdditionalFields map[string]schema.Field
 }
 
 // GoAuthConfig holds top-level options better-auth doesn't have.
@@ -92,6 +98,10 @@ type GoAuthConfig struct {
 	TablePrefix string
 	// TableNames overrides tables per better-auth model name, like better-auth's modelName (e.g. {"user": "users"}).
 	TableNames map[string]string
+	// ColumnCase picks the column naming of fields without an explicit column name: schema.Snake (default,
+	// goauth's existing layout, e.g. email_verified) or schema.Camel (better-auth's default layout, e.g.
+	// emailVerified, needed to share a database with a TypeScript better-auth server).
+	ColumnCase schema.ColumnCase
 }
 
 // DeriveKey derives a purpose-specific key from secret (hex HMAC-SHA256), so one secret can feed several signers.

@@ -4,7 +4,7 @@ package services
 import (
 	"context"
 	"crypto/subtle"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"net/http"
 	"strconv"
 	"strings"
@@ -545,7 +545,7 @@ func otpIdentifier(key string) string { return "2fa-otp-" + key }
 func (s *Service) SendOTP(ctx context.Context) (*Result, error) {
 	// Step 1: OTP needs a sender
 	if s.cfg.OTPOptions.SendOTP == nil {
-		slog.Error("two-factor: send otp isn't configured. Please configure the send otp function on otp options.")
+		logger.Error("two-factor: send otp isn't configured. Please configure the send otp function on otp options.")
 		return nil, ErrOTPNotConfigured
 	}
 	// Step 2: who asks
@@ -570,8 +570,11 @@ func (s *Service) SendOTP(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	// Step 4: deliver it; failures are logged, never reported (better-auth runs it in the background)
-	if err := s.cfg.OTPOptions.SendOTP(ctx, tfconfig.SendOTPData{User: p.user, OTP: code}, s.kit.Request(ctx)); err != nil {
-		slog.Error("two-factor: failed to send two-factor OTP", "error", err)
+	data := tfconfig.SendOTPData{User: p.user, OTP: code}
+	if err := s.kit.Conf.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
+		return s.cfg.OTPOptions.SendOTP(ctx, data, s.kit.Request(ctx))
+	}); err != nil {
+		logger.Error("two-factor: failed to send two-factor OTP", "error", err)
 	}
 	return &Result{Body: tfdtos.StatusResponse{Status: true}}, nil
 }

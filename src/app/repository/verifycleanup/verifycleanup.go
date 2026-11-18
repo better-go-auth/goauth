@@ -4,7 +4,7 @@ package verifycleanup
 
 import (
 	"context"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/models"
@@ -36,7 +36,7 @@ func (r *Repos) FindVerificationValue(ctx context.Context, identifier string) (*
 	v, err := r.IAuthRepos.FindVerificationValue(ctx, identifier)
 	// Step 2: purge expired rows (better-auth deletes where expiresAt < now on every read)
 	if cerr := r.IAuthRepos.DeleteExpiredVerifications(ctx); cerr != nil {
-		slog.WarnContext(ctx, "goauth: expired verification cleanup failed", "err", cerr)
+		logger.Warn("goauth: expired verification cleanup failed", "err", cerr)
 	}
 	return v, err
 }

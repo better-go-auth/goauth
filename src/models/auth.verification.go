@@ -34,6 +34,10 @@ type Verification struct {
 	UserID string `json:"userId,omitempty"` // empty for rows written by better-auth
 	// CallbackURL is where link-based flows redirect after verification.
 	CallbackURL *string `json:"callbackUrl" bun:"callback_url"`
+
+	// Extra holds the values of runtime fields (config additionalFields, plugin schema fields) keyed by
+	// field name.
+	Extra map[string]any `json:"-" gorm:"-" bun:"-" mapstructure:"-"`
 }
 
 // IsExpired returns true if the token is past its expiry.

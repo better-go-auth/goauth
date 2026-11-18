@@ -16,6 +16,7 @@ import (
 	"time"
 
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
+	authconfig "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	modeldtos "github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
@@ -188,12 +189,11 @@ func (s *MagicLinkService) SendMagicLink(ctx context.Context, in *dtos.SignInMag
 	if s.cfg.SendMagicLink == nil {
 		return autherr.ErrInternal
 	}
-	if err := s.cfg.SendMagicLink(config.SendMagicLinkData{
-		Email:    in.Email,
-		URL:      link,
-		Token:    token,
-		Metadata: in.Metadata,
-	}, req); err != nil {
+	// config: Advanced.BackgroundTasks.Handler runs the sender without blocking the response
+	data := config.SendMagicLinkData{Email: in.Email, URL: link, Token: token, Metadata: in.Metadata}
+	if err := s.kit.Conf.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
+		return s.cfg.SendMagicLink(data, authconfig.HTTPRequestOr(ctx, req))
+	}); err != nil {
 		if ae := autherr.AsAuthError(err); ae != nil {
 			return ae
 		}

@@ -47,6 +47,7 @@ func SecurityMiddleware(conf config.AuthConfig, mgr *sessionsvc.Manager, cm *coo
 		// 1. Origin/Referer CSRF check on mutating auth endpoints (core and plugins), optionally on every route
 		if checkOriginEverywhere || (checkAuthOrigin && underBasePath(ctx, basePath)) {
 			if err := OriginError(ctx, conf, origins, false); err != nil {
+				autherr.Report(ctx.Context(), err)
 				writeError(ctx, err)
 				return
 			}

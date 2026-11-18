@@ -69,7 +69,9 @@ func (s *Service) RequestPasswordReset(ctx context.Context, in dtos.RequestPassw
 	}
 	// GET /reset-password/<token> (ValidateResetToken) redirects to callbackURL with ?token= or ?error=
 	link := s.baseURL() + "/reset-password/" + tok + "?callbackURL=" + url.QueryEscape(in.RedirectTo)
-	return send(config.ResetPasswordData{User: *user, URL: link, Token: tok}, request(ctx))
+	// config: Advanced.BackgroundTasks.Handler runs the sender without blocking the response
+	data := config.ResetPasswordData{User: *user, URL: link, Token: tok}
+	return s.cfg.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error { return send(data, request(ctx)) })
 }
 
 // findResetToken returns the live reset verification for token.

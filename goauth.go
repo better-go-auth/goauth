@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"time"
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
@@ -26,6 +26,7 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/cookies"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 	"github.com/better-go-auth/goauth/src/providers/origin"
+	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"gorm.io/gorm"
 
@@ -53,7 +54,15 @@ type GoAuth struct {
 	auth               *authsvc.Service
 	sessionResolver    *humaadapter.Resolver
 	cookies            *cookies.Manager
+	rateLimiter        *ratelimit.Limiter
+	logger             *logger.Logger
 }
+
+// RateLimiter returns the global rate limiter (AuthConfig.RateLimit).
+func (g *GoAuth) RateLimiter() *ratelimit.Limiter { return g.rateLimiter }
+
+// Logger returns the logger built from AuthConfig.Logger.
+func (g *GoAuth) Logger() *logger.Logger { return g.logger }
 
 func (g *GoAuth) Options() GoAuthOptions            { return g.options }
 func (g *GoAuth) Plugins() map[string]plugin.Plugin { return g.plugins }
@@ -113,6 +122,9 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	}
 
 	opts.SetDefaults()
+	// config: Logger (better-auth's logger option) becomes the process-wide goauth logger
+	log := logger.New(opts.Logger)
+	logger.SetDefault(log)
 	if err := opts.Validate(); err != nil {
 		return nil, fmt.Errorf("goauth: invalid options: %w", err)
 	}
@@ -129,6 +141,14 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// store the *http.Request in ctx for every goauth and plugin route registered below, so plugin handlers
 	// get the client IP / user agent for new sessions and user callbacks receive the request
 	api.UseMiddleware(humaadapter.RequestContext())
+	// config: OnAPIError.OnError / Throw receive the errors better-auth's router hands to onError
+	api.UseMiddleware(humaadapter.APIErrorReporter(opts.OnAPIError))
+	// config: RateLimit — one limiter in front of every core and plugin route (better-auth's router onRequest)
+	limiter, err := newRateLimiter(opts)
+	if err != nil {
+		return nil, err
+	}
+	api.UseMiddleware(humaadapter.RateLimit(opts.AuthConfig, limiter))
 
 	models.SetTableNames(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
 	if opts.Conn != nil {
@@ -236,6 +256,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		DB:               opts.Conn,
 		CookieManager:    cookieMgr,
 		GenerateID:       generateID,
+		RateLimiter:      limiter,
 	}
 
 	// Phase 1: Initialize plugins (transport/middleware plugins first so global middlewares wrap all plugin routes)
@@ -271,10 +292,13 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// access-token resolve credentials first) and before domain plugins / core routes snapshot middlewares.
 	origins := origin.New(opts.AuthConfig)
 	api.UseMiddleware(humaadapter.SecurityMiddleware(opts.AuthConfig, sessionMgr, cookieMgr, origins))
-	// goauth's one after-hook middleware: OnNewSession hooks (e.g. anonymous account linking) and OnResponse
-	// hooks (multi-session cookies, one-time-token header, pluginkit.UseAfterHook). It is registered before
-	// any domain plugin or core route is mounted, so it wraps every route whatever the plugin order.
-	api.UseMiddleware(humaadapter.ResponseHooks(opts.AuthConfig, hooks, cookieMgr))
+	// goauth's one endpoint-hook middleware: config Hooks (better-auth's hooks.before/after), plugin endpoint
+	// hooks, and the built-in after hooks: OnAfterSignIn (two-factor challenge), OnNewSession (e.g.
+	// anonymous account linking) and OnResponse (multi-session cookies, one-time-token header,
+	// pluginkit.UseAfterHook). It is registered before any domain plugin or core route is mounted, so it
+	// wraps every route whatever the plugin order.
+	endpointHooks := humaadapter.NewEndpointHookSet(opts.Hooks)
+	api.UseMiddleware(humaadapter.EndpointHooks(opts.AuthConfig, hooks, cookieMgr, endpointHooks))
 
 	// 1b. Init all remaining plugins
 	for _, p := range opts.Plugins {
@@ -282,6 +306,19 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 			if err := initPlugin(p); err != nil {
 				return nil, err
 			}
+		}
+	}
+
+	// 1c. Collect what initialized plugins declare, in plugin order (better-auth's plugin rateLimit and hooks)
+	for _, p := range opts.Plugins {
+		if p == nil {
+			continue
+		}
+		if rp, ok := p.(plugin.RateLimitProvider); ok {
+			limiter.AddPluginRules(rp.RateLimitRules()...)
+		}
+		if hp, ok := p.(plugin.EndpointHooksProvider); ok {
+			endpointHooks.AddPlugin(hp.EndpointHooks())
 		}
 	}
 
@@ -294,7 +331,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 			if err := mig.Migrate(ctx); err != nil {
 				return nil, fmt.Errorf("goauth: plugin migration failed for %s: %w", p.ID(), err)
 			}
-			slog.Info("migrated plugin", "plugin", p.ID())
+			log.Info("migrated plugin", "plugin", p.ID())
 		}
 	}
 
@@ -325,6 +362,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		auth:               authService,
 		sessionResolver:    resolver,
 		cookies:            cookieMgr,
+		rateLimiter:        limiter,
+		logger:             log,
 	}, nil
 }
 
@@ -379,11 +418,11 @@ func (g *GoAuth) StartCleanup(ctx context.Context, interval time.Duration) {
 func (g *GoAuth) cleanupOnce(ctx context.Context) {
 	// Step 1: expired session rows
 	if err := g.sessions.CleanupExpired(ctx); err != nil {
-		slog.Error("goauth: session cleanup failed", "err", err)
+		logger.Error("goauth: session cleanup failed", "err", err)
 	}
 	// Step 2: expired verification rows
 	if err := g.repositories.DeleteExpiredVerifications(ctx); err != nil {
-		slog.Error("goauth: verification cleanup failed", "err", err)
+		logger.Error("goauth: verification cleanup failed", "err", err)
 	}
 }
 
@@ -398,7 +437,7 @@ func (g *GoAuth) StartSessionCleanup(ctx context.Context, interval time.Duration
 				return
 			case <-ticker.C:
 				if err := g.sessions.CleanupExpired(ctx); err != nil {
-					slog.Error("goauth: session cleanup failed", "err", err)
+					logger.Error("goauth: session cleanup failed", "err", err)
 				}
 			}
 		}
