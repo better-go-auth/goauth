@@ -9,8 +9,10 @@ import (
 
 // AdminConfig holds optional configuration for the Admin plugin.
 type AdminConfig struct {
-	// AdminRoles defines the roles that have admin access to the /admin/* endpoints.
-	// Default: ["admin"]
+	// AdminRoles mirrors better-auth's `adminRoles`: the roles that count as admins (e.g. for the
+	// impersonation guard). Permissions on /admin/* come from Roles / the default {admin, user} roles,
+	// like better-auth; GoAuth.AdminRolesFullAccess restores goauth's old "every AdminRoles entry can use
+	// every /admin/* route" mapping. Default: ["admin"]
 	AdminRoles []enums.Role
 
 	// DefaultRole is the fallback role assigned to newly created users if unspecified.
@@ -26,8 +28,7 @@ type AdminConfig struct {
 	AccessControl *access.AccessControl
 
 	// Roles mirrors better-auth's admin `roles` option. nil means better-auth's default
-	// {admin, user} roles, plus goauth's backward-compatible mapping of every AdminRoles entry
-	// to the default admin role (see EffectiveRoles). When set, only these roles are used.
+	// {admin, user} roles (see EffectiveRoles). When set, only these roles are used.
 	Roles access.Roles
 
 	// AdminUserIDs mirrors better-auth's `adminUserIds`: these users pass every admin permission
@@ -38,6 +39,18 @@ type AdminConfig struct {
 	// (default), impersonating a user holding an admin role (or listed in AdminUserIDs) requires
 	// the user:impersonate-admins permission.
 	AllowImpersonatingAdmins bool
+
+	// GoAuth holds admin options better-auth doesn't have.
+	GoAuth AdminGoAuth
+}
+
+// AdminGoAuth holds admin options better-auth doesn't have.
+type AdminGoAuth struct {
+	// AdminRolesFullAccess maps every AdminRoles entry that is not a configured role to better-auth's
+	// default admin role, so it can use every /admin/* route (goauth's behaviour before better-auth access
+	// control). Ignored when Roles is set. Default false: like better-auth, a role without statements in
+	// the role map has no admin permissions.
+	AdminRolesFullAccess bool
 }
 
 // DefaultAdminConfig returns the default configuration for the admin plugin.

@@ -449,6 +449,8 @@ func TestOrgConfig_DynamicAccessControl_MaximumRoles(t *testing.T) {
 	// Step 1: MaximumRolesPerOrganization = 1
 	maxRoles := 1
 	env, _ := setupTeamsEnv(t, orgconfig.OrgConfig{
+		// this test covers goauth's legacy permission rules (custom resources, owner bypass)
+		GoAuth: orgconfig.OrgGoAuth{LegacyPermissions: true},
 		DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{
 			Enabled:                     true,
 			MaximumRolesPerOrganization: &maxRoles,

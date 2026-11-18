@@ -9,6 +9,7 @@ package anonymous
 import (
 	"errors"
 
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	humaanonymous "github.com/better-go-auth/goauth/src/plugins/anonymous/adapters/huma"
@@ -110,3 +111,8 @@ func (p *Plugin) Service() *services.Service { return p.service }
 
 // Config returns the configuration.
 func (p *Plugin) Config() config.AnonymousConfig { return p.config }
+
+// SchemaFields implements plugins.SchemaFieldsProvider (anonymous plugin: isAnonymous on the user).
+func (p *Plugin) SchemaFields() dtos.SchemaFields {
+	return dtos.SchemaFields{User: []string{dtos.FieldIsAnonymous}}
+}

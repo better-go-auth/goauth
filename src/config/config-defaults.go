@@ -26,9 +26,17 @@ func (opts *AuthConfig) SetDefaults() {
 	if opts.BasePath == "" {
 		opts.BasePath = "/api/auth"
 	}
-	// 3. Resolve Secret from environment variable if not explicitly set
+	// 3. Resolve Secret like better-auth: options.secret || $BETTER_AUTH_SECRET || $AUTH_SECRET ||
+	// DEFAULT_SECRET. The development default is refused in production by Validate; with
+	// Advanced.GoAuth.RequireSecret a missing secret is an error everywhere (goauth's old behaviour).
 	if opts.Secret == "" {
 		opts.Secret = os.Getenv(SecretEnvVar)
+	}
+	if opts.Secret == "" {
+		opts.Secret = os.Getenv(AuthSecretEnvVar)
+	}
+	if opts.Secret == "" && !opts.Advanced.GoAuth.RequireSecret {
+		opts.Secret = DefaultDevSecret
 	}
 	// 4. Set session updatable fields default
 	if opts.Session.GoAuth.UpdatableFields == nil {
@@ -121,12 +129,12 @@ func (opts *AuthConfig) Validate() error {
 
 	// 3. Validate Secret presence and recommended length
 	if opts.Secret == "" {
-		return fmt.Errorf("goauth: Secret (or $%s) is required", SecretEnvVar)
+		return fmt.Errorf("goauth: Secret (or $%s / $%s) is required", SecretEnvVar, AuthSecretEnvVar)
 	}
 	// a public development secret would let anyone forge cookies and tokens, so production refuses it
 	if IsDevSecret(opts.Secret) {
 		if IsProduction() {
-			return errors.New("goauth: Secret is a public development default; set a random BETTER_AUTH_SECRET in production")
+			return errors.New("goauth: you are using the default secret; set a random BETTER_AUTH_SECRET in production")
 		}
 		devSecretWarning.Do(func() {
 			slog.Warn("goauth: Secret is a public development default; never use it in production")

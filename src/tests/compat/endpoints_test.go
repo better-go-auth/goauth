@@ -84,7 +84,9 @@ func TestEmailPasswordFlow(t *testing.T) {
 		t.Fatalf("update-user not applied: %+v", sess)
 	}
 	expectCode(t, s.Post(t, "/api/auth/update-user", map[string]any{"email": "x@example.com"}), http.StatusBadRequest, "EMAIL_CAN_NOT_BE_UPDATED")
-	expectCode(t, s.Post(t, "/api/auth/update-user", map[string]any{"role": "admin"}), http.StatusBadRequest, "FIELD_NOT_ALLOWED")
+	// without the admin plugin "role" is not a user field: better-auth ignores it, leaving nothing to update
+	expectCode(t, s.Post(t, "/api/auth/update-user", map[string]any{"role": "admin"}), http.StatusBadRequest, "NO_FIELDS_TO_UPDATE")
+	expectCode(t, s.Post(t, "/api/auth/update-user", map[string]any{"emailVerified": true}), http.StatusBadRequest, "NO_FIELDS_TO_UPDATE")
 	expectCode(t, s.Post(t, "/api/auth/update-session", map[string]any{"foo": "bar"}), http.StatusBadRequest, "NO_FIELDS_TO_UPDATE")
 	expectCode(t, s.Post(t, "/api/auth/update-session", map[string]any{"activeOrganizationId": "org"}), http.StatusBadRequest, "FIELD_NOT_ALLOWED")
 	r = s.Post(t, "/api/auth/update-session", map[string]any{"deviceName": "Pixel 9", "deviceToken": "fcm:abc"})

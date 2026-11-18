@@ -127,6 +127,8 @@ func TestPermission_OrgServiceEndToEnd(t *testing.T) {
 
 		// Step 3: Initialize OrgService with Dynamic Access Control enabled
 		cfg := orgconfig.OrgConfig{
+			// these tests cover goauth's legacy permission rules (custom resources, owner bypass)
+			GoAuth: orgconfig.OrgGoAuth{LegacyPermissions: true},
 			DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{
 				Enabled: true,
 			},

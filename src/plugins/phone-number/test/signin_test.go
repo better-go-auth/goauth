@@ -219,12 +219,9 @@ func TestSignInHookErrorsPropagate(t *testing.T) {
 func TestUpdateUserRejectsPhoneNumber(t *testing.T) {
 	h := newHarness(t, phoneconfig.PhoneNumberConfig{})
 	uid, cookies := h.signUpEmail(t, "upd@example.com", "password123")
-	// better-auth's before hook answers PHONE_NUMBER_CANNOT_BE_UPDATED; goauth's update-user allowlist
-	// rejects every unknown field first (FIELD_NOT_ALLOWED, 400)
+	// better-auth's before hook answers PHONE_NUMBER_CANNOT_BE_UPDATED
 	r := h.Post(t, "/api/auth/update-user", map[string]any{"phoneNumber": "+15550001099"}, withCookie(cookies))
-	if r.Status != http.StatusBadRequest {
-		t.Fatalf("status = %d (%s)", r.Status, r.Body)
-	}
+	expectError(t, r, http.StatusBadRequest, "PHONE_NUMBER_CANNOT_BE_UPDATED")
 	u, _ := h.Auth.Repositories().FindUserByID(context.Background(), uid)
 	if u.PhoneNumber != nil {
 		t.Fatal("phone number must not be settable through update-user")

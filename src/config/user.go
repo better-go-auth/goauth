@@ -22,6 +22,9 @@ type UserGoAuth struct {
 	// anonymous plugin. Default false: better-auth's hard delete, where the user's sessions, accounts and
 	// plugin rows are removed with the user.
 	SoftDelete bool
+	// RejectUnknownUpdateFields makes /update-user fail with FIELD_NOT_ALLOWED on body keys that are not user
+	// fields (goauth's old behaviour). Default false: unknown keys are ignored, like better-auth.
+	RejectUnknownUpdateFields bool
 }
 
 // ChangeEmailOptions mirrors better-auth's `user.changeEmail`.

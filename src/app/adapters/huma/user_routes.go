@@ -9,6 +9,7 @@ import (
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/plugins"
 )
 
 type requestPasswordResetInput struct {
@@ -122,7 +123,10 @@ func (h *handler) UpdateUser(ctx context.Context, in *updateUserInput) (*statusO
 				upd.Image = &s
 			}
 		case "email":
-			return nil, autherr.ErrEmailCanNotBeUpdated
+			// better-auth: `if (body.email) throw EMAIL_CAN_NOT_BE_UPDATED` (a falsy email is ignored)
+			if plugins.IsTruthy(v) {
+				return nil, autherr.ErrEmailCanNotBeUpdated
+			}
 		default:
 			if len(k) == 0 {
 				continue

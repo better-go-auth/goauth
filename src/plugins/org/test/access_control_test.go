@@ -202,6 +202,8 @@ func TestOrgAccessControl_DynamicRolesMergeIntoPredefined(t *testing.T) {
 // TestOrgAccessControl_LegacyDefaults keeps goauth's legacy rules when no AC is configured.
 func TestOrgAccessControl_LegacyDefaults(t *testing.T) {
 	env, _ := setupTeamsEnv(t, orgconfig.OrgConfig{
+		// this test covers goauth's legacy permission rules (custom resources, owner bypass)
+		GoAuth:               orgconfig.OrgGoAuth{LegacyPermissions: true},
 		DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{Enabled: true},
 	})
 	h := env.OrgHandler

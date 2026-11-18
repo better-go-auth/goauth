@@ -13,6 +13,7 @@ const (
 	DefaultCookiePrefix = "better-auth"
 	DefaultIPv6Subnet   = 64
 	SecretEnvVar        = "BETTER_AUTH_SECRET"
+	AuthSecretEnvVar    = "AUTH_SECRET"
 	BaseURLEnvVar       = "BETTER_AUTH_URL"
 	NextBaseURLEnvVar   = "NEXT_PUBLIC_BETTER_AUTH_URL"
 	MinSecretLength     = 32
@@ -97,6 +98,14 @@ type AdvancedGoAuth struct {
 	// OverrideHumaErrors formats every Huma error in the process (including host routes) as {"code","message"}.
 	// By default only goauth routes use that format.
 	OverrideHumaErrors bool
+	// RequireSecret makes a missing Secret ($BETTER_AUTH_SECRET / $AUTH_SECRET) a startup error everywhere.
+	// Default false: like better-auth, development falls back to the public DefaultDevSecret (with a
+	// warning) and only production refuses it.
+	RequireSecret bool
+	// ErrorRequestID adds the request ID of internal (500) errors to the response: a requestId field in
+	// the {code, message} body and an X-Request-Id header. Default false: the body is better-auth's
+	// {code, message}; the cause and the request ID are only logged.
+	ErrorRequestID bool
 }
 
 type CrossSubDomainCookies struct {

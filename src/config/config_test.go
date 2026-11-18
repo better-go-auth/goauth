@@ -73,6 +73,7 @@ func TestSetDefaults(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	t.Setenv(SecretEnvVar, "")
+	t.Setenv(AuthSecretEnvVar, "")
 	t.Setenv(BaseURLEnvVar, "")
 	t.Setenv(NextBaseURLEnvVar, "")
 	longSecret := strings.Repeat("s", 32)
@@ -83,7 +84,7 @@ func TestValidate(t *testing.T) {
 		wantErr string
 	}{
 		{"valid config", AuthConfig{Secret: longSecret, BaseURL: "https://example.com"}, ""},
-		{"missing secret", AuthConfig{BaseURL: "https://example.com"}, "Secret"},
+		{"missing secret with RequireSecret", AuthConfig{BaseURL: "https://example.com", Advanced: Advanced{GoAuth: AdvancedGoAuth{RequireSecret: true}}}, "Secret"},
 		{"missing base url", AuthConfig{Secret: longSecret}, "BaseURL"},
 		{"relative base url", AuthConfig{Secret: longSecret, BaseURL: "example.com"}, "absolute"},
 	}
@@ -129,5 +130,42 @@ func TestCookieHelpers(t *testing.T) {
 				t.Errorf("CookieDomain = %q, want %q", got, tc.wantDomain)
 			}
 		})
+	}
+}
+
+// TestSecretFallback follows better-auth: outside production a missing secret falls back to the public
+// development default; in production that default is refused.
+func TestSecretFallback(t *testing.T) {
+	t.Setenv(SecretEnvVar, "")
+	t.Setenv(AuthSecretEnvVar, "")
+	for _, k := range productionEnvVars {
+		t.Setenv(k, "")
+	}
+
+	// Step 1: development: DefaultDevSecret is used
+	cfg := AuthConfig{BaseURL: "https://example.com"}
+	cfg.SetDefaults()
+	if cfg.Secret != DefaultDevSecret {
+		t.Fatalf("secret = %q, want the development default", cfg.Secret)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("development fallback should be valid: %v", err)
+	}
+
+	// Step 2: $AUTH_SECRET is read after $BETTER_AUTH_SECRET
+	t.Setenv(AuthSecretEnvVar, "from-auth-secret-0123456789abcdef0123")
+	cfg = AuthConfig{BaseURL: "https://example.com"}
+	cfg.SetDefaults()
+	if cfg.Secret != "from-auth-secret-0123456789abcdef0123" {
+		t.Fatalf("secret = %q, want $AUTH_SECRET", cfg.Secret)
+	}
+	t.Setenv(AuthSecretEnvVar, "")
+
+	// Step 3: production refuses the default
+	t.Setenv("NODE_ENV", "production")
+	cfg = AuthConfig{BaseURL: "https://example.com"}
+	cfg.SetDefaults()
+	if err := cfg.Validate(); err == nil || !strings.Contains(err.Error(), "default secret") {
+		t.Fatalf("production with the default secret: err = %v", err)
 	}
 }

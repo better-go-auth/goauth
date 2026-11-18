@@ -51,12 +51,17 @@ func DefaultRoles() access.Roles {
 	return access.Roles{"owner": OwnerAC, "admin": AdminAC, "member": MemberAC}
 }
 
-// BetterAuthMode reports whether organization permissions follow better-auth exactly:
-// true when an AccessControl or AccessRoles is configured, or BetterAuthPermissions is set.
-// Otherwise goauth's legacy rules apply (owner bypass, built-in admin/member rules, Config.Roles
-// with "*" wildcards) — see OrgService.HasPermissions.
+// BetterAuthMode reports whether organization permissions follow better-auth exactly. That is the
+// default; goauth's legacy rules (owner bypass, built-in admin/member rules, Config.Roles with "*"
+// wildcards — see OrgService.HasPermissions) apply only when GoAuth.LegacyPermissions is set or the
+// legacy Roles map is configured, and never when AccessControl / AccessRoles is set.
 func (c OrgConfig) BetterAuthMode() bool {
-	return c.AccessControl != nil || c.AccessRoles != nil || c.BetterAuthPermissions
+	// Step 1: better-auth options always win
+	if c.AccessControl != nil || c.AccessRoles != nil || c.BetterAuthPermissions {
+		return true
+	}
+	// Step 2: legacy rules only on explicit goauth configuration
+	return !c.GoAuth.LegacyPermissions && len(c.Roles) == 0
 }
 
 // EffectiveAC returns the configured AccessControl, or better-auth's default organization one.

@@ -8,6 +8,17 @@ const DefaultMaximumSessions = 5
 type MultiSessionConfig struct {
 	// MaximumSessions is the maximum number of sessions a device (browser) can hold (default 5).
 	MaximumSessions int
+
+	// GoAuth holds multi-session options better-auth doesn't have.
+	GoAuth MultiSessionGoAuth
+}
+
+// MultiSessionGoAuth holds multi-session options better-auth doesn't have.
+type MultiSessionGoAuth struct {
+	// StrictDeviceCookie makes set-active / revoke require that the signed device cookie holds exactly the
+	// requested session token. better-auth (the default) only requires a validly signed cookie under the
+	// token's lowercased name, so two tokens differing only in letter case share a cookie.
+	StrictDeviceCookie bool
 }
 
 // DefaultConfig returns better-auth's defaults.

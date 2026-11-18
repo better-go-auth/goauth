@@ -13,10 +13,12 @@ import (
 	"github.com/better-go-auth/goauth/src/app/repository/verifycleanup"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
+	"github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
@@ -145,6 +147,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		return nil, fmt.Errorf("goauth: %w", err)
 	}
 	idgen.SetGenerator(generateID)
+	// config: Advanced.GoAuth.ErrorRequestID shows the request ID of internal errors to clients
+	autherr.SetExposeRequestID(opts.Advanced.GoAuth.ErrorRequestID)
 
 	// 1. Resolve Repositories
 	repoOpts := []gormauth.RepoOption{gormauth.WithGenerateID(generateID)}
@@ -204,6 +208,16 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	if err := validatePlugins(opts.Plugins); err != nil {
 		return nil, err
 	}
+	// Record the user/session fields of the installed plugins: like better-auth, the user and session JSON
+	// always carries them (false / null when unset), and update-user knows which keys exist
+	var schemaFields []dtos.SchemaFields
+	for _, p := range opts.Plugins {
+		if sp, ok := p.(plugin.SchemaFieldsProvider); ok && p != nil {
+			schemaFields = append(schemaFields, sp.SchemaFields())
+		}
+	}
+	dtos.SetInstalledSchemaFields(schemaFields...)
+
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
 	authenticate := authenticator.NewDefaultAuthenticator(repos)

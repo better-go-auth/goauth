@@ -582,3 +582,24 @@ func (h *DefaultHookRegistry) TriggerResponse(ev *ResponseEvent) {
 		fn(ev)
 	}
 }
+
+// IsTruthy reports whether a decoded JSON value is truthy in JavaScript terms (better-auth checks such as
+// `if (body.phoneNumber)`): false, null, "", 0 and NaN are falsy; everything else is truthy.
+func IsTruthy(v any) bool {
+	switch x := v.(type) {
+	case nil:
+		return false
+	case bool:
+		return x
+	case string:
+		return x != ""
+	case float64:
+		return x != 0 && x == x
+	case int:
+		return x != 0
+	case int64:
+		return x != 0
+	default:
+		return true
+	}
+}

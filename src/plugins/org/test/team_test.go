@@ -264,6 +264,8 @@ func TestOrgTeams_FullLifecycle(t *testing.T) {
 func TestOrgDynamicAccessControl(t *testing.T) {
 	helpers.RunForEachDB(t, func(t *testing.T, db *gorm.DB, dbType helpers.DatabaseType) {
 		env, _ := setupTeamsEnvWithDB(t, db, orgconfig.OrgConfig{
+			// this test covers goauth's legacy permission rules (custom resources, owner bypass)
+			GoAuth:               orgconfig.OrgGoAuth{LegacyPermissions: true},
 			DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{Enabled: true},
 		})
 

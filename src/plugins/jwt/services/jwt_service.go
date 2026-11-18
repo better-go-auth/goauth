@@ -308,8 +308,9 @@ func (s *JWTService) GetJWTToken(ctx context.Context, session *dtos.SessionWithU
 			"createdAt":     session.User.CreatedAt,
 			"updatedAt":     session.User.UpdatedAt,
 		}
-		if session.User.Role != "" {
-			payload["role"] = session.User.Role
+		// role is part of the user object only with the admin plugin (plain "user" otherwise stays out)
+		if role := session.User.Role; role != "" && (role != "user" || dtos.UserFieldInstalled(dtos.FieldRole)) {
+			payload["role"] = role
 		}
 	}
 

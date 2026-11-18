@@ -57,8 +57,11 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 		}
 	})
 
-	t.Run("Fails when no secret is configured", func(t *testing.T) {
+	t.Run("Fails when no secret is configured in production", func(t *testing.T) {
+		// better-auth falls back to its public default secret in development and refuses it in production
 		t.Setenv(config.SecretEnvVar, "")
+		t.Setenv(config.AuthSecretEnvVar, "")
+		t.Setenv("NODE_ENV", "production")
 		env := helpers.SetupTestEnv(t, true)
 		opts := bettergoauth.GoAuthOptions{
 			Conn: env.DB,
@@ -69,6 +72,22 @@ func TestSetupGoAuth_ValidationAndDefaults(t *testing.T) {
 		_, err := bettergoauth.SetupGoAuth(context.Background(), api, opts)
 		if err == nil {
 			t.Fatalf("Expected error when no secret is configured, got nil")
+		}
+	})
+
+	t.Run("Fails when no secret is configured with RequireSecret", func(t *testing.T) {
+		t.Setenv(config.SecretEnvVar, "")
+		t.Setenv(config.AuthSecretEnvVar, "")
+		env := helpers.SetupTestEnv(t, true)
+		opts := bettergoauth.GoAuthOptions{
+			Conn: env.DB,
+			AuthConfig: config.AuthConfig{
+				BaseURL:  "http://localhost:3000",
+				Advanced: config.Advanced{GoAuth: config.AdvancedGoAuth{RequireSecret: true}},
+			},
+		}
+		if _, err := bettergoauth.SetupGoAuth(context.Background(), api, opts); err == nil {
+			t.Fatalf("Expected error when no secret is configured with RequireSecret, got nil")
 		}
 	})
 

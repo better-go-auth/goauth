@@ -105,8 +105,15 @@ func (s *MultiSessionService) hasDeviceCookie(cookieHeader, token string) bool {
 		return false
 	}
 	v, ok := s.kit.Cookies.ReadSigned(cookieHeader, cookieBase(token))
-	// goauth extra: the cookie must hold the requested token, not just share its lowercased name
-	return ok && authcrypto.SecureEqual(v, token)
+	if !ok {
+		return false
+	}
+	// config: GoAuth.StrictDeviceCookie also requires the cookie to hold the requested token, not just share
+	// its lowercased name (better-auth only checks that the signed cookie exists)
+	if s.cfg.GoAuth.StrictDeviceCookie {
+		return authcrypto.SecureEqual(v, token)
+	}
+	return true
 }
 
 // live returns the session for token when it exists and has not expired.

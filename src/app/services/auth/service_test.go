@@ -396,9 +396,20 @@ func TestUpdateUserRefreshesCachedSessions(t *testing.T) {
 	// if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Email: ptr("x@example.com")}); errCode(err) != "EMAIL_CAN_NOT_BE_UPDATED" {
 	// 	t.Fatalf("got %v", err)
 	// }
-	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Role": "admin"}}); errCode(err) != "FIELD_NOT_ALLOWED" {
-		t.Fatalf("role must not be updatable: %v", err)
+	// role is not a user field without the admin plugin: ignored like better-auth (nothing left to update)
+	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Role": "admin"}}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
+		t.Fatalf("unknown role key must be ignored: %v", err)
 	}
+	// with the admin plugin installed role is input:false: better-auth's "role is not allowed to be set"
+	dtos.SetInstalledSchemaFields(dtos.SchemaFields{User: []string{dtos.FieldRole, dtos.FieldBanned}})
+	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Role": "admin"}}); errCode(err) != "ROLE_IS_NOT_ALLOWED_TO_BE_SET" {
+		t.Fatalf("role must not be updatable with the admin plugin: %v", err)
+	}
+	// input:false fields with a default (banned) are skipped silently
+	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Banned": true}}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
+		t.Fatalf("banned must be skipped: %v", err)
+	}
+	dtos.SetInstalledSchemaFields()
 	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
 		t.Fatalf("got %v", err)
 	}
@@ -626,5 +637,20 @@ func TestSingleResetLink(t *testing.T) {
 		if got := e.svc.ValidateResetToken(ctx, second) == nil; got == single {
 			t.Fatalf("single=%v: older link valid after reset=%v", single, got)
 		}
+	}
+}
+
+// TestUpdateUserRejectUnknownFields keeps goauth's old strict update-user behind User.GoAuth.RejectUnknownUpdateFields.
+func TestUpdateUserRejectUnknownFields(t *testing.T) {
+	ctx := context.Background()
+	e := newEnv(t, func(c *config.AuthConfig) { c.User.GoAuth.RejectUnknownUpdateFields = true }, memstore.New())
+	res := e.signUp(t, "strict@example.com", "password123")
+	// Step 1: unknown keys fail with FIELD_NOT_ALLOWED
+	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"FavoriteColor": "blue"}}); errCode(err) != "FIELD_NOT_ALLOWED" {
+		t.Fatalf("unknown key must be rejected in strict mode: %v", err)
+	}
+	// Step 2: known profile fields still work
+	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Bio": "hi"}}); err != nil {
+		t.Fatalf("profile field: %v", err)
 	}
 }

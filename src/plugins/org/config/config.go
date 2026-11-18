@@ -155,15 +155,13 @@ type OrgConfig struct {
 	// Setting it switches to better-auth semantics; these roles replace the default owner/admin/member.
 	AccessRoles map[string]access.Role
 
-	// BetterAuthPermissions switches to better-auth semantics with the default owner/admin/member
-	// roles even when neither AccessControl nor AccessRoles is set.
+	// BetterAuthPermissions forces better-auth semantics even when the legacy Roles map is set.
 	//
-	// When false and no AccessControl/AccessRoles are configured (the default), goauth's legacy
-	// rules stay in place so existing setups are not broken: owner bypasses every check, admin may
-	// do everything except organization:delete/update-role, member may only read/list/get, and
-	// Config.Roles (with "*" wildcards) defines extra roles. Dynamic (DB) roles are merged into
-	// those predefined roles and comma-separated multi-role members are supported in both modes.
+	// Deprecated: better-auth semantics are the default now; set GoAuth.LegacyPermissions for the old rules.
 	BetterAuthPermissions bool
+
+	// GoAuth holds organization options better-auth doesn't have.
+	GoAuth OrgGoAuth
 
 	// CancelPendingInvitationsOnReInvite cancels existing pending invitations when re-inviting (default: false).
 	CancelPendingInvitationsOnReInvite *bool
@@ -212,3 +210,14 @@ type SendInvitationData = SendInvitationInput
 
 // SendInvitationEmail sends an email with the invitation link matching better-auth.
 type SendInvitationEmail func(ctx context.Context, input SendInvitationInput) error
+
+// OrgGoAuth holds organization options better-auth doesn't have.
+type OrgGoAuth struct {
+	// LegacyPermissions switches organization permission checks to goauth's legacy rules instead of
+	// better-auth's access control (the default): owner bypasses every check, admin may do everything
+	// except organization:delete/update-role, member may only read/list/get, and Config.Roles (with "*"
+	// wildcards) defines extra roles. Setting Config.Roles also selects the legacy rules. Dynamic (DB)
+	// roles are merged into the predefined roles and comma-separated multi-role members work in both modes.
+	// Ignored when AccessControl or AccessRoles is set.
+	LegacyPermissions bool
+}

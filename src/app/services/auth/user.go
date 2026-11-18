@@ -24,6 +24,39 @@ var updatableUserFields = map[string]bool{
 	"DateOfBirth": true, "Gender": true, "Locale": true, "Timezone": true,
 }
 
+// protectedUserField is a better-auth schema field with `input: false` (never set by update-user).
+type protectedUserField struct {
+	// json is the better-auth field name.
+	json string
+	// plugin fields only exist while their plugin is installed (dtos.UserFieldInstalled); core fields always.
+	plugin bool
+	// hasDefault: better-auth silently skips input:false fields that have a defaultValue; the others fail
+	// with "<field> is not allowed to be set" when the value is truthy.
+	hasDefault bool
+}
+
+// protectedUserFields maps Go field names to better-auth's input:false user fields.
+var protectedUserFields = map[string]protectedUserField{
+	"EmailVerified":       {json: "emailVerified", hasDefault: true},
+	"CreatedAt":           {json: "createdAt", hasDefault: true},
+	"UpdatedAt":           {json: "updatedAt", hasDefault: true},
+	"Role":                {json: dtos.FieldRole, plugin: true},
+	"Banned":              {json: dtos.FieldBanned, plugin: true, hasDefault: true},
+	"BanReason":           {json: dtos.FieldBanReason, plugin: true},
+	"BanExpires":          {json: dtos.FieldBanExpires, plugin: true},
+	"PhoneNumberVerified": {json: dtos.FieldPhoneNumberVerified, plugin: true},
+	"TwoFactorEnabled":    {json: dtos.FieldTwoFactorEnabled, plugin: true, hasDefault: true},
+	"IsAnonymous":         {json: dtos.FieldIsAnonymous, plugin: true, hasDefault: true},
+}
+
+// fieldNotAllowedError is better-auth's parseInputData error for an input:false field. better-call derives
+// the code from the message (upper case, spaces to "_").
+func fieldNotAllowedError(field string) error {
+	msg := field + " is not allowed to be set"
+	code := strings.ToUpper(strings.ReplaceAll(msg, " ", "_"))
+	return autherr.Err(http.StatusBadRequest, code, msg)
+}
+
 // UpdateUser mirrors better-auth's POST /update-user and returns the session with the new user snapshot.
 //
 // Only name, image and the allowlisted profile fields can be changed. Email has its own flow (ChangeEmail),
@@ -55,9 +88,21 @@ func (s *Service) UpdateUser(ctx context.Context, current *dtos.SessionWithUser,
 		if _, owned := pluginFields[k]; owned {
 			continue
 		}
-		// reject anything outside the allowlist (blocks e.g. {"Role": "admin"})
+		// fields outside the allowlist are never written (blocks e.g. {"role": "admin"})
 		if !updatableUserFields[k] {
-			return nil, autherr.ErrFieldNotAllowed.WithMessage("Field " + k + " is not allowed to be set")
+			// better-auth's input:false fields: skipped when they have a default, rejected when set
+			if pf, ok := protectedUserFields[k]; ok && (!pf.plugin || dtos.UserFieldInstalled(pf.json)) {
+				if !pf.hasDefault && plugins.IsTruthy(v) {
+					return nil, fieldNotAllowedError(pf.json)
+				}
+				continue
+			}
+			// config: User.GoAuth.RejectUnknownUpdateFields keeps goauth's old strict behaviour
+			if s.cfg.User.GoAuth.RejectUnknownUpdateFields {
+				return nil, autherr.ErrFieldNotAllowed.WithMessage("Field " + k + " is not allowed to be set")
+			}
+			// better-auth ignores keys that are not in the user schema
+			continue
 		}
 		// username is unique and nullable: "" means "no username" and is stored as NULL
 		if str, ok := v.(string); ok && k == "Username" && str == "" {

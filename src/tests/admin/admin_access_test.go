@@ -123,9 +123,27 @@ func TestAdminAccess_DefaultRoles(t *testing.T) {
 	}
 }
 
-// TestAdminAccess_BackwardCompatAdminRoles keeps goauth's behaviour: any AdminRoles entry has full access.
+// TestAdminAccess_AdminRolesWithoutStatements follows better-auth: an AdminRoles entry that is not in the
+// role map has no admin permissions.
+func TestAdminAccess_AdminRolesWithoutStatements(t *testing.T) {
+	env := setupAdminAccessEnv(t, admin.WithAdminRoles("admin", "superadmin"))
+	_, superHdr := userWithRole(t, env, "super@x.com", enums.Role("superadmin"))
+
+	// Step 1: list-users needs user:list, which "superadmin" does not have
+	resp, body := env.GetJSON("/api/auth/admin/list-users", superHdr)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("superadmin list-users: expected 403, got %d %s", resp.StatusCode, body)
+	}
+	// Step 2: has-permission agrees
+	if hasPerm(t, env, superHdr, map[string]any{"permissions": map[string][]string{"session": {"revoke"}}}).Success {
+		t.Fatal("superadmin should not have session:revoke without GoAuth.AdminRolesFullAccess")
+	}
+}
+
+// TestAdminAccess_BackwardCompatAdminRoles keeps goauth's old behaviour behind GoAuth.AdminRolesFullAccess:
+// any AdminRoles entry has full access.
 func TestAdminAccess_BackwardCompatAdminRoles(t *testing.T) {
-	env := setupAdminAccessEnv(t, admin.WithAdminRoles("superadmin"))
+	env := setupAdminAccessEnv(t, admin.WithAdminRoles("superadmin"), admin.WithAdminRolesFullAccess(true))
 	_, superHdr := userWithRole(t, env, "super@x.com", enums.Role("superadmin"))
 	targetID, _ := userWithRole(t, env, "t@x.com", enums.User)
 

@@ -64,15 +64,16 @@ func TestPhoneNumberIsUnique(t *testing.T) {
 	}
 }
 
+// TestUserShapeWithoutPhone: the plugin is installed, so its fields are present (null), like better-auth.
 func TestUserShapeWithoutPhone(t *testing.T) {
 	h := newHarness(t, phoneconfig.PhoneNumberConfig{})
 	_, cookies := h.signUpEmail(t, "nophone@example.com", "password123")
 	u := h.getSession(t, cookies)["user"].(map[string]any)
-	if _, ok := u["phoneNumber"]; ok {
-		t.Fatalf("phoneNumber must be absent for users without phone: %v", u)
-	}
-	if _, ok := u["phoneNumberVerified"]; ok {
-		t.Fatalf("phoneNumberVerified must be absent for users without phone: %v", u)
+	// better-auth returns the installed plugin's fields as null for users without a phone
+	for _, k := range []string{"phoneNumber", "phoneNumberVerified"} {
+		if v, ok := u[k]; !ok || v != nil {
+			t.Fatalf("%s must be null for users without phone: %v", k, u)
+		}
 	}
 }
 

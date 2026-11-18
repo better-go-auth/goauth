@@ -60,6 +60,8 @@ func TestOrgMiddleware_Authorization(t *testing.T) {
 		require.NoError(t, db.Create(member).Error)
 
 		cfg := orgconfig.OrgConfig{
+			// these tests cover goauth's legacy permission rules (custom resources, owner bypass)
+			GoAuth: orgconfig.OrgGoAuth{LegacyPermissions: true},
 			DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{
 				Enabled:    true,
 				AuthMethod: orgconfig.AuthMethodBoth,

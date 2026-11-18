@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
@@ -76,6 +77,13 @@ type Plugin interface {
 // installed too. SetupGoAuth fails when one of the returned plugin IDs is missing from Plugins.
 type DependencyProvider interface {
 	Dependencies() []string
+}
+
+// SchemaFieldsProvider is an optional interface for plugins that add fields to better-auth's user or
+// session schema (e.g. admin: role, banned, ...). Like better-auth, the user/session JSON always contains
+// the fields of installed plugins (false / null when unset), and update-user knows which keys exist.
+type SchemaFieldsProvider interface {
+	SchemaFields() dtos.SchemaFields
 }
 
 // HookProvider is an optional interface plugins can implement to provide a HookService.

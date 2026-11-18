@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 )
 
@@ -95,10 +94,8 @@ func UserFromModel(u *models.User) UserResponse {
 	if u == nil {
 		return UserResponse{}
 	}
-	var role string
-	if u.Role != "" && u.Role != enums.User {
-		role = u.Role.S()
-	}
+	// the role is always carried; MarshalJSON decides whether "user" is written (admin plugin installed)
+	role := u.Role.S()
 	out := UserResponse{
 		ID:            u.ID,
 		Name:          u.DisplayNameOrFull(),

@@ -7,7 +7,16 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"sync/atomic"
 )
+
+// exposeRequestID is config Advanced.GoAuth.ErrorRequestID (process-wide, set by SetupGoAuth): when true,
+// internal errors carry their request ID in the body (requestId) and the X-Request-Id header.
+var exposeRequestID atomic.Bool
+
+// SetExposeRequestID sets whether internal errors show their request ID to the client (default false:
+// better-auth's plain {code, message} body; the ID is still logged with the cause).
+func SetExposeRequestID(expose bool) { exposeRequestID.Store(expose) }
 
 // RequestIDHeader is the header that carries the request ID of an internal error (and is read from
 // the incoming request when a proxy already set one).
@@ -44,7 +53,8 @@ func NewRequestID() string {
 
 // Internal turns an unexpected error (a repository/driver error, a failed network call, ...) into a
 // 500 INTERNAL_SERVER_ERROR that never shows the cause to the client. The cause is logged together with a
-// request ID, and the same ID is returned in the body (requestId) and the X-Request-Id header.
+// request ID; with SetExposeRequestID(true) the same ID is also returned in the body (requestId) and the
+// X-Request-Id header.
 //
 // An *AuthError below 500 is returned unchanged: it is an expected, client-facing error.
 func Internal(ctx context.Context, cause error) *AuthError {
@@ -62,6 +72,10 @@ func Internal(ctx context.Context, cause error) *AuthError {
 		cause = errors.New("unknown error")
 	}
 	slog.Error("goauth: internal error", slog.String("requestId", id), slog.String("error", cause.Error()))
+	// the client only sees the ID when config Advanced.GoAuth.ErrorRequestID is on
+	if !exposeRequestID.Load() {
+		id = ""
+	}
 	// Step 4: keep an explicit better-auth 5xx code (FAILED_TO_CREATE_USER, ...) but never its cause
 	if ae := AsAuthError(cause); ae != nil {
 		return &AuthError{StatusCode: ae.StatusCode, Code: ae.Code, Message: ae.Message, RequestID: id}

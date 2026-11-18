@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/config"
+	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	plugins "github.com/better-go-auth/goauth/src/plugins"
@@ -46,6 +47,14 @@ func WithAdminRoles(roles ...enums.Role) Option {
 			p.config.AdminRoles = roles
 			p.adminRolesSet = true
 		}
+	}
+}
+
+// WithAdminRolesFullAccess sets GoAuth.AdminRolesFullAccess: every AdminRoles entry outside the role map
+// gets the default admin role's permissions (goauth's behaviour before better-auth access control).
+func WithAdminRolesFullAccess(enabled bool) Option {
+	return func(p *Plugin) {
+		p.config.GoAuth.AdminRolesFullAccess = enabled
 	}
 }
 
@@ -217,4 +226,12 @@ func (p *Plugin) Handler() *humaadmin.AdminHandler {
 // Config returns the plugin's configuration.
 func (p *Plugin) Config() config1.AdminConfig {
 	return p.config
+}
+
+// SchemaFields implements plugins.SchemaFieldsProvider (admin plugin: role, banned, banReason, banExpires on the user; impersonatedBy on the session).
+func (p *Plugin) SchemaFields() dtos.SchemaFields {
+	return dtos.SchemaFields{
+		User:    []string{dtos.FieldRole, dtos.FieldBanned, dtos.FieldBanReason, dtos.FieldBanExpires},
+		Session: []string{dtos.FieldImpersonatedBy},
+	}
 }

@@ -57,6 +57,8 @@ func TestDynamicRole_CachingAndOperations(t *testing.T) {
 		require.NoError(t, err)
 
 		cfg := orgconfig.OrgConfig{
+			// these tests cover goauth's legacy permission rules (custom resources, owner bypass)
+			GoAuth: orgconfig.OrgGoAuth{LegacyPermissions: true},
 			DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{
 				Enabled:    true,
 				AuthMethod: orgconfig.AuthMethodBoth,

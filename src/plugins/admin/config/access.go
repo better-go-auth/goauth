@@ -55,22 +55,24 @@ var (
 )
 
 // CustomRoles reports whether the user configured their own roles (WithRoles/WithAccessControl).
-// With custom roles the plugin follows better-auth exactly; without them it stays backward
-// compatible with goauth's AdminRoles-only setup (see EffectiveRoles).
+// Without them better-auth's default {admin, user} roles are used (see EffectiveRoles).
 func (c AdminConfig) CustomRoles() bool {
 	return c.Roles != nil
 }
 
 // EffectiveRoles returns the role map used for permission checks.
 //   - Custom Roles configured: exactly those roles (better-auth `options.roles`).
-//   - Otherwise: better-auth's default {admin, user} roles, plus every AdminRoles entry that is
-//     not one of them mapped to the default admin role. This keeps goauth's historical
-//     behaviour where any role listed in AdminRoles could use every /admin/* route.
+//   - Otherwise: better-auth's default {admin, user} roles.
+//   - With GoAuth.AdminRolesFullAccess, every AdminRoles entry that is not one of the defaults is
+//     mapped to the default admin role (goauth's historical behaviour).
 func (c AdminConfig) EffectiveRoles() access.Roles {
 	if c.CustomRoles() {
 		return c.Roles
 	}
 	roles := DefaultRoles()
+	if !c.GoAuth.AdminRolesFullAccess {
+		return roles
+	}
 	for _, r := range c.AdminRoles {
 		if _, ok := roles[r.S()]; !ok && r.S() != "" {
 			roles[r.S()] = AdminAC
