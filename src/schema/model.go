@@ -10,6 +10,8 @@ const (
 	ModelSession      = "session"
 	ModelAccount      = "account"
 	ModelVerification = "verification"
+	// ModelRateLimit is better-auth's rateLimit table (Options.RateLimit).
+	ModelRateLimit = "rateLimit"
 )
 
 // Model is a model definition: a better-auth core table, a plugin schema entry or a new plugin table.

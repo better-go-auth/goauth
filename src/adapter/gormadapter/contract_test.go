@@ -18,7 +18,7 @@ import (
 func TestContract(t *testing.T) {
 	for _, dialect := range gormtest.Dialects {
 		t.Run(string(dialect), func(t *testing.T) {
-			db := gormtest.Open(t, dialect)
+			db := gormtest.OpenIsolated(t, dialect, "gormadapter_contract")
 			adaptertest.Run(t, func(t *testing.T, reg *schema.Registry) adapter.Adapter {
 				// Step 1: an empty schema per subtest
 				gormtest.Reset(t, db, reg)

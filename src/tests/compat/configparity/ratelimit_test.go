@@ -3,12 +3,15 @@ package configparity
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	goauth "github.com/better-go-auth/goauth"
+	repomemory "github.com/better-go-auth/goauth/src/app/repository/memory"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
@@ -260,10 +263,34 @@ func TestRateLimitStorageOptions(t *testing.T) {
 		mutate(&o)
 		return goauth.SetupGoAuth(context.Background(), humago.New(http.NewServeMux(), huma.DefaultConfig("t", "1")), o)
 	}
-	t.Run("database is rejected until the rateLimit table exists", func(t *testing.T) {
-		_, err := setup(t, func(o *goauth.GoAuthOptions) { o.RateLimit.Storage = ratelimit.StorageDatabase })
-		if err == nil || !strings.Contains(err.Error(), "not supported yet") {
+	t.Run("database uses the rateLimit table", func(t *testing.T) {
+		a, err := setup(t, func(o *goauth.GoAuthOptions) { o.RateLimit.Storage = ratelimit.StorageDatabase })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := a.RateLimiter().Storage().(*ratelimit.DatabaseStorage); !ok {
+			t.Fatalf("storage = %T", a.RateLimiter().Storage())
+		}
+		if _, ok := a.Schema().Model("rateLimit"); !ok {
+			t.Fatal("the rateLimit model must be in the registry")
+		}
+	})
+	t.Run("database needs a database", func(t *testing.T) {
+		_, err := goauth.SetupGoAuth(context.Background(), humago.New(http.NewServeMux(), huma.DefaultConfig("t", "1")), goauth.GoAuthOptions{
+			Repositories: repomemory.New(),
+			AuthConfig:   config.AuthConfig{BaseURL: "http://localhost:3000", Secret: compattest.TestSecret, RateLimit: config.RateLimitOptions{Storage: ratelimit.StorageDatabase}},
+		})
+		if err == nil || !strings.Contains(err.Error(), "needs GoAuthOptions.Conn") {
 			t.Fatalf("err = %v", err)
+		}
+	})
+	t.Run("no rateLimit table without the database storage", func(t *testing.T) {
+		a, err := setup(t, func(*goauth.GoAuthOptions) {})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := a.Schema().Model("rateLimit"); ok {
+			t.Fatal("better-auth only adds the rateLimit table with the database storage")
 		}
 	})
 	t.Run("secondary-storage needs a secondary storage", func(t *testing.T) {
@@ -308,4 +335,56 @@ func TestRateLimitStorageOptions(t *testing.T) {
 			t.Fatal("custom storage not used")
 		}
 	})
+}
+
+// TestRateLimitDatabaseStorageShared: two servers on one database share the counters through better-auth's
+// rateLimit table (key, count, lastRequest in Unix milliseconds), renamed like better-auth's
+// rateLimit.modelName / fields.
+func TestRateLimitDatabaseStorageShared(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:rl_db_shared?mode=memory&cache=shared"), &gorm.Config{Logger: logger.Discard})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		sqlDB.SetMaxOpenConns(1)
+	}
+	dbStorage := enabled(func(c *config.AuthConfig) {
+		c.RateLimit.Storage = ratelimit.StorageDatabase
+		c.RateLimit.ModelName = "rate_limits"
+		c.RateLimit.Fields = map[string]string{"lastRequest": "last_hit"}
+	})
+	a := compattest.NewServer(t, dbStorage, compattest.WithDB(db))
+	b := compattest.NewServer(t, dbStorage, compattest.WithDB(db))
+	signUp(t, a, "dbshared@example.com")
+
+	// Step 1: two sign-ins on A, one on B: the limit of 3 is reached across both
+	before := time.Now().UnixMilli()
+	signIn(t, a, "dbshared@example.com", "wrong", "198.51.100.30")
+	signIn(t, a, "dbshared@example.com", "wrong", "198.51.100.30")
+	signIn(t, b, "dbshared@example.com", "wrong", "198.51.100.30")
+	expect429(t, signIn(t, a, "dbshared@example.com", password, "198.51.100.30"), 10)
+	expect429(t, signIn(t, b, "dbshared@example.com", password, "198.51.100.30"), 10)
+
+	// Step 2: one row per key in the renamed table, lastRequest in milliseconds
+	var rows []map[string]any
+	if err := db.Raw(`SELECT "key", "count", "last_hit" FROM "rate_limits" WHERE "key" = ?`, "198.51.100.30|/sign-in/email").Scan(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("rows = %v", rows)
+	}
+	if fmt.Sprint(rows[0]["count"]) != "3" {
+		t.Fatalf("count = %v", rows[0]["count"])
+	}
+	last, _ := strconv.ParseInt(fmt.Sprint(rows[0]["last_hit"]), 10, 64)
+	if last < before || last > time.Now().UnixMilli() {
+		t.Fatalf("lastRequest = %v, want Unix ms after %d", rows[0]["last_hit"], before)
+	}
+
+	// Step 3: a row written by another server (e.g. TypeScript better-auth) is honoured
+	if err := db.Exec(`INSERT INTO "rate_limits" ("id", "key", "count", "last_hit") VALUES ('ts-row', ?, 100, ?)`,
+		"198.51.100.31|/sign-in/email", time.Now().UnixMilli()).Error; err != nil {
+		t.Fatal(err)
+	}
+	expect429(t, signIn(t, b, "dbshared@example.com", password, "198.51.100.31"), 10)
 }

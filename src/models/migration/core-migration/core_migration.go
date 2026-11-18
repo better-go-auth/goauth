@@ -100,14 +100,14 @@ func caseSensitiveTokens(db *gorm.DB) error {
 	if db.Dialector.Name() != "mysql" {
 		return nil
 	}
-	// Step 1: session tokens
+	// Step 1: session tokens (columns resolved through the naming strategy: ColumnCase / Fields renames)
 	if err := db.Exec("ALTER TABLE ? MODIFY ? VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL",
-		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelSession)}, clause.Column{Name: "token"}).Error; err != nil {
+		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelSession)}, gormutil.Col(db, &models.Session{}, "Token")).Error; err != nil {
 		return err
 	}
 	// Step 2: usernames (nullable); lookups are exact, the username plugin normalizes before querying
 	return db.Exec("ALTER TABLE ? MODIFY ? VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL",
-		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelUser)}, clause.Column{Name: "username"}).Error
+		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelUser)}, gormutil.Col(db, &models.User{}, "Username")).Error
 }
 
 // PrepareLegacyColumns renames and merges pre-better-auth columns. It must run before AutoMigrate
@@ -165,7 +165,7 @@ func nullEmptyUsernames(db *gorm.DB) error {
 	if !m.HasTable(user) || !m.HasColumn(user, "username") {
 		return nil
 	}
-	if err := db.Model(user).Where("username = ?", "").UpdateColumn("username", nil).Error; err != nil {
+	if err := db.Model(user).Where(clause.Eq{Column: gormutil.Col(db, user, "Username"), Value: ""}).UpdateColumn("Username", nil).Error; err != nil {
 		return fmt.Errorf("null empty user.username: %w", err)
 	}
 	return nil
@@ -174,8 +174,9 @@ func nullEmptyUsernames(db *gorm.DB) error {
 // backfillUserNames fills the better-auth `name` column for users created before it existed.
 func backfillUserNames(db *gorm.DB) error {
 	var users []models.User
-	return db.Select("id", "first_name", "last_name", "name").
-		Where("name = ? OR name IS NULL", "").
+	name := gormutil.Col(db, &models.User{}, "Name")
+	return db.Select(gormutil.ColNames(db, &models.User{}, "ID", "FirstName", "LastName", "Name")).
+		Where(clause.Or(clause.Eq{Column: name, Value: ""}, clause.Eq{Column: name, Value: nil})).
 		FindInBatches(&users, 500, func(tx *gorm.DB, _ int) error {
 			for i := range users {
 				name := users[i].DisplayNameOrFull()

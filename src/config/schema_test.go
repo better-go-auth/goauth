@@ -41,3 +41,35 @@ func TestSchemaOptions(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "email_verified", reg.Column("user", "emailVerified"))
 }
+
+func TestIDFormatsAndMigrationModes(t *testing.T) {
+	// Step 1: better-auth's generateId values
+	for format, want := range map[string]schema.IDStrategy{"": schema.IDApplication, "uuid": schema.IDApplication, IDFormatDatabase: schema.IDDatabase, IDFormatSerial: schema.IDSerial} {
+		d := AdvancedDatabase{IDFormat: format}
+		require.Equal(t, want, d.IDStrategy(), format)
+		gen, err := d.IDGenerator()
+		require.NoError(t, err)
+		if want.DatabaseGenerated() {
+			require.Empty(t, gen(), "the database creates ids")
+		} else {
+			require.NotEmpty(t, gen())
+		}
+	}
+	_, err := AdvancedDatabase{IDFormat: IDFormatSerial, GenerateID: func() string { return "x" }}.IDGenerator()
+	require.Error(t, err)
+	// Step 2: the registry gets the strategy and the rateLimit table
+	cfg := &AuthConfig{Advanced: Advanced{Database: AdvancedDatabase{IDFormat: IDFormatSerial}}, RateLimit: RateLimitOptions{Storage: "database", ModelName: "rate_limits"}}
+	opts := cfg.SchemaOptions()
+	require.Equal(t, schema.IDSerial, opts.IDs)
+	require.True(t, opts.RateLimit)
+	require.Equal(t, "rate_limits", opts.Models[schema.ModelRateLimit].ModelName)
+	require.False(t, (&AuthConfig{}).SchemaOptions().RateLimit)
+	// Step 3: migration modes
+	for in, want := range map[MigrationMode]MigrationMode{"": MigrationsAuto, "AUTO": MigrationsAuto, "verify": MigrationsVerify, "off": MigrationsOff} {
+		got, err := MigrationsOptions{Mode: in}.EffectiveMode()
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	}
+	_, err = MigrationsOptions{Mode: "sometimes"}.EffectiveMode()
+	require.Error(t, err)
+}

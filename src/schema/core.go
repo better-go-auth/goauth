@@ -168,6 +168,17 @@ func coreModels() []coreModel {
 	return []coreModel{user, session, account, verification}
 }
 
+// rateLimitModel is better-auth's rateLimit table (getAuthTables with rateLimit.storage = "database"):
+// one row per rate-limit key, lastRequest in Unix milliseconds.
+func rateLimitModel() Model {
+	return Model{Fields: map[string]Field{
+		"id":          {Type: ID, Required: true, Input: Bool(false), Owner: OwnerCore},
+		"key":         {Type: String, Required: true, Unique: true, Owner: OwnerCore},
+		"count":       {Type: Integer, Required: true, Owner: OwnerCore},
+		"lastRequest": {Type: Integer, Required: true, Default: func() any { return time.Now().UnixMilli() }, Owner: OwnerCore},
+	}}
+}
+
 // Core returns the core model definitions (user, session, account, verification) with goauth's built-in
 // and plugin-owned columns. Every call returns fresh maps.
 func Core() map[string]Model {
@@ -190,5 +201,6 @@ func coreOrder() map[string][]string {
 			out[cm.name] = append(out[cm.name], nf.name)
 		}
 	}
+	out[ModelRateLimit] = []string{"id", "key", "count", "lastRequest"}
 	return out
 }

@@ -322,21 +322,59 @@ func TestDiff(t *testing.T) {
 		"user": {AdditionalFields: map[string]schema.Field{"loyaltyTier": {Type: schema.String}}},
 	}})
 	user, _ := reg.Model("user")
-	// Step 1: a snapshot with the user table missing loyalty_tier, and no other tables
+	// Step 1: a snapshot with the user table missing loyalty_tier, and no other tables; the user indexes
+	// exist under other names (indexes match by columns)
 	snap := &schema.Snapshot{Tables: []schema.TableSnapshot{{Name: "USER"}}}
 	for _, f := range user.Fields() {
 		if f.Name != "loyaltyTier" {
 			snap.Tables[0].Columns = append(snap.Tables[0].Columns, schema.ColumnSnapshot{Name: f.Column})
 		}
 	}
-	// Step 2: the plan adds the column and the three other tables
+	for _, idx := range user.IndexSpecs() {
+		snap.Tables[0].Indexes = append(snap.Tables[0].Indexes, schema.IndexSnapshot{Name: "x_" + idx.Name, Columns: idx.Columns, Unique: idx.Unique})
+	}
+	// Step 2: the plan adds the three other tables first, then the column, then the new tables' indexes
 	plan := schema.Diff(reg, snap)
 	require.False(t, plan.Empty())
-	require.Len(t, plan.Changes, 4)
-	require.Equal(t, schema.AddColumn, plan.Changes[0].Kind)
-	require.Equal(t, "loyalty_tier", plan.Changes[0].Field.Column)
-	for _, c := range plan.Changes[1:] {
-		require.Equal(t, schema.AddTable, c.Kind)
+	require.Same(t, reg, plan.Registry)
+	var kinds []schema.ChangeKind
+	for _, c := range plan.Changes {
+		kinds = append(kinds, c.Kind)
 	}
+	require.Equal(t, []schema.ChangeKind{schema.AddTable, schema.AddTable, schema.AddTable, schema.AddColumn}, kinds[:4])
+	require.Equal(t, "loyalty_tier", plan.Changes[3].Field.Column)
+	for _, c := range plan.Changes[4:] {
+		require.Equal(t, schema.AddIndex, c.Kind)
+		require.NotEqual(t, "user", c.Model)
+	}
+	require.Contains(t, plan.Summary(), "add unique index idx_provider_account on account (provider_id, account_id)")
 	require.True(t, (&schema.Plan{}).Empty())
+
+	// Step 3: a non-unique index doesn't satisfy a unique need; a unique one satisfies an index need
+	tbl := &schema.TableSnapshot{Indexes: []schema.IndexSnapshot{{Columns: []string{"email"}}, {Columns: []string{"user_id"}, Unique: true}}}
+	require.False(t, tbl.HasIndex([]string{"email"}, true))
+	require.True(t, tbl.HasIndex([]string{"EMAIL"}, false))
+	require.True(t, tbl.HasIndex([]string{"user_id"}, false))
+	require.False(t, tbl.HasIndex([]string{"user_id", "x"}, false))
+	pair := &schema.TableSnapshot{Indexes: []schema.IndexSnapshot{{Columns: []string{"account_id", "provider_id"}, Unique: true}}}
+	require.True(t, pair.HasIndex([]string{"provider_id", "account_id"}, true), "column order doesn't matter")
+}
+
+func TestIndexNameAndDependencyOrder(t *testing.T) {
+	// Step 1: GORM's index naming, long names cut with a hash suffix
+	require.Equal(t, "idx_user_email", schema.IndexName("user", "email"))
+	long := schema.IndexName(strings.Repeat("t", 60), "column")
+	require.Len(t, long, 64)
+	require.Equal(t, long, schema.IndexName(strings.Repeat("t", 60), "column"))
+
+	// Step 2: plugin tables come after the tables they reference, whatever the plugin order
+	reg := schema.MustBuild(schema.Options{Plugins: []schema.Plugin{{ID: "p", Schema: schema.PluginSchema{
+		"child":  {Fields: map[string]schema.Field{"parentId": {Type: schema.String, References: &schema.Reference{Model: "parent", Field: "id"}}}},
+		"parent": {Fields: map[string]schema.Field{"userId": {Type: schema.String, References: &schema.Reference{Model: "user", Field: "id"}}}},
+	}}}})
+	var names []string
+	for _, m := range schema.DependencyOrder(reg) {
+		names = append(names, m.Name())
+	}
+	require.Equal(t, []string{"user", "session", "account", "verification", "parent", "child"}, names)
 }

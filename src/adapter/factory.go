@@ -28,11 +28,16 @@ type factory struct {
 	b     Backend
 	caps  Capabilities
 	genID func() string
+	// ids is the registry's id strategy: with IDDatabase / IDSerial the database creates ids, and with
+	// IDSerial every field holding an id is stored as an integer (strings in records).
+	ids schema.IDStrategy
 }
 
-// New wraps backend b in the shared factory for registry reg.
+// New wraps backend b in the shared factory for registry reg. With the registry's id strategy IDDatabase
+// or IDSerial, records created without an id get the id the database generates (WithIDGenerator is then
+// not used).
 func New(reg *schema.Registry, b Backend, opts ...Option) Adapter {
-	f := &factory{reg: reg, b: b, caps: b.Capabilities(), genID: idgen.GenerateID}
+	f := &factory{reg: reg, b: b, caps: b.Capabilities(), genID: idgen.GenerateID, ids: reg.IDStrategy()}
 	for _, o := range opts {
 		o(f)
 	}
@@ -90,12 +95,19 @@ func (f *factory) Create(ctx context.Context, model string, data Record) (Record
 	for _, fld := range m.Fields() {
 		v, present := data[fld.Name]
 		if fld.Name == "id" {
-			if s, _ := v.(string); s != "" {
+			// the id: given, generated here, or (id strategy database / serial) left to the database
+			if s, _ := normalizeID(v); s != "" {
 				id = s
-			} else {
+			} else if !f.ids.DatabaseGenerated() {
 				id = f.genID()
 			}
-			row[fld.Column] = id
+			if id != "" {
+				sv, err := f.idStorage(m, fld, id)
+				if err != nil {
+					return nil, err
+				}
+				row[fld.Column] = sv
+			}
 			continue
 		}
 		if (!present || (v == nil && fld.Required)) && fld.HasDefault() {
@@ -114,10 +126,92 @@ func (f *factory) Create(ctx context.Context, model string, data Record) (Record
 		row[fld.Column] = sv
 	}
 	// Step 3: insert and read the row back
+	if id == "" {
+		return f.createGeneratedID(ctx, m, row)
+	}
 	if err := f.b.Insert(ctx, m.Table(), row); err != nil {
 		return nil, f.wrapUnique(m, err)
 	}
 	return f.FindOne(ctx, model, []Where{{Field: "id", Value: id}})
+}
+
+// createGeneratedID inserts a row without an id (id strategy database / serial) and reads it back by the id
+// the database generated, or, when the backend can't report it, by the row's unique values.
+func (f *factory) createGeneratedID(ctx context.Context, m *schema.ResolvedModel, row Row) (Record, error) {
+	idCol := m.Column("id")
+	// Step 1: insert, asking the backend for the new id
+	var newID any
+	if ib, ok := f.b.(IDInserter); ok {
+		got, err := ib.InsertReturningID(ctx, m.Table(), row, idCol, f.ids == schema.IDSerial)
+		if err != nil {
+			return nil, f.wrapUnique(m, err)
+		}
+		newID = got
+	} else if err := f.b.Insert(ctx, m.Table(), row); err != nil {
+		return nil, f.wrapUnique(m, err)
+	}
+	// Step 2: read the row back by its id
+	if newID != nil {
+		rows, err := f.b.Select(ctx, m.Table(), Select{Where: []Cond{{Column: idCol, Op: Eq, Value: newID, Connector: And, Type: schema.ID}}, Limit: 1})
+		if err != nil {
+			return nil, err
+		}
+		if len(rows) == 1 {
+			return f.toRecord(m, rows[0], nil)
+		}
+	}
+	// Step 3: no id reported: a unique value identifies the row, else every value must match exactly one row
+	var where []Cond
+	for _, fld := range m.Fields() {
+		if v, ok := row[fld.Column]; ok && v != nil && fld.Unique {
+			where = []Cond{{Column: fld.Column, Op: Eq, Value: v, Connector: And, Type: fld.Type}}
+			break
+		}
+	}
+	if where == nil {
+		for _, fld := range m.Fields() {
+			if v, ok := row[fld.Column]; ok {
+				where = append(where, Cond{Column: fld.Column, Op: Eq, Value: v, Connector: And, Type: fld.Type})
+			}
+		}
+	}
+	rows, err := f.b.Select(ctx, m.Table(), Select{Where: where, Limit: 2})
+	if err != nil {
+		return nil, err
+	}
+	if len(rows) != 1 {
+		return nil, fmt.Errorf("adapter: %s: cannot identify the inserted row (the database generated its id); "+
+			"give the model a unique field or let the backend report generated ids", m.Name())
+	}
+	return f.toRecord(m, rows[0], nil)
+}
+
+// normalizeID returns a record id as a string ("" for nil / empty).
+func normalizeID(v any) (string, error) {
+	if v == nil {
+		return "", nil
+	}
+	nv, err := schema.Normalize(schema.ID, v)
+	if err != nil {
+		if rv := reflect.ValueOf(v); rv.CanInt() {
+			return strconv.FormatInt(rv.Int(), 10), nil
+		}
+		return "", err
+	}
+	s, _ := nv.(string)
+	return s, nil
+}
+
+// idStorage converts an id (or a reference to one) to its storage value: an int64 under IDSerial.
+func (f *factory) idStorage(m *schema.ResolvedModel, fld schema.ResolvedField, id string) (any, error) {
+	if f.ids != schema.IDSerial {
+		return id, nil
+	}
+	n, err := strconv.ParseInt(strings.TrimSpace(id), 10, 64)
+	if err != nil {
+		return nil, &ValueError{Model: m.Name(), Field: fld.Name, Err: fmt.Errorf("serial id %q is not an integer", id)}
+	}
+	return n, nil
 }
 
 // toStorage turns a record value into the value the backend stores (create: required check included).
@@ -133,7 +227,15 @@ func (f *factory) toStorage(m *schema.ResolvedModel, fld schema.ResolvedField, v
 	if nv == nil && fld.Required && create {
 		return nil, &ValueError{Model: m.Name(), Field: fld.Name, Err: errors.New("value is required")}
 	}
-	// Step 2: encode types the backend doesn't store natively
+	// Step 2: references to serial ids are integers
+	if f.ids == schema.IDSerial && fld.HoldsID() && nv != nil {
+		s, err := normalizeID(nv)
+		if err != nil {
+			return nil, &ValueError{Model: m.Name(), Field: fld.Name, Err: err}
+		}
+		return f.idStorage(m, fld, s)
+	}
+	// Step 3: encode types the backend doesn't store natively
 	return f.encode(fld.Type, nv)
 }
 
@@ -339,6 +441,18 @@ func (f *factory) whereValue(fld schema.ResolvedField, v any) (any, error) {
 			}
 		}
 	}
+	// serial ids: a value that is not an integer matches no row (-1 is never generated)
+	if f.ids == schema.IDSerial && fld.HoldsID() && v != nil {
+		s, err := normalizeID(v)
+		if err != nil {
+			return nil, err
+		}
+		n, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+		if err != nil {
+			return int64(-1), nil
+		}
+		return n, nil
+	}
 	nv, err := schema.Normalize(fld.Type, v)
 	if err != nil {
 		return nil, err
@@ -416,6 +530,13 @@ func (f *factory) find(ctx context.Context, model string, q Query) ([]Record, er
 			return nil, fmt.Errorf("%w %q on model %q", ErrUnknownField, name, model)
 		}
 		sel.Columns = append(sel.Columns, fld.Column)
+	}
+	// every column is named (never SELECT *): columns the registry doesn't know are not read, and SQL
+	// drivers that cache prepared statements (pgx) don't break when a migration adds a column
+	if len(sel.Columns) == 0 {
+		for _, fld := range m.Fields() {
+			sel.Columns = append(sel.Columns, fld.Column)
+		}
 	}
 	// Step 2: query and convert rows to records
 	rows, err := f.b.Select(ctx, m.Table(), sel)

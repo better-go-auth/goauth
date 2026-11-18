@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	jwtmodels "github.com/better-go-auth/goauth/src/plugins/jwt/models"
 	"gorm.io/gorm"
@@ -33,7 +34,7 @@ func (r *gormJwksRepo) Migrator() migration.IMigrator { return r.migrator }
 
 func (r *gormJwksRepo) GetAllKeys(ctx context.Context) ([]jwtmodels.JWK, error) {
 	var keys []jwtmodels.JWK
-	if err := r.db.WithContext(ctx).Order("created_at desc").Find(&keys).Error; err != nil {
+	if err := r.db.WithContext(ctx).Order(gormutil.OrderBy(r.db, &jwtmodels.JWK{}, "CreatedAt", true)).Find(&keys).Error; err != nil {
 		return nil, err
 	}
 	return keys, nil
@@ -41,7 +42,7 @@ func (r *gormJwksRepo) GetAllKeys(ctx context.Context) ([]jwtmodels.JWK, error) 
 
 func (r *gormJwksRepo) GetLatestKey(ctx context.Context) (*jwtmodels.JWK, error) {
 	var key jwtmodels.JWK
-	err := r.db.WithContext(ctx).Order("created_at desc").First(&key).Error
+	err := r.db.WithContext(ctx).Order(gormutil.OrderBy(r.db, &jwtmodels.JWK{}, "CreatedAt", true)).First(&key).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil

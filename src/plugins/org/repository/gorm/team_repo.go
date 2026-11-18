@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
@@ -50,7 +51,7 @@ func (r *TeamRepo) ListTeamsByOrgID(ctx context.Context, orgID string, pagi mode
 	if pagi.Limit > 0 {
 		limit = pagi.Limit
 	}
-	if err := q.Limit(limit).Offset(pagi.Offset).Order("created_at DESC").Find(&teams).Error; err != nil {
+	if err := q.Limit(limit).Offset(pagi.Offset).Order(gormutil.OrderBy(r.db, &models.Team{}, "CreatedAt", true)).Find(&teams).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/team: list: %w", err)
 	}
 	return teams, total, nil
@@ -114,7 +115,7 @@ func (r *TeamMemberRepo) ListMembersByTeamID(ctx context.Context, teamID string,
 	if pagi.Limit > 0 {
 		limit = pagi.Limit
 	}
-	if err := q.Preload("User").Limit(limit).Offset(pagi.Offset).Order("created_at DESC").Find(&out).Error; err != nil {
+	if err := q.Preload("User").Limit(limit).Offset(pagi.Offset).Order(gormutil.OrderBy(r.db, &models.TeamMember{}, "CreatedAt", true)).Find(&out).Error; err != nil {
 		return nil, 0, fmt.Errorf("gorm/team-member: list: %w", err)
 	}
 	return out, total, nil

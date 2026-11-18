@@ -50,10 +50,15 @@ type InitContext struct {
 	// RateLimitProvider (or pluginkit.Route.RateLimit); nil outside SetupGoAuth.
 	RateLimiter *ratelimit.Limiter
 
-	// Adapter is the storage-agnostic adapter over the schema registry (core + config + plugin schemas).
-	// It is nil until SetupGoAuth builds the registry and adapter (missing-tasks 2.5); plugins moving off
-	// DB (2.9) read and write their models through it with registry field names.
+	// Adapter is the storage-agnostic adapter over the schema registry (core + config + plugin schemas):
+	// records keyed by registry field names, on GoAuthOptions.Conn (GORM) or the adapter behind
+	// adapter-based Repositories. Plugins that declare tables with SchemaProvider read and write them through
+	// it (their tables are created by goauth's migrator). nil only when GoAuthOptions.Repositories is not
+	// adapter-based and there is no Conn.
 	Adapter adapter.Adapter
+	// Schema is the schema registry SetupGoAuth built (core models, configuration additionalFields and
+	// renames, every SchemaProvider): table and column names, field definitions, input/output rules.
+	Schema *schema.Registry
 
 	// Extras is intentionally disabled. We do not use this field; all
 	// dependencies are provided via the typed fields above (DB,
@@ -101,6 +106,11 @@ type SchemaFieldsProvider interface {
 // plugin `schema`: fields added to existing models (user, session, ...) and whole new models (tables).
 // SetupGoAuth merges every provider into the schema registry after the configuration's additionalFields
 // (later plugins win), and the registry drives input parsing, output, migrations and the adapter.
+//
+// Schema is called before Init (the registry is built first), so it may only depend on the plugin's
+// options. Tables declared here are created by goauth's migrator (GoAuth.Migrations.Mode auto), checked
+// by verify mode and included in goauth.GenerateSQL / the goauth CLI; the plugin reads and writes them
+// with InitContext.Adapter and needs no Migrator.
 type SchemaProvider interface {
 	Schema() schema.PluginSchema
 }

@@ -1,14 +1,10 @@
 // Package gormtest is test support for GORM-backed adapters: databases for each dialect (SQLite always,
 // Postgres and MySQL through TEST_POSTGRES_URL / TEST_MYSQL_URL or testcontainers, skipped without Docker)
-// and a minimal DDL builder that creates the tables and columns of a registry.
-//
-// The DDL here only exists so the contract tests can run on any registry; it is not goauth's migrator
-// (task 2.7 builds that, with per-dialect type rendering and index handling).
+// and Migrate, which creates a registry's tables with goauth's own migrator.
 package gormtest
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -73,134 +69,13 @@ func Reset(t *testing.T, db *gorm.DB, reg *schema.Registry) {
 	}
 }
 
-// Migrate creates the missing tables and columns of reg (unique constraints included).
+// Migrate creates the missing tables, columns and indexes of reg with goauth's migrator
+// (gormadapter.Backend Plan + Apply, i.e. the DDL of src/schema/render).
 func Migrate(db *gorm.DB, reg *schema.Registry) error {
-	// Step 1: what is missing
-	var tables []string
-	for _, m := range reg.Models() {
-		tables = append(tables, m.Table())
-	}
-	snap, err := gormadapter.NewBackend(db).InspectTables(context.Background(), tables...)
+	b := gormadapter.NewBackend(db)
+	plan, err := b.Plan(context.Background(), reg)
 	if err != nil {
 		return err
 	}
-	plan := schema.Diff(reg, snap)
-	dialect := db.Dialector.Name()
-	q := func(name string) string {
-		var sb strings.Builder
-		db.Dialector.QuoteTo(&sb, name)
-		return sb.String()
-	}
-	// Step 2: one statement per missing table / column, then the unique indexes of new tables
-	for _, c := range plan.Changes {
-		m, _ := reg.Model(c.Model)
-		// fields of multi-column indexes need an indexable type (MySQL can't index TEXT)
-		indexed := map[string]bool{}
-		for _, idx := range m.Indexes() {
-			for _, fn := range idx.Fields {
-				indexed[fn] = true
-			}
-		}
-		switch c.Kind {
-		case schema.AddTable:
-			var cols []string
-			for _, f := range m.Fields() {
-				cols = append(cols, q(f.Column)+" "+columnDef(dialect, f, true, indexed[f.Name]))
-			}
-			if err := db.Exec(fmt.Sprintf("CREATE TABLE %s (%s)", q(m.Table()), strings.Join(cols, ", "))).Error; err != nil {
-				return fmt.Errorf("create %s: %w", m.Table(), err)
-			}
-			for i, idx := range m.Indexes() {
-				if !idx.Unique {
-					continue
-				}
-				var cols []string
-				for _, fn := range idx.Fields {
-					cols = append(cols, q(m.Column(fn)))
-				}
-				name := fmt.Sprintf("uidx_%s_%d", m.Table(), i)
-				if err := db.Exec(fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", q(name), q(m.Table()), strings.Join(cols, ", "))).Error; err != nil {
-					return fmt.Errorf("index %s: %w", name, err)
-				}
-			}
-		case schema.AddColumn:
-			if err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", q(c.Table), q(c.Field.Column), columnDef(dialect, c.Field, false, indexed[c.Field.Name]))).Error; err != nil {
-				return fmt.Errorf("add %s.%s: %w", c.Table, c.Field.Column, err)
-			}
-			if c.Field.Unique {
-				name := fmt.Sprintf("uidx_%s_%s", c.Table, c.Field.Column)
-				if err := db.Exec(fmt.Sprintf("CREATE UNIQUE INDEX %s ON %s (%s)", q(name), q(c.Table), q(c.Field.Column))).Error; err != nil {
-					return fmt.Errorf("index %s: %w", name, err)
-				}
-			}
-		}
-	}
-	return nil
-}
-
-// columnDef renders a column type (and constraints for new tables) for dialect.
-func columnDef(dialect string, f schema.ResolvedField, newTable, indexed bool) string {
-	def := columnType(dialect, f, indexed)
-	if f.Name == "id" {
-		return def + " PRIMARY KEY"
-	}
-	if newTable && f.Required {
-		def += " NOT NULL"
-	}
-	if newTable && f.Unique {
-		def += " UNIQUE"
-	}
-	return def
-}
-
-// columnType maps a logical type to a physical one (plan 02 §4.5's table).
-func columnType(dialect string, f schema.ResolvedField, indexed bool) string {
-	keyed := indexed || f.Unique || f.Index || f.Sortable || f.References != nil || f.Type == schema.ID
-	switch dialect {
-	case "postgres":
-		switch f.Type {
-		case schema.Number:
-			return "double precision"
-		case schema.Integer:
-			return "bigint"
-		case schema.Boolean:
-			return "boolean"
-		case schema.Date:
-			return "timestamptz"
-		case schema.JSON, schema.StringArray, schema.NumberArray:
-			return "jsonb"
-		}
-		if keyed {
-			return "varchar(255)"
-		}
-		return "text"
-	case "mysql":
-		switch f.Type {
-		case schema.Number:
-			return "double"
-		case schema.Integer:
-			return "bigint"
-		case schema.Boolean:
-			return "tinyint(1)"
-		case schema.Date:
-			return "datetime(3)"
-		case schema.JSON, schema.StringArray, schema.NumberArray:
-			return "json"
-		}
-		if keyed {
-			return "varchar(255)"
-		}
-		return "text"
-	}
-	switch f.Type {
-	case schema.Number:
-		return "real"
-	case schema.Integer:
-		return "integer"
-	case schema.Boolean:
-		return "numeric"
-	case schema.Date:
-		return "datetime"
-	}
-	return "text"
+	return b.Apply(context.Background(), plan)
 }

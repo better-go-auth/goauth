@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/better-go-auth/goauth/src/models"
+	goauthschema "github.com/better-go-auth/goauth/src/schema"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -65,5 +66,41 @@ func TestNewNamingStrategyMultiTenancy(t *testing.T) {
 	}
 	if stmt2.Schema.Table != "tenant2_accounts" {
 		t.Errorf("db2 table name: got %q, want %q", stmt2.Schema.Table, "tenant2_accounts")
+	}
+}
+
+// TestNamingStrategyWithRegistry: GORM column names follow the registry (camel case, Fields renames) for
+// registry tables and camelCase for GORM-only tables, with better-auth's irregular names.
+func TestNamingStrategyWithRegistry(t *testing.T) {
+	camel := goauthschema.MustBuild(goauthschema.Options{ColumnCase: goauthschema.Camel, Models: map[string]goauthschema.ModelOptions{
+		"user": {ModelName: "users", Fields: map[string]string{"name": "full_name"}},
+	}})
+	ns := NewNamingStrategy("", map[string]string{"user": "users"}, WithRegistry(camel))
+	cases := map[[2]string]string{
+		{"users", "EmailVerified"}:   "emailVerified",
+		{"users", "Name"}:            "full_name",
+		{"users", "LastLoginIP"}:     "lastLoginIP",
+		{"session", "UserID"}:        "userId",
+		{"session", "IPAddress"}:     "ipAddress",
+		{"twoFactor", "BackupCodes"}: "backupCodes",
+		{"passkey", "CredentialID"}:  "credentialID",
+		{"member", "OrganizationID"}: "organizationId",
+	}
+	for in, want := range cases {
+		if got := ns.ColumnName(in[0], in[1]); got != want {
+			t.Errorf("ColumnName(%q, %q) = %q, want %q", in[0], in[1], got, want)
+		}
+	}
+	// snake: registry renames only, GORM's names elsewhere
+	snake := goauthschema.MustBuild(goauthschema.Options{Models: map[string]goauthschema.ModelOptions{"session": {Fields: map[string]string{"token": "session_token"}}}})
+	ns = NewNamingStrategy("", nil, WithRegistry(snake))
+	if got := ns.ColumnName("session", "Token"); got != "session_token" {
+		t.Errorf("renamed token = %q", got)
+	}
+	if got := ns.ColumnName("passkey", "CredentialID"); got != "credential_id" {
+		t.Errorf("snake passkey column = %q", got)
+	}
+	if got := CamelFromSnake("access_token_expires_at"); got != "accessTokenExpiresAt" {
+		t.Errorf("CamelFromSnake = %q", got)
 	}
 }

@@ -15,6 +15,7 @@ import (
 	"github.com/better-go-auth/goauth/src/schema"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 // New returns a GORM adapter for reg on db.
@@ -68,7 +69,12 @@ func (b *Backend) Select(ctx context.Context, table string, q adapter.Select) ([
 		db = db.Where(expr)
 	}
 	if len(q.Columns) > 0 {
-		db = db.Select(q.Columns)
+		// quoted columns (db.Select would pass camelCase names unquoted, which Postgres folds to lower case)
+		cols := make([]clause.Column, len(q.Columns))
+		for i, c := range q.Columns {
+			cols[i] = clause.Column{Name: c}
+		}
+		db = db.Clauses(clause.Select{Columns: cols})
 	}
 	for _, o := range q.Order {
 		db = db.Order(clause.OrderByColumn{Column: clause.Column{Name: o.Column}, Desc: o.Desc})
@@ -311,7 +317,8 @@ func (b *Backend) Inspect(ctx context.Context) (*schema.Snapshot, error) {
 // InspectTables reads the given tables (those that exist) with their columns and indexes. Prefer it to
 // Inspect on a shared database: it never looks at other applications' tables.
 func (b *Backend) InspectTables(ctx context.Context, tables ...string) (*schema.Snapshot, error) {
-	m := b.db.WithContext(ctx).Migrator()
+	// introspection queries are not logged (GORM's SQLite migrator forces Debug on its index queries)
+	m := b.db.Session(&gorm.Session{Logger: gormlogger.Discard}).WithContext(ctx).Migrator()
 	snap := &schema.Snapshot{}
 	for _, name := range tables {
 		if !m.HasTable(name) {
@@ -327,17 +334,67 @@ func (b *Backend) InspectTables(ctx context.Context, tables ...string) (*schema.
 			nullable, _ := c.Nullable()
 			t.Columns = append(t.Columns, schema.ColumnSnapshot{Name: c.Name(), DatabaseType: c.DatabaseTypeName(), Nullable: nullable})
 		}
-		// Step 2: indexes
-		idxs, err := m.GetIndexes(name)
-		if err != nil {
-			return nil, fmt.Errorf("gormadapter: indexes of %s: %w", name, err)
-		}
-		for _, idx := range idxs {
-			unique, _ := idx.Unique()
-			primary, _ := idx.PrimaryKey()
-			t.Indexes = append(t.Indexes, schema.IndexSnapshot{Name: idx.Name(), Columns: idx.Columns(), Unique: unique, Primary: primary})
+		// Step 2: indexes (Postgres: own query, see postgresIndexes)
+		if b.dialect() == "postgres" {
+			idxs, err := b.postgresIndexes(ctx, name)
+			if err != nil {
+				return nil, fmt.Errorf("gormadapter: indexes of %s: %w", name, err)
+			}
+			t.Indexes = idxs
+		} else {
+			idxs, err := m.GetIndexes(name)
+			if err != nil {
+				return nil, fmt.Errorf("gormadapter: indexes of %s: %w", name, err)
+			}
+			for _, idx := range idxs {
+				unique, _ := idx.Unique()
+				primary, _ := idx.PrimaryKey()
+				t.Indexes = append(t.Indexes, schema.IndexSnapshot{Name: idx.Name(), Columns: idx.Columns(), Unique: unique, Primary: primary})
+			}
 		}
 		snap.Tables = append(snap.Tables, t)
 	}
 	return snap, nil
+}
+
+// postgresIndexSQL lists the indexes of one table of the current schema, constraint-backed ones (primary
+// keys, UNIQUE constraints like better-auth's Kysely migrations create) included, columns in index order.
+const postgresIndexSQL = `
+SELECT ci.relname AS index_name, i.indisunique AS is_unique, i.indisprimary AS is_primary, a.attname AS column_name
+FROM pg_index i
+JOIN pg_class ct ON ct.oid = i.indrelid
+JOIN pg_class ci ON ci.oid = i.indexrelid
+JOIN pg_namespace n ON n.oid = ct.relnamespace
+JOIN LATERAL unnest(i.indkey::int2[]) WITH ORDINALITY AS k(attnum, ord) ON true
+JOIN pg_attribute a ON a.attrelid = ct.oid AND a.attnum = k.attnum
+WHERE ct.relname = ? AND n.nspname = current_schema()
+ORDER BY ci.relname, k.ord`
+
+// postgresIndexes reads the indexes of table. GORM's GetIndexes matches the table name in every schema
+// (mixing tables of other schemas in) and skips constraint-backed indexes.
+func (b *Backend) postgresIndexes(ctx context.Context, table string) ([]schema.IndexSnapshot, error) {
+	// Step 1: one row per index column
+	var rows []struct {
+		IndexName  string
+		IsUnique   bool
+		IsPrimary  bool
+		ColumnName string
+	}
+	db := b.db.Session(&gorm.Session{Logger: gormlogger.Discard}).WithContext(ctx)
+	if err := db.Raw(postgresIndexSQL, table).Scan(&rows).Error; err != nil {
+		return nil, err
+	}
+	// Step 2: group by index, keeping the column order
+	var out []schema.IndexSnapshot
+	pos := map[string]int{}
+	for _, r := range rows {
+		i, ok := pos[r.IndexName]
+		if !ok {
+			i = len(out)
+			pos[r.IndexName] = i
+			out = append(out, schema.IndexSnapshot{Name: r.IndexName, Unique: r.IsUnique, Primary: r.IsPrimary})
+		}
+		out[i].Columns = append(out[i].Columns, r.ColumnName)
+	}
+	return out, nil
 }

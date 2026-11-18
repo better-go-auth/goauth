@@ -56,7 +56,7 @@ func (r *UserRepo) FindUserByID(ctx context.Context, id string) (*models.User, e
 	// Step 1: Query user by primary key and exclude soft-deleted records
 	err := gormutil.GetDB(ctx, r.db).
 		Where(userByID(id), "ID").
-		Where("deleted_at IS NULL").
+		Where(clause.Eq{Column: gormutil.Col(r.db, &models.User{}, "DeletedAt"), Value: nil}).
 		Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -72,7 +72,7 @@ func (r *UserRepo) FindUserByEmail(ctx context.Context, email string) (*models.U
 	// Step 1: Query user by case-insensitive email and exclude soft-deleted records
 	err := gormutil.GetDB(ctx, r.db).
 		Where(gormutil.IEq(r.db, &models.User{}, "Email", email)).
-		Where("deleted_at IS NULL").
+		Where(clause.Eq{Column: gormutil.Col(r.db, &models.User{}, "DeletedAt"), Value: nil}).
 		Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -92,7 +92,7 @@ func (r *UserRepo) FindUserByPhoneNumber(ctx context.Context, phoneNumber string
 	// Step 1: Query by phone number and exclude soft-deleted records
 	err := gormutil.GetDB(ctx, r.db).
 		Where(&models.User{UserDto: models.UserDto{PhoneNumber: &phoneNumber}}, "PhoneNumber").
-		Where("deleted_at IS NULL").
+		Where(clause.Eq{Column: gormutil.Col(r.db, &models.User{}, "DeletedAt"), Value: nil}).
 		Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -112,7 +112,7 @@ func (r *UserRepo) FindUserByUsername(ctx context.Context, username string) (*mo
 	// Step 1: Query by username and exclude soft-deleted records
 	err := gormutil.GetDB(ctx, r.db).
 		Where(&models.User{UserDto: models.UserDto{Username: &username}}, "Username").
-		Where("deleted_at IS NULL").
+		Where(clause.Eq{Column: gormutil.Col(r.db, &models.User{}, "DeletedAt"), Value: nil}).
 		Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -190,7 +190,7 @@ func (r *UserRepo) SoftDeleteUser(ctx context.Context, id string) error {
 func (r *UserRepo) ListUsers(ctx context.Context, filter repo_interfaces.UserFilter, pagi dtos.PaginationInput) ([]models.User, int64, error) {
 	user := &models.User{}
 	// Step 1: Build base query excluding soft-deleted records
-	query := gormutil.GetDB(ctx, r.db).Model(user).Where("deleted_at IS NULL")
+	query := gormutil.GetDB(ctx, r.db).Model(user).Where(clause.Eq{Column: gormutil.Col(r.db, &models.User{}, "DeletedAt"), Value: nil})
 
 	if filter.Email != nil {
 		query = query.Where(gormutil.ILike(r.db, user, "Email", "%"+*filter.Email+"%"))

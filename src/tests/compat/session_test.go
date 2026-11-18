@@ -204,7 +204,7 @@ func TestPasswordRehashOnLegacyLogin(t *testing.T) {
 		t.Fatalf("login: %d %s", r.Status, r.Body)
 	}
 	var acc models.Account
-	s.DB.Where("user_id = ?", u.ID).Take(&acc)
+	s.DB.Where(&models.Account{UserID: u.ID}, "UserID").Take(&acc)
 	if authcrypto.HashFormat(*acc.Password) != authcrypto.FormatScrypt {
 		t.Fatalf("password was not upgraded: %s", *acc.Password)
 	}

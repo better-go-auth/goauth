@@ -47,14 +47,15 @@ the stage follows doc 04 §7.
   *(04 §7 step 2, 02 steps 2–3)* – after 2.2
 - [x] **2.4 Generic adapter contract + memory adapter + `adapterrepo`**; run `repotest` against it. *(04 §7 step 3)*
   – after 2.2
-- [ ] **2.5 GORM adapter** becomes the default `IAuthRepos` once `repotest` and the compat suite pass on SQLite,
+- [x] **2.5 GORM adapter** becomes the default `IAuthRepos` once `repotest` and the compat suite pass on SQLite,
   Postgres and MySQL; the old `gormauth` stays as an escape hatch. Riskiest step. *(04 §7 step 4)* – after 2.4
   - [x] GORM adapter (`src/adapter/gormadapter`) passing the adapter contract and `repotest` (via `adapterrepo`)
     on SQLite, Postgres and MySQL.
-  - [ ] Switch `SetupGoAuth`'s default repositories to `adapterrepo(gormadapter)` and run the compat suites.
+  - [x] Switch `SetupGoAuth`'s default repositories to `adapterrepo(gormadapter)` and run the compat suites
+    (`GoAuthOptions.GORMRepositories` keeps `gormauth`).
 - [ ] **2.6 `additionalFields` end to end:** sign-up, update-user, update-session, plugin sign-ups, admin
   create-user; official client test with `inferAdditionalFields`. Fixes blocker B2. *(02 step 6)* – after 2.3, 2.5
-- [ ] **2.7 Migrations:** SQL renderer, additive migrator, `Migrations.Mode = auto | verify | off`,
+- [x] **2.7 Migrations:** SQL renderer, additive migrator, `Migrations.Mode = auto | verify | off`,
   `goauth schema` and `goauth migrate generate` (Atlas declarative/versioned/external-schema, goose,
   golang-migrate). Also replaces `PrepareLegacyColumns`. *(04 §7 step 5, phase2 open item)* – after 2.5
 - [ ] **2.8 Plugins declare their schema** (`SchemaProvider`): move phone-number, two-factor, admin, username
@@ -71,9 +72,9 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
 - [x] **3.1 Global rate limiter** for core and plugin routes: 100 req / 10 s default, special rules for
   `/sign-in*`, `/sign-up*`, `/change-password`, `/change-email`, `RateLimit.CustomRules`; the email-otp private
   limiter is replaced. Blocker B5. *(01 §2.5)*
-- [ ] **3.2 Rate-limit storage** `memory | secondary-storage | database` (`rateLimit` table) and
+- [x] **3.2 Rate-limit storage** `memory | secondary-storage | database` (`rateLimit` table) and
   `CustomStorage`. Blocker B6. – after 3.1 and 2.7 *(memory, secondary-storage and `CustomStorage` done with
-  3.1; left: the `rateLimit` table and a `ratelimit.Storage` on it, see `ratelimit.StorageDatabase`)*
+  3.1; `database` = `ratelimit.DatabaseStorage` on the `rateLimit` model, done with 2.7)*
 - [x] **3.3 Endpoint `hooks.before/after`** (`AuthConfig.Hooks` and plugin hooks) on one Huma middleware;
   rebuild `OnAfterSignIn` and the 1.7 mechanism on it. *(01 §2.3)* – after 1.7
 - [ ] **3.4 `databaseHooks`** (`user/session/account/verification` × `create/update/delete` × `before/after`,
@@ -91,6 +92,7 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
 - [ ] **3.10 Smaller core options** (S each): `trustedOrigins` as a function of the request, dynamic `baseURL`
   with `allowedHosts`, `advanced.cookies` / `defaultCookieAttributes`, `generateId: false | "uuid" | "serial"`,
   `verification.storeIdentifier` (hashed tokens), `account.storeAccountCookie`. *(03 §2, audit plan)*
+  *(`generateId: false | "serial"` done: `Advanced.Database.IDFormat` = `database` / `serial`)*
 - [x] **3.11 Logger and background tasks:** injectable `AuthConfig.Logger` (levels, disabled) and
   `Advanced.BackgroundTasks` used by every `Send*` callback; add `ctx` to sender signatures in the next
   breaking release. *(01 §3)*
@@ -105,7 +107,9 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
 
 Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
 
-- [ ] **4.1 `ColumnCase = camel` + `Fields`/`ModelName` mapping**, with camel the default for new installs only.
+- [x] **4.1 `ColumnCase = camel` + `Fields`/`ModelName` mapping**, with camel the default for new installs only.
+  *(camel works end to end and matches better-auth's schema, `src/tests/compat/schemaparity`; the default
+  stays `snake` until the decision below; organization timestamps differ until 2.9)*
   Blocker B1. *(02 step 8, 04 §7 step 9)* – after 2.5
 - [ ] **4.2 Shared-database test:** a TypeScript better-auth server and goauth on one Postgres database; sign up on
   one and sign in on the other, for core and every plugin. *(01 §4.2, phase2 open item)* – after 4.1

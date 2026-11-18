@@ -8,12 +8,12 @@ import (
 // Matches Better Auth's jwks schema: id, publicKey, privateKey, createdAt, expiresAt.
 type JWK struct {
 	ID         string     `gorm:"primaryKey;size:255" json:"id"`
-	PublicKey  string     `gorm:"type:text;not null;column:public_key" json:"publicKey"`
-	PrivateKey string     `gorm:"type:text;not null;column:private_key" json:"privateKey"`
-	CreatedAt  time.Time  `gorm:"not null;column:created_at" json:"createdAt"`
-	ExpiresAt  *time.Time `gorm:"column:expires_at" json:"expiresAt,omitempty"`
-	Alg        string     `gorm:"size:50;column:alg" json:"alg,omitempty"`
-	Crv        string     `gorm:"size:50;column:crv" json:"crv,omitempty"`
+	PublicKey  string     `gorm:"type:text;not null" json:"publicKey"`
+	PrivateKey string     `gorm:"type:text;not null" json:"privateKey"`
+	CreatedAt  time.Time  `gorm:"not null" json:"createdAt"`
+	ExpiresAt  *time.Time ` json:"expiresAt,omitempty"`
+	Alg        string     `gorm:"size:50" json:"alg,omitempty"`
+	Crv        string     `gorm:"size:50" json:"crv,omitempty"`
 }
 
 // JWKKey represents a single public key entry in the JWKS set.

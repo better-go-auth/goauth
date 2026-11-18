@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	goauthschema "github.com/better-go-auth/goauth/src/schema"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -141,6 +142,11 @@ func NewServer(t testing.TB, opts ...Option) *Server {
 			BaseURL: "http://127.0.0.1:8080",
 			Secret:  TestSecret,
 		},
+	}
+	// GOAUTH_TEST_COLUMN_CASE=camel runs every compat server with better-auth's camelCase columns
+	// (GoAuth.ColumnCase), so the whole suite can be run against that layout
+	if cc := os.Getenv("GOAUTH_TEST_COLUMN_CASE"); cc != "" {
+		o.GoAuth.ColumnCase = goauthschema.ColumnCase(cc)
 	}
 	for _, opt := range opts {
 		opt(&o)

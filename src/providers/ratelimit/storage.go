@@ -3,10 +3,12 @@ package ratelimit
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/adapter"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
 
@@ -15,13 +17,12 @@ const (
 	StorageMemory           = "memory"
 	StorageSecondaryStorage = "secondary-storage"
 	// StorageDatabase is better-auth's "database" storage: the `rateLimit` table (id, key, count, lastRequest
-	// as a bigint of Unix milliseconds). SetupGoAuth rejects it until a Storage for that table exists
-	// (task 3.2). Its contract, as in better-auth's createDatabaseStorageWrapper:
+	// as a bigint of Unix milliseconds), implemented by DatabaseStorage on the storage adapter. Its contract,
+	// as in better-auth's createDatabaseStorageWrapper:
 	//   - Get(key): the first row with key = key, nil when there is none;
 	//   - Set(key, value, update=true): UPDATE rateLimit SET count, lastRequest WHERE key = key;
 	//   - Set(key, value, update=false): INSERT {key, count, lastRequest};
 	//   - errors never fail the request (the Limiter reports them through Options.OnError).
-	// Any Storage with these semantics can already be passed as AuthConfig.RateLimit.CustomStorage.
 	StorageDatabase = "database"
 )
 
@@ -149,4 +150,57 @@ func (s *SecondaryStorage) Set(ctx context.Context, key string, value Record, _ 
 		return fmt.Errorf("ratelimit: encode record: %w", err)
 	}
 	return s.store.Set(ctx, key, string(data), window)
+}
+
+// ─── database ────────────────────────────────────────────────────────────────
+
+// DatabaseStorage keeps records in better-auth's rateLimit table through a storage adapter (model
+// "rateLimit" of the schema registry, which SetupGoAuth adds with RateLimit.Storage "database"). Rows
+// written by a TypeScript better-auth server sharing the database are read the same way.
+type DatabaseStorage struct {
+	a adapter.Adapter
+}
+
+// NewDatabaseStorage returns the database storage on a. a's registry must have the rateLimit model
+// (schema.Options.RateLimit).
+func NewDatabaseStorage(a adapter.Adapter) *DatabaseStorage {
+	return &DatabaseStorage{a: a}
+}
+
+// rateLimitModel is the logical model name of the table.
+const rateLimitModel = "rateLimit"
+
+// Get returns the record of key, nil when there is none.
+func (s *DatabaseStorage) Get(ctx context.Context, key string) (*Record, error) {
+	rows, err := s.a.FindMany(ctx, rateLimitModel, adapter.Query{Where: []adapter.Where{{Field: "key", Value: key}}, Limit: 1})
+	if err != nil || len(rows) == 0 {
+		return nil, err
+	}
+	rec := &Record{Key: key}
+	if n, ok := rows[0]["count"].(int64); ok {
+		rec.Count = int(n)
+	}
+	if n, ok := rows[0]["lastRequest"].(int64); ok {
+		rec.LastRequest = n
+	}
+	return rec, nil
+}
+
+// Set updates the row of key (update) or inserts one. An insert racing another request for the same key
+// (unique violation on key) updates the row instead of losing the count.
+func (s *DatabaseStorage) Set(ctx context.Context, key string, value Record, update bool, _ time.Duration) error {
+	data := adapter.Record{"count": int64(value.Count), "lastRequest": value.LastRequest}
+	// Step 1: a record was read before: update it
+	if update {
+		_, err := s.a.UpdateMany(ctx, rateLimitModel, []adapter.Where{{Field: "key", Value: key}}, data)
+		return err
+	}
+	// Step 2: a new key: insert, or update when another request inserted it first
+	data["key"] = key
+	_, err := s.a.Create(ctx, rateLimitModel, data)
+	if errors.Is(err, adapter.ErrUniqueViolation) {
+		delete(data, "key")
+		_, err = s.a.UpdateMany(ctx, rateLimitModel, []adapter.Where{{Field: "key", Value: key}}, data)
+	}
+	return err
 }

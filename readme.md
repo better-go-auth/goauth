@@ -212,6 +212,17 @@ cfg := config.AuthConfig{
 }
 ```
 
+### Database Schema & Migrations
+
+goauth's tables are declared once in a schema registry (core models, `AdditionalFields`, `ModelName` /
+`Fields` renames, plugin schemas). `GoAuth.ColumnCase = schema.Camel` uses better-auth's camelCase columns,
+so a TypeScript better-auth server can share the database; `Advanced.Database.IDFormat` accepts better-auth's
+`generateId` values (`config.IDFormatDatabase` for `false`, `config.IDFormatSerial` for `"serial"`).
+`GoAuth.Migrations.Mode` is `auto` (default, additive only), `verify` (fail with the SQL that is missing) or
+`off`. `goauth.GenerateSQL` / `goauth.GenerateMigration` and the `schemacli` commands
+(`schema --dialect postgres`, `migrate generate --dir ./migrations`) feed Atlas (declarative, versioned,
+`external_schema`), goose and golang-migrate. See [_docs/schema-and-migrations.md](_docs/schema-and-migrations.md).
+
 ### Official Plugins
 
 | Plugin | Package | Description |

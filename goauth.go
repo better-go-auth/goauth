@@ -7,7 +7,10 @@ import (
 	"github.com/better-go-auth/goauth/src/common/logger"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/adapter"
+	"github.com/better-go-auth/goauth/src/adapter/gormadapter"
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
+	"github.com/better-go-auth/goauth/src/app/repository/adapterrepo"
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/repository/verifycleanup"
@@ -17,10 +20,8 @@ import (
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
-	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
@@ -28,6 +29,7 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/origin"
 	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
+	"github.com/better-go-auth/goauth/src/schema"
 	"gorm.io/gorm"
 
 	"github.com/better-go-auth/goauth/src/common/middleware"
@@ -56,6 +58,8 @@ type GoAuth struct {
 	cookies            *cookies.Manager
 	rateLimiter        *ratelimit.Limiter
 	logger             *logger.Logger
+	schema             *schema.Registry
+	adapter            adapter.Adapter
 }
 
 // RateLimiter returns the global rate limiter (AuthConfig.RateLimit).
@@ -82,8 +86,15 @@ func (g *GoAuth) Cookies() *cookies.Manager                          { return g.
 
 type GoAuthOptions struct {
 	config.AuthConfig
-	Conn             *gorm.DB
-	Repositories     repo_interfaces.IAuthRepos
+	Conn *gorm.DB
+	// Repositories replaces the default repositories (the generic adapter repositories on Conn).
+	Repositories repo_interfaces.IAuthRepos
+	// GORMRepositories uses the hand-written GORM repositories (gormauth) instead of the adapter-based
+	// default: an escape hatch while the adapter is new. They don't store additionalFields and need
+	// application-generated ids.
+	GORMRepositories bool
+	// Migrator replaces the core GORM bootstrap of GoAuth.Migrations.Mode auto (legacy upgrades + AutoMigrate
+	// of the core structs); the registry migrator still adds what is missing afterwards.
 	Migrator         migration.IMigrator
 	TxManager        interfaces.ITransactionManager
 	SecondaryStorage sec_storage.SecondaryStorage
@@ -143,53 +154,86 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	api.UseMiddleware(humaadapter.RequestContext())
 	// config: OnAPIError.OnError / Throw receive the errors better-auth's router hands to onError
 	api.UseMiddleware(humaadapter.APIErrorReporter(opts.OnAPIError))
-	// config: RateLimit — one limiter in front of every core and plugin route (better-auth's router onRequest)
-	limiter, err := newRateLimiter(opts)
-	if err != nil {
-		return nil, err
-	}
-	api.UseMiddleware(humaadapter.RateLimit(opts.AuthConfig, limiter))
-
-	models.SetTableNames(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
-	if opts.Conn != nil {
-		opts.Conn.Config.NamingStrategy = gormutil.NewNamingStrategy(opts.GoAuth.TablePrefix, opts.GoAuth.TableNames)
-		gormutil.RegisterCallbacks(opts.Conn)
-	}
 
 	if opts.Conn == nil && opts.Repositories == nil {
 		return nil, errors.New("goauth: either Conn (*gorm.DB) or Repositories (repo_interfaces.IAuthRepos) must be provided")
 	}
+	migrationMode, err := opts.GoAuth.Migrations.EffectiveMode()
+	if err != nil {
+		return nil, err
+	}
 
-	// 0. Resolve the ID generator (Advanced.Database.GenerateID, else IDFormat; default better-auth's random
+	// 0a. Build the schema registry once: core models, configuration (ModelName, Fields, AdditionalFields,
+	// ColumnCase, table names, id strategy, rateLimit table) and every plugin's SchemaProvider
+	reg, err := Schema(opts)
+	if err != nil {
+		return nil, err
+	}
+	// 0b. GORM-based code (gormauth, plugin repositories, the core GORM migrator) follows the registry's
+	// table and column names
+	if err := syncNaming(reg, opts, opts.Conn); err != nil {
+		return nil, err
+	}
+
+	// 0c. Resolve the ID generator (Advanced.Database.GenerateID, else IDFormat; default better-auth's random
 	// 32-char IDs). It is installed process-wide so plugins calling idgen.GenerateID use the same format.
+	// When the database creates ids (IDFormat database / serial) records get no id from goauth and the
+	// process-wide generator stays the default for other random ids.
 	generateID, err := opts.Advanced.Database.IDGenerator()
 	if err != nil {
 		return nil, fmt.Errorf("goauth: %w", err)
 	}
-	idgen.SetGenerator(generateID)
+	idgen.SetDatabaseIDs(reg.IDStrategy().DatabaseGenerated())
+	if reg.IDStrategy().DatabaseGenerated() {
+		idgen.SetGenerator(nil)
+		if opts.GORMRepositories {
+			return nil, errors.New("goauth: GORMRepositories needs application-generated ids (Advanced.Database.IDFormat database / serial use the adapter)")
+		}
+	} else {
+		idgen.SetGenerator(generateID)
+	}
 	// config: Advanced.GoAuth.ErrorRequestID shows the request ID of internal errors to clients
 	autherr.SetExposeRequestID(opts.Advanced.GoAuth.ErrorRequestID)
 
-	// 1. Resolve Repositories
-	repoOpts := []gormauth.RepoOption{gormauth.WithGenerateID(generateID)}
+	// 1. Resolve the storage adapter and the repositories: by default the generic repositories on the GORM
+	// adapter (additionalFields, renames, database ids); GORMRepositories keeps the hand-written ones, and
+	// Repositories replaces both
+	var store adapter.Adapter
+	if opts.Conn != nil {
+		store = gormadapter.New(opts.Conn, reg, adapter.WithIDGenerator(generateID))
+	}
 	repos := opts.Repositories
-	if repos == nil && opts.Conn != nil {
-		repos = gormauth.NewAuthRepos(opts.Conn, repoOpts...)
+	switch {
+	case repos != nil:
+		if store == nil {
+			if ar, ok := repos.(interface{ Adapter() adapter.Adapter }); ok {
+				store = ar.Adapter()
+			}
+		}
+	case opts.GORMRepositories:
+		repos = gormauth.NewAuthRepos(opts.Conn, gormauth.WithGenerateID(generateID))
+	default:
+		ar, err := adapterrepo.New(store, reg)
+		if err != nil {
+			return nil, fmt.Errorf("goauth: repositories: %w", err)
+		}
+		repos = ar
 	}
 	// delete expired verifications whenever one is read, like better-auth (opt out with Verification.DisableCleanup)
 	if !opts.Verification.DisableCleanup {
 		repos = verifycleanup.Wrap(repos)
 	}
 
-	// 2. Resolve Migrator
-	migrator := opts.Migrator
-	if migrator == nil && opts.Conn != nil {
-		migrator = core_migration.NewGORMAdminMigrator(opts.Conn)
+	// config: RateLimit — one limiter in front of every core and plugin route (better-auth's router onRequest)
+	limiter, err := newRateLimiter(opts, store)
+	if err != nil {
+		return nil, err
 	}
-	if migrator != nil {
-		if err := migrator.Migrate(ctx); err != nil {
-			return nil, err
-		}
+	api.UseMiddleware(humaadapter.RateLimit(opts.AuthConfig, limiter))
+
+	// 2. Migrations (GoAuth.Migrations.Mode): the core GORM bootstrap and the registry's additive changes
+	if err := runCoreMigrations(ctx, opts, migrationMode, reg, store); err != nil {
+		return nil, err
 	}
 
 	// 3. Resolve Transaction Manager
@@ -257,6 +301,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		CookieManager:    cookieMgr,
 		GenerateID:       generateID,
 		RateLimiter:      limiter,
+		Adapter:          store,
+		Schema:           reg,
 	}
 
 	// Phase 1: Initialize plugins (transport/middleware plugins first so global middlewares wrap all plugin routes)
@@ -322,9 +368,14 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		}
 	}
 
-	// Phase 2: Run migrations for all plugins (now fully configured with DB)
+	// Phase 2: Run migrations for all plugins (now fully configured with DB). Plugins storing GORM structs
+	// migrate them here in auto mode only (verify / off leave the schema to the operator); plugins declaring
+	// their tables with SchemaProvider were migrated with the registry above
+	if err := checkDatabaseIDs(reg, opts.Plugins); err != nil {
+		return nil, err
+	}
 	for _, p := range opts.Plugins {
-		if p == nil {
+		if p == nil || migrationMode != config.MigrationsAuto {
 			continue
 		}
 		if mig := p.Migrator(); mig != nil {
@@ -332,6 +383,12 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 				return nil, fmt.Errorf("goauth: plugin migration failed for %s: %w", p.ID(), err)
 			}
 			log.Info("migrated plugin", "plugin", p.ID())
+		}
+	}
+	// Phase 3: the registry once more, after the GORM migrators (they may have rebuilt registry tables)
+	if migrationMode == config.MigrationsAuto {
+		if err := applyRegistry(ctx, reg, store); err != nil {
+			return nil, err
 		}
 	}
 
@@ -364,6 +421,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		cookies:            cookieMgr,
 		rateLimiter:        limiter,
 		logger:             log,
+		schema:             reg,
+		adapter:            store,
 	}, nil
 }
 

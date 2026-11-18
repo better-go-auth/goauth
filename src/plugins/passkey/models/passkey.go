@@ -7,18 +7,18 @@ import "time"
 // gormutil's naming strategy; JSON names match better-auth's field names.
 type Passkey struct {
 	ID   string  `gorm:"primaryKey;size:255" json:"id"`
-	Name *string `gorm:"column:name" json:"name"`
+	Name *string ` json:"name"`
 	// PublicKey is the standard base64 encoding of the COSE credential public key (as @simplewebauthn stores it).
-	PublicKey string `gorm:"type:text;not null;column:public_key" json:"publicKey"`
-	UserID    string `gorm:"not null;index;size:255;column:user_id" json:"userId"`
+	PublicKey string `gorm:"type:text;not null" json:"publicKey"`
+	UserID    string `gorm:"not null;index;size:255" json:"userId"`
 	// CredentialID is the base64url (unpadded) credential ID.
-	CredentialID string `gorm:"not null;index;size:1024;column:credential_id" json:"credentialID"`
-	Counter      int64  `gorm:"not null;default:0;column:counter" json:"counter"`
+	CredentialID string `gorm:"not null;index;size:1024" json:"credentialID"`
+	Counter      int64  `gorm:"not null;default:0" json:"counter"`
 	// DeviceType is "singleDevice" or "multiDevice".
-	DeviceType string `gorm:"not null;size:32;column:device_type" json:"deviceType"`
-	BackedUp   bool   `gorm:"not null;default:false;column:backed_up" json:"backedUp"`
+	DeviceType string `gorm:"not null;size:32" json:"deviceType"`
+	BackedUp   bool   `gorm:"not null;default:false" json:"backedUp"`
 	// Transports is the comma separated list of authenticator transports ("internal,hybrid").
-	Transports *string    `gorm:"column:transports" json:"transports"`
-	CreatedAt  *time.Time `gorm:"column:created_at" json:"createdAt"`
+	Transports *string    ` json:"transports"`
+	CreatedAt  *time.Time ` json:"createdAt"`
 	AAGUID     *string    `gorm:"size:64;column:aaguid" json:"aaguid"`
 }

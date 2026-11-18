@@ -332,7 +332,7 @@ func (r *AdminRepo) RemoveUser(ctx context.Context, userID string, soft bool) er
 func (r *AdminRepo) GetUserByID(ctx context.Context, id string) (*models.User, error) {
 	db := getDB(ctx, r.db)
 	var user models.User
-	err := db.Where(userByID(id), "ID").Where("deleted_at IS NULL").Take(&user).Error
+	err := db.Where(userByID(id), "ID").Where(clause.Eq{Column: gormutil.Col(r.db, &models.User{}, "DeletedAt"), Value: nil}).Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrUserNotFound
@@ -346,7 +346,7 @@ func (r *AdminRepo) GetUserByID(ctx context.Context, id string) (*models.User, e
 func (r *AdminRepo) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	db := getDB(ctx, r.db)
 	var user models.User
-	err := db.Where(gormutil.IEq(r.db, &models.User{}, "Email", email)).Where("deleted_at IS NULL").Take(&user).Error
+	err := db.Where(gormutil.IEq(r.db, &models.User{}, "Email", email)).Where(clause.Eq{Column: gormutil.Col(r.db, &models.User{}, "DeletedAt"), Value: nil}).Take(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, autherr.ErrUserNotFound

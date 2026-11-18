@@ -42,11 +42,18 @@ type Options struct {
 	// twoFactorEnabled, ...) whose plugin is not listed. nil keeps them all (today's behaviour, where the
 	// Go models always carry those columns).
 	InstalledPlugins []string
+	// IDs decides who creates primary keys (default IDApplication). Renderers, migrators and adapters read
+	// it from the registry, so every model of one registry uses the same strategy.
+	IDs IDStrategy
+	// RateLimit adds better-auth's rateLimit model (key, count, lastRequest), used by the rate limiter's
+	// "database" storage. Rename it like the core models through Models["rateLimit"].
+	RateLimit bool
 }
 
 // Registry is the built, immutable schema: models, tables, fields and columns.
 type Registry struct {
 	columnCase ColumnCase
+	ids        IDStrategy
 	models     map[string]*ResolvedModel
 	order      []string
 }
@@ -68,6 +75,10 @@ func Build(opts Options) (*Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+	ids, err := opts.IDs.normalize()
+	if err != nil {
+		return nil, err
+	}
 
 	// Step 2: start from the core models
 	drafts := map[string]*modelDraft{}
@@ -76,6 +87,11 @@ func Build(opts Options) (*Registry, error) {
 		drafts[name] = &modelDraft{name: name, fields: m.Fields, indexes: m.Indexes}
 	}
 	order = append(order, ModelUser, ModelSession, ModelAccount, ModelVerification)
+	if opts.RateLimit {
+		rl := rateLimitModel()
+		drafts[ModelRateLimit] = &modelDraft{name: ModelRateLimit, fields: rl.Fields}
+		order = append(order, ModelRateLimit)
+	}
 
 	// Step 3: drop plugin-owned core columns of plugins that are not installed
 	if opts.InstalledPlugins != nil {
@@ -141,7 +157,7 @@ func Build(opts Options) (*Registry, error) {
 	}
 
 	// Step 7: resolve table and column names
-	reg := &Registry{columnCase: cc, models: map[string]*ResolvedModel{}, order: order}
+	reg := &Registry{columnCase: cc, ids: ids, models: map[string]*ResolvedModel{}, order: order}
 	coreOrd := coreOrder()
 	for _, name := range order {
 		rm, err := resolveModel(drafts[name], opts, cc, coreOrd[name])
@@ -193,9 +209,9 @@ func resolveModel(d *modelDraft, opts Options, cc ColumnCase, coreOrd []string) 
 	}
 	table = opts.TablePrefix + table
 
-	// Step 3: field order: core order first, then the remaining fields by name
-	seen := map[string]bool{}
-	var names []string
+	// Step 3: field order: id, core order, then the remaining fields by name
+	seen := map[string]bool{"id": true}
+	names := []string{"id"}
 	for _, n := range coreOrd {
 		if _, ok := d.fields[n]; ok && !seen[n] {
 			names = append(names, n)
@@ -297,6 +313,9 @@ func (r *Registry) validate() error {
 
 // ColumnCase returns the column naming the registry was built with.
 func (r *Registry) ColumnCase() ColumnCase { return r.columnCase }
+
+// IDStrategy returns who creates primary keys (Options.IDs, default IDApplication).
+func (r *Registry) IDStrategy() IDStrategy { return r.ids }
 
 // Model returns the resolved model with logical name name.
 func (r *Registry) Model(name string) (*ResolvedModel, bool) {

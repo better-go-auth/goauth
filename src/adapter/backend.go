@@ -70,6 +70,14 @@ type Backend interface {
 	Transaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
 
+// IDInserter is an optional Backend capability used when the database creates ids (schema.IDDatabase,
+// schema.IDSerial): insert a row that has no id column and return the id the database generated, or nil
+// when the backend can't tell (the factory then finds the row by its unique values, like better-auth's
+// Kysely adapter on MySQL). serial reports auto-increment integer ids.
+type IDInserter interface {
+	InsertReturningID(ctx context.Context, table string, row Row, idColumn string, serial bool) (any, error)
+}
+
 // LikeEscape is the escape character of LikePattern. '!' rather than a backslash because MySQL parses a
 // backslash in string literals differently from Postgres and SQLite.
 const LikeEscape = '!'

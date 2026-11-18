@@ -14,6 +14,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/plugins"
+	"github.com/better-go-auth/goauth/src/providers/idgen"
 )
 
 // validEmail accepts only a bare address ("a@b.co"), rejecting display-name forms like "Bob <a@b.co>".
@@ -90,7 +91,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 			// fake user with a fresh ID, shaped exactly like a real sign-up response; nothing is stored
 			now := time.Now().UTC()
 			res = &svcint.SignUpResult{User: dtos.UserResponse{
-				ID: models.NewID(), Name: in.Name, Email: email, Image: in.Image,
+				ID: idgen.GenerateID(), Name: in.Name, Email: email, Image: in.Image,
 				CreatedAt: dtos.Time(now), UpdatedAt: dtos.Time(now),
 			}}
 			return nil

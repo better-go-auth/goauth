@@ -11,7 +11,6 @@ import (
 	bettergoauth "github.com/better-go-auth/goauth"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	loc_conf "github.com/better-go-auth/goauth/src/config"
-	core_migration "github.com/better-go-auth/goauth/src/models/migration/core-migration"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
@@ -36,10 +35,8 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 		t.Fatalf("failed to open sqlite in-memory db: %v", err)
 	}
 
-	migrator := core_migration.NewGORMAdminMigrator(db)
-	if err := migrator.Migrate(context.Background()); err != nil {
-		t.Fatalf("migration failed: %v", err)
-	}
+	// SetupGoAuth migrates the tables (GoAuth.Migrations.Mode auto); migrating goauth's models with GORM
+	// before it would cache them under GORM's default naming strategy
 
 	mux := http.NewServeMux()
 	apiConfig := huma.DefaultConfig("Example Test Server", "1.0.0")

@@ -144,9 +144,12 @@ func (opts *AuthConfig) Validate() error {
 		logger.Warn("goauth: Secret is shorter than recommended", "min", MinSecretLength, "len", len(opts.Secret))
 	}
 
-	// 4. Validate the ID format
+	// 4. Validate the ID format, the migrations mode and the schema options
 	if _, err := opts.Advanced.Database.IDGenerator(); err != nil {
 		return fmt.Errorf("goauth: Advanced.Database.IDFormat: %w", err)
+	}
+	if _, err := opts.GoAuth.Migrations.EffectiveMode(); err != nil {
+		return err
 	}
 
 	// 5. Validate CookieCache if enabled

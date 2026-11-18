@@ -5,6 +5,8 @@ package memory
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -25,6 +27,8 @@ func New(reg *schema.Registry, opts ...adapter.Option) adapter.Adapter {
 type table struct {
 	rows    []adapter.Row
 	uniques [][]string
+	// serial is the last auto-increment id handed out (id strategy serial)
+	serial int64
 }
 
 // Backend stores rows in maps. It is safe for concurrent use.
@@ -38,7 +42,10 @@ type Backend struct {
 	tables map[string]*table
 }
 
-var _ adapter.Backend = (*Backend)(nil)
+var (
+	_ adapter.Backend    = (*Backend)(nil)
+	_ adapter.IDInserter = (*Backend)(nil)
+)
 
 // NewBackend creates empty tables for every model of reg.
 func NewBackend(reg *schema.Registry) *Backend {
@@ -119,6 +126,37 @@ func (b *Backend) Insert(ctx context.Context, name string, row adapter.Row) erro
 	}
 	t.rows = append(t.rows, copyRow(row))
 	return nil
+}
+
+// InsertReturningID adds a row without an id, like a database creating it: the next integer for serial
+// ids, else a random 32-char hex string (a database default).
+func (b *Backend) InsertReturningID(ctx context.Context, name string, row adapter.Row, idColumn string, serial bool) (any, error) {
+	defer b.lock(ctx, true)()
+	t, err := b.table(name)
+	if err != nil {
+		return nil, err
+	}
+	// Step 1: the generated id
+	row = copyRow(row)
+	if serial {
+		t.serial++
+		row[idColumn] = t.serial
+	} else {
+		var buf [16]byte
+		if _, err := rand.Read(buf[:]); err != nil {
+			return nil, err
+		}
+		row[idColumn] = hex.EncodeToString(buf[:])
+	}
+	// Step 2: constraints, then the insert
+	if err := t.checkUnique(row, -1); err != nil {
+		if serial {
+			t.serial--
+		}
+		return nil, err
+	}
+	t.rows = append(t.rows, row)
+	return row[idColumn], nil
 }
 
 // checkUnique reports a *adapter.UniqueError when row collides with another row (skip = its own index).

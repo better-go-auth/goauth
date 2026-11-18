@@ -55,9 +55,11 @@ type OperationAccessDto struct {
 	// CompanyID    *string // Deprecated: use OrgID instead
 }
 
-// NewID generates a 32-char alphanumeric ID (better-auth default).
+// NewID returns the id for a new record (idgen.RecordID): the configured format (default better-auth's
+// 32-char alphanumeric ids), or "" when the database creates ids (Advanced.Database.IDFormat database /
+// serial), in which case the repositories fill in the generated id.
 func NewID() string {
-	return idgen.GenerateID()
+	return idgen.RecordID()
 }
 
 func NewSecureId() string {

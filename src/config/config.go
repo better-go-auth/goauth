@@ -5,7 +5,9 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/logger"
@@ -102,6 +104,44 @@ type GoAuthConfig struct {
 	// goauth's existing layout, e.g. email_verified) or schema.Camel (better-auth's default layout, e.g.
 	// emailVerified, needed to share a database with a TypeScript better-auth server).
 	ColumnCase schema.ColumnCase
+	// Migrations decides what SetupGoAuth does with the database schema (default MigrationsAuto).
+	Migrations MigrationsOptions
+}
+
+// MigrationMode is GoAuthConfig.Migrations.Mode.
+type MigrationMode string
+
+const (
+	// MigrationsAuto (default, also "") applies additive changes at startup: missing tables, columns and
+	// indexes of the schema registry (core models, additionalFields, plugin schemas, rateLimit) and the
+	// tables of plugins that still migrate their GORM structs. Nothing is ever dropped or altered.
+	MigrationsAuto MigrationMode = "auto"
+	// MigrationsVerify inspects the database at startup and fails, listing every missing table, column and
+	// index with the SQL that creates it, instead of changing anything. Use it when a migration tool
+	// (Atlas, goose, golang-migrate, ...) owns the schema; generate its input with goauth.GenerateSQL /
+	// goauth.GenerateMigration or the goauth CLI.
+	MigrationsVerify MigrationMode = "verify"
+	// MigrationsOff trusts the operator: no inspection, no DDL.
+	MigrationsOff MigrationMode = "off"
+)
+
+// MigrationsOptions configure schema migrations (doc 04 §6).
+type MigrationsOptions struct {
+	// Mode is MigrationsAuto (default), MigrationsVerify or MigrationsOff.
+	Mode MigrationMode
+}
+
+// EffectiveMode returns Mode with "" resolved to MigrationsAuto, or an error for unknown modes.
+func (m MigrationsOptions) EffectiveMode() (MigrationMode, error) {
+	switch MigrationMode(strings.ToLower(string(m.Mode))) {
+	case "", MigrationsAuto:
+		return MigrationsAuto, nil
+	case MigrationsVerify:
+		return MigrationsVerify, nil
+	case MigrationsOff:
+		return MigrationsOff, nil
+	}
+	return "", fmt.Errorf("goauth: unknown GoAuth.Migrations.Mode %q (use auto, verify or off)", m.Mode)
 }
 
 // DeriveKey derives a purpose-specific key from secret (hex HMAC-SHA256), so one secret can feed several signers.

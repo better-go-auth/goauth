@@ -3,14 +3,15 @@ package goauth
 import (
 	"fmt"
 
+	"github.com/better-go-auth/goauth/src/adapter"
 	"github.com/better-go-auth/goauth/src/common/logger"
 	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 )
 
 // newRateLimiter builds the global rate limiter from AuthConfig.RateLimit, like better-auth's context:
 // enabled ?? isProduction, window || 10s, max || 100, storage || (secondaryStorage ? "secondary-storage" :
-// "memory"), customStorage over storage.
-func newRateLimiter(opts GoAuthOptions) (*ratelimit.Limiter, error) {
+// "memory"), customStorage over storage. "database" uses the rateLimit table through store.
+func newRateLimiter(opts GoAuthOptions, store adapter.Adapter) (*ratelimit.Limiter, error) {
 	rl := opts.RateLimit
 	// Step 1: pick the record storage
 	storage := rl.CustomStorage
@@ -31,8 +32,11 @@ func newRateLimiter(opts GoAuthOptions) (*ratelimit.Limiter, error) {
 			}
 			storage = ratelimit.NewSecondaryStorage(opts.SecondaryStorage)
 		case ratelimit.StorageDatabase:
-			return nil, fmt.Errorf("goauth: RateLimit.Storage %q (the rateLimit table) is not supported yet; use "+
-				"\"memory\", \"secondary-storage\" or RateLimit.CustomStorage", name)
+			// the rateLimit model is in the registry (SchemaOptions) and created by the migrator
+			if store == nil {
+				return nil, fmt.Errorf("goauth: RateLimit.Storage %q needs GoAuthOptions.Conn or adapter-based Repositories", name)
+			}
+			storage = ratelimit.NewDatabaseStorage(store)
 		default:
 			return nil, fmt.Errorf("goauth: unknown RateLimit.Storage %q", name)
 		}

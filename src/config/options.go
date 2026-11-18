@@ -1,11 +1,13 @@
 package config
 
 import (
+	"fmt"
 	"net/url"
 	"os"
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/providers/idgen"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 const (
@@ -73,17 +75,58 @@ type Advanced struct {
 }
 
 // AdvancedDatabase mirrors better-auth's `advanced.database`.
+//
+// better-auth's `generateId` maps to these fields:
+//
+//	generateId: fn          → GenerateID: fn
+//	generateId: "uuid"      → IDFormat: IDFormatUUID
+//	generateId: false       → IDFormat: IDFormatDatabase (the database creates ids)
+//	generateId: "serial"    → IDFormat: IDFormatSerial (auto-increment integer ids)
+//	(unset)                 → IDFormat: "" = IDFormatRandom (32-char [a-zA-Z0-9])
 type AdvancedDatabase struct {
 	// GenerateID overrides the ID generator for new records (better-auth's generateId function).
-	// It wins over IDFormat.
+	// It wins over IDFormat and can't be combined with IDFormatDatabase / IDFormatSerial.
 	GenerateID func() string
-	// IDFormat picks a built-in ID format: "random" (default, better-auth's 32-char [a-zA-Z0-9] IDs),
-	// "uuid" (better-auth's generateId: "uuid") or "ulid" (26-char sortable IDs, goauth's old default).
+	// IDFormat picks the record ID format: IDFormatRandom (default), IDFormatUUID, IDFormatULID (goauth's old
+	// default), IDFormatDatabase or IDFormatSerial. With the last two the database creates primary keys:
+	// generated DDL gives the id column a default (database) or makes it auto-increment (serial, where
+	// every reference to an id is an integer column too), and goauth reads the new id back after insert.
+	// Plugins that still store their own tables through GORM structs with goauth-generated string ids
+	// (organization, two-factor, passkey, jwt, admin) can't be used with them yet (SetupGoAuth refuses).
 	IDFormat string
 }
 
+// ID formats of AdvancedDatabase.IDFormat.
+const (
+	IDFormatRandom   = string(idgen.FormatRandom)
+	IDFormatUUID     = string(idgen.FormatUUID)
+	IDFormatULID     = string(idgen.FormatULID)
+	IDFormatDatabase = "database"
+	IDFormatSerial   = "serial"
+)
+
+// IDStrategy returns who creates record ids: schema.IDDatabase / schema.IDSerial for those formats,
+// schema.IDApplication otherwise.
+func (d AdvancedDatabase) IDStrategy() schema.IDStrategy {
+	switch strings.ToLower(d.IDFormat) {
+	case IDFormatDatabase:
+		return schema.IDDatabase
+	case IDFormatSerial:
+		return schema.IDSerial
+	}
+	return schema.IDApplication
+}
+
 // IDGenerator returns the generator for new record IDs: GenerateID when set, else the IDFormat generator.
+// When the database creates ids (IDFormatDatabase / IDFormatSerial) it returns a generator of empty IDs:
+// records are created without an id and the adapter reads the database's id back.
 func (d AdvancedDatabase) IDGenerator() (func() string, error) {
+	if d.IDStrategy().DatabaseGenerated() {
+		if d.GenerateID != nil {
+			return nil, fmt.Errorf("idgen: GenerateID can't be combined with IDFormat %q (the database creates ids)", d.IDFormat)
+		}
+		return func() string { return "" }, nil
+	}
 	if d.GenerateID != nil {
 		return d.GenerateID, nil
 	}

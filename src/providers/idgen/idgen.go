@@ -53,6 +53,22 @@ func SetGenerator(fn func() string) {
 	generator.Store(&fn)
 }
 
+// databaseIDs is set while the database creates record ids (Advanced.Database.IDFormat database / serial).
+var databaseIDs atomic.Bool
+
+// SetDatabaseIDs tells RecordID whether the database creates record ids (SetupGoAuth sets it from
+// Advanced.Database.IDFormat).
+func SetDatabaseIDs(on bool) { databaseIDs.Store(on) }
+
+// RecordID returns the id for a new record: "" when the database creates ids (the repositories then read
+// the generated id back), else GenerateID(). Use GenerateID for random values that are not record ids.
+func RecordID() string {
+	if databaseIDs.Load() {
+		return ""
+	}
+	return GenerateID()
+}
+
 // GenerateID returns a new record ID from the configured generator (default RandomID, like better-auth).
 func GenerateID() string {
 	if fn := generator.Load(); fn != nil {
