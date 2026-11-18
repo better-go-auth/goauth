@@ -3,6 +3,7 @@ package humaadmin
 import (
 	"context"
 
+	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/common/consts"
 	"github.com/better-go-auth/goauth/src/common/middleware"
@@ -69,8 +70,8 @@ func (h *AdminHandler) RequireAdmin(ctx context.Context, auth humatypes.AuthHead
 
 // RequirePermission authenticates the request and checks the caller has the better-auth admin
 // permission for the route (e.g. {"user": ["list"]}); denied is returned when they don't.
-// Roles come from AdminConfig.EffectiveRoles, so without custom roles every AdminRoles entry
-// keeps full access (backward compatible) while custom roles follow better-auth exactly.
+// Roles come from AdminConfig.EffectiveRoles: better-auth's default {admin, user} roles, the custom
+// Roles, or (GoAuth.AdminRolesFullAccess) every AdminRoles entry mapped to the admin role.
 func (h *AdminHandler) RequirePermission(ctx context.Context, auth humatypes.AuthHeaders, perm access.Request, denied *autherr.AuthError) (*dtos.SessionWithUser, error) {
 	// Step 1: authenticate the caller
 	sessionResp, err := h.Authenticate(ctx, auth)
@@ -129,11 +130,23 @@ func (h *AdminHandler) RouteRoles(op consts.OperationId) []string {
 // It first checks if the request was already authenticated into context by middleware.
 func (h *AdminHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error) {
 	// TODO: use the plain session authenticator or the authFn based on the config
-	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
+	// Step 1: a full session a middleware already resolved (it has the token and every user field)
+	if sess, ok := humaadapter.FromContext(ctx); ok && sess != nil && sess.User.ID != "" {
 		return sess, nil
 	}
+	// Step 2: resolve the full session from the request's cookie / bearer header. The claims-only
+	// session below has no token (impersonation needs it for the admin_session cookie) and no
+	// banned flag, so it is only the fallback.
 	if h.authFn != nil {
-		return h.authFn(ctx, auth)
+		if sess, err := h.authFn(ctx, auth); err == nil && sess != nil {
+			return sess, nil
+		} else if _, ok := authenticator.SessionFromContext(ctx); !ok {
+			return nil, err
+		}
+	}
+	// Step 3: the claims a token middleware put in the context
+	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
+		return sess, nil
 	}
 	return nil, autherr.ErrUnauthorized
 }

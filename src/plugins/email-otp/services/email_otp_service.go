@@ -770,9 +770,9 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 			user = existingUser
 		}
 
-		// Ban check
+		// Ban check (better-auth's admin plugin rejects the session with BANNED_USER)
 		if user.Banned && (user.BanExpires == nil || user.BanExpires.After(time.Now())) {
-			return autherr.ErrUserBanned
+			return autherr.ErrBannedUser
 		}
 
 		now := time.Now().UTC()

@@ -22,13 +22,7 @@ import (
 func (p *Plugin) buildMiddleware(authCfg config.AuthConfig) func(ctx huma.Context, next func(huma.Context)) {
 	cm := cookies.New(authCfg)
 	cookieName := cm.Name(cookies.CookieSessionToken)
-	accessSecret := p.sessionConf.JWT.AccessSecret
-	if accessSecret == "" && authCfg.Secret != "" {
-		accessSecret = config.DeriveKey(authCfg.Secret, "goauth-access")
-	}
-	if accessSecret == "" {
-		accessSecret = authCfg.Secret
-	}
+	accessSecret := p.accessSecretFor(authCfg)
 	bearerOnlySet := config.OperationSet(p.config.RequireBearerTokenOps)
 	rejectBlocked := p.config.RejectBlockedAccessTokens
 

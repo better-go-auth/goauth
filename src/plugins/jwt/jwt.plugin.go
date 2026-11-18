@@ -132,8 +132,9 @@ func New(cfg jwtconfig.JWTConfig, opts ...Option) *Plugin {
 	if cfg.Jwks.KeyPairConfig.Alg == "" {
 		cfg.Jwks.KeyPairConfig.Alg = defaultCfg.Jwks.KeyPairConfig.Alg
 	}
-	if cfg.Jwks.KeyPairConfig.Crv == "" {
-		cfg.Jwks.KeyPairConfig.Crv = defaultCfg.Jwks.KeyPairConfig.Crv
+	// Crv (and the RSA modulus length) default per algorithm; Init validates the combination
+	if cfg.Jwks.KeyPairConfig.Crv == "" && cfg.Jwks.KeyPairConfig.Alg == jwtconfig.AlgEdDSA {
+		cfg.Jwks.KeyPairConfig.Crv = jwtconfig.CrvEd25519
 	}
 
 	p := &Plugin{
@@ -175,6 +176,35 @@ func (p *Plugin) Services() map[string]any {
 	}
 }
 
+// SignJWTOptions overrides the plugin's issuer, audience or lifetime for one SignJWT call.
+type SignJWTOptions = services.SignJWTOptions
+
+// Service returns the plugin's JWT service (key management, signing and verification).
+// It is nil until the plugin has been initialized by goauth.SetupGoAuth.
+func (p *Plugin) Service() *services.JWTService {
+	return p.service
+}
+
+// SignJWT signs payload with the active key pair and returns the compact JWT. It is the Go equivalent of
+// better-auth's server-only auth.api.signJWT and is not exposed over HTTP. Missing iat, exp, iss and aud
+// claims are filled in from the plugin configuration or opts (which may be nil).
+func (p *Plugin) SignJWT(ctx context.Context, payload map[string]any, opts *SignJWTOptions) (string, error) {
+	if p.service == nil {
+		return "", fmt.Errorf("jwt plugin: not initialized")
+	}
+	return p.service.SignJWT(ctx, payload, opts)
+}
+
+// VerifyJWT verifies a JWT signed by this plugin (signature, exp, iss, aud and sub) and returns its
+// claims. It is the Go equivalent of better-auth's server-only auth.api.verifyJWT. issuer overrides the
+// expected "iss" claim ("" uses the configured issuer, then the base URL).
+func (p *Plugin) VerifyJWT(ctx context.Context, token, issuer string) (map[string]any, error) {
+	if p.service == nil {
+		return nil, fmt.Errorf("jwt plugin: not initialized")
+	}
+	return p.service.VerifyJWT(ctx, token, issuer)
+}
+
 // Routes returns nil as routes are mounted via Huma API in Init.
 func (p *Plugin) Routes() []plugins.RouteDescriptor {
 	return nil
@@ -185,6 +215,13 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	if ictx == nil {
 		return fmt.Errorf("jwt plugin: init context is required")
 	}
+
+	// Reject an unsupported key algorithm up front instead of on the first signed token
+	kp, err := p.config.Jwks.KeyPairConfig.Normalize()
+	if err != nil {
+		return fmt.Errorf("jwt plugin: %w", err)
+	}
+	p.config.Jwks.KeyPairConfig = kp
 
 	if p.db == nil && ictx.DB != nil {
 		p.db = ictx.DB

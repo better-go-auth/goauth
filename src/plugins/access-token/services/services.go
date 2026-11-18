@@ -31,6 +31,10 @@ type AuthService struct {
 	Hooks plugins.HookRegistry
 	// Passwords hashes/verifies passwords; nil means legacy bcrypt.
 	Passwords *authcrypto.Passwords
+	// MinPasswordLength / MaxPasswordLength bound /signup passwords; the plugin copies them from the core
+	// EmailAndPassword config (0 means the better-auth defaults 8 and 128).
+	MinPasswordLength int
+	MaxPasswordLength int
 }
 
 var _ accTokInterfaces.IAccessTokenAuthService = (*AuthService)(nil)

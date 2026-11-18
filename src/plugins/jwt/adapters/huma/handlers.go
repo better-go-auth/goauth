@@ -73,55 +73,6 @@ func (h *JWTHandler) GetToken(ctx context.Context, in *getTokenInput) (*getToken
 	return out, nil
 }
 
-type signJWTInput struct {
-	Body struct {
-		Payload         map[string]any `json:"payload"`
-		OverrideOptions map[string]any `json:"overrideOptions,omitempty"`
-	}
-}
-
-type signJWTOutput struct {
-	Body struct {
-		Token string `json:"token"`
-	}
-}
-
-// SignJWT handles POST /sign-jwt.
-func (h *JWTHandler) SignJWT(ctx context.Context, in *signJWTInput) (*signJWTOutput, error) {
-	if in.Body.Payload == nil {
-		in.Body.Payload = map[string]any{}
-	}
-	tok, err := h.service.SignJWT(ctx, in.Body.Payload, in.Body.OverrideOptions)
-	if err != nil {
-		return nil, err
-	}
-	out := &signJWTOutput{}
-	out.Body.Token = tok
-	return out, nil
-}
-
-type verifyJWTInput struct {
-	Body struct {
-		Token  string `json:"token"`
-		Issuer string `json:"issuer,omitempty"`
-	}
-}
-
-type verifyJWTOutput struct {
-	Body struct {
-		Payload map[string]any `json:"payload"`
-	}
-}
-
-// VerifyJWT handles POST /verify-jwt.
-func (h *JWTHandler) VerifyJWT(ctx context.Context, in *verifyJWTInput) (*verifyJWTOutput, error) {
-	payload, err := h.service.VerifyJWT(ctx, in.Body.Token, in.Body.Issuer)
-	out := &verifyJWTOutput{}
-	if err != nil || payload == nil {
-		// Better Auth returns { payload: null } when token is invalid
-		out.Body.Payload = nil
-		return out, nil
-	}
-	out.Body.Payload = payload
-	return out, nil
-}
+// Signing and verifying arbitrary JWTs (better-auth's /sign-jwt and /verify-jwt) are server-only and have
+// no HTTP handler: an unauthenticated caller could otherwise mint a valid token for any subject. Use
+// JWTService.SignJWT / VerifyJWT (or the plugin's SignJWT / VerifyJWT) from Go instead.

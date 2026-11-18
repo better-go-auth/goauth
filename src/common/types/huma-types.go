@@ -67,17 +67,20 @@ func MakeRes[T any](body T, status int, setCookie ...http.Cookie) *HumaRes[T] {
 	return &HumaRes[T]{Body: body, Status: status, SetCookie: setCookie}
 }
 
+// MakeResPtr constructs a HumaRes from a body pointer (nil = zero body), attaching the cookies.
 func MakeResPtr[T any](item *T, status int, setCookie ...http.Cookie) *HumaRes[T] {
 	if item == nil {
 		var res T
 		return &HumaRes[T]{
-			Status: status,
-			Body:   res,
+			Status:    status,
+			Body:      res,
+			SetCookie: setCookie,
 		}
 	}
 	return &HumaRes[T]{
-		Status: status,
-		Body:   *item,
+		Status:    status,
+		Body:      *item,
+		SetCookie: setCookie,
 	}
 }
 

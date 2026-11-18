@@ -85,8 +85,9 @@ func (s *AdminService) ImpersonateUser(ctx context.Context, input admindtos.Admi
 	if err != nil {
 		return nil, autherr.ErrUserNotFound
 	}
-	if targetUser.Banned {
-		return nil, autherr.ErrUserBanned
+	// a banned target cannot get a session (better-auth BANNED_USER); an expired ban does not count
+	if targetUser.Banned && (targetUser.BanExpires == nil || targetUser.BanExpires.After(time.Now())) {
+		return nil, autherr.ErrBannedUser
 	}
 
 	// Impersonating an admin (admin role or adminUserIds) requires user:impersonate-admins,

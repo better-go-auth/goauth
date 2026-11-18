@@ -1,7 +1,6 @@
 package jwttest
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -126,7 +125,7 @@ func TestJWTService_Unit(t *testing.T) {
 	}
 }
 
-func setupFullServer(t *testing.T, jwtCfg jwtconfig.JWTConfig) (*httptest.Server, *goauth.GoAuth) {
+func setupFullServer(t *testing.T, jwtCfg jwtconfig.JWTConfig) (*httptest.Server, *jwtplugin.Plugin) {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:jwthttp_%s?mode=memory&cache=shared", uuid.NewString())),
@@ -146,7 +145,7 @@ func setupFullServer(t *testing.T, jwtCfg jwtconfig.JWTConfig) (*httptest.Server
 	jwtPlug := jwtplugin.New(jwtCfg, jwtplugin.WithDB(db))
 	bearerPlug := bearer.New(bearerconfig.DefaultConfig())
 
-	auth, err := goauth.SetupGoAuth(context.Background(), api, goauth.GoAuthOptions{
+	_, err = goauth.SetupGoAuth(context.Background(), api, goauth.GoAuthOptions{
 		Conn:             db,
 		SecondaryStorage: secStore,
 		Plugins:          []plugins.Plugin{bearerPlug, jwtPlug},
@@ -163,11 +162,11 @@ func setupFullServer(t *testing.T, jwtCfg jwtconfig.JWTConfig) (*httptest.Server
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
-	return ts, auth
+	return ts, jwtPlug
 }
 
 func TestJWTPlugin_Endpoints(t *testing.T) {
-	ts, _ := setupFullServer(t, jwtconfig.DefaultConfig())
+	ts, plug := setupFullServer(t, jwtconfig.DefaultConfig())
 
 	// 1. Test GET /jwks and GET /api/auth/jwks
 	jwksResp, err := http.Get(ts.URL + "/jwks")
@@ -187,71 +186,39 @@ func TestJWTPlugin_Endpoints(t *testing.T) {
 	}
 	t.Logf("Retrieved JWKS with %d key(s)", len(jwksData.Keys))
 
-	// 2. Test POST /api/auth/sign-jwt
-	signBody := `{"payload":{"sub":"user-custom","project":"better-go-auth"}}`
-	signReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/auth/sign-jwt", strings.NewReader(signBody))
-	signReq.Header.Set("Content-Type", "application/json")
-	signReq.Header.Set("Origin", ts.URL)
-	signResp, err := http.DefaultClient.Do(signReq)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer signResp.Body.Close()
-	if signResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(signResp.Body)
-		t.Fatalf("POST /sign-jwt failed (%d): %s", signResp.StatusCode, body)
-	}
-	var signResult struct {
-		Token string `json:"token"`
-	}
-	if err := json.NewDecoder(signResp.Body).Decode(&signResult); err != nil {
-		t.Fatal(err)
-	}
-	if signResult.Token == "" {
-		t.Fatalf("expected non-empty token from /sign-jwt")
+	// 2. POST /api/auth/sign-jwt and /verify-jwt are server-only: not routed over HTTP
+	for _, path := range []string{"/api/auth/sign-jwt", "/api/auth/verify-jwt"} {
+		req, _ := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(`{"payload":{"sub":"admin"},"token":"x.y.z"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Origin", ts.URL)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Fatalf("POST %s: status %d, want 404: %s", path, resp.StatusCode, body)
+		}
 	}
 
-	// 3. Test POST /api/auth/verify-jwt
-	verifyBody := fmt.Sprintf(`{"token":"%s"}`, signResult.Token)
-	verifyReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/auth/verify-jwt", strings.NewReader(verifyBody))
-	verifyReq.Header.Set("Content-Type", "application/json")
-	verifyReq.Header.Set("Origin", ts.URL)
-	verifyResp, err := http.DefaultClient.Do(verifyReq)
+	// 3. Sign a custom JWT from Go (the server-only signJWT)
+	ctx := context.Background()
+	customTok, err := plug.SignJWT(ctx, map[string]any{"sub": "user-custom", "project": "better-go-auth"}, nil)
 	if err != nil {
-		t.Fatal(err)
-	}
-	defer verifyResp.Body.Close()
-	if verifyResp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(verifyResp.Body)
-		t.Fatalf("POST /verify-jwt failed (%d): %s", verifyResp.StatusCode, body)
-	}
-	var verifyResult struct {
-		Payload map[string]any `json:"payload"`
-	}
-	if err := json.NewDecoder(verifyResp.Body).Decode(&verifyResult); err != nil {
-		t.Fatal(err)
-	}
-	if verifyResult.Payload["sub"] != "user-custom" || verifyResult.Payload["project"] != "better-go-auth" {
-		t.Fatalf("payload mismatch in verify result: %+v", verifyResult.Payload)
+		t.Fatalf("plugin SignJWT: %v", err)
 	}
 
-	// 4. Test POST /api/auth/verify-jwt with invalid token returns { payload: null }
-	badVerifyReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/auth/verify-jwt", strings.NewReader(`{"token":"invalid.jwt.token"}`))
-	badVerifyReq.Header.Set("Content-Type", "application/json")
-	badVerifyReq.Header.Set("Origin", ts.URL)
-	badVerifyResp, err := http.DefaultClient.Do(badVerifyReq)
+	// 4. Verify it from Go; an invalid token is rejected
+	customClaims, err := plug.VerifyJWT(ctx, customTok, "")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("plugin VerifyJWT: %v", err)
 	}
-	defer badVerifyResp.Body.Close()
-	var badResult struct {
-		Payload any `json:"payload"`
+	if customClaims["sub"] != "user-custom" || customClaims["project"] != "better-go-auth" {
+		t.Fatalf("payload mismatch in verify result: %+v", customClaims)
 	}
-	if err := json.NewDecoder(badVerifyResp.Body).Decode(&badResult); err != nil {
-		t.Fatal(err)
-	}
-	if badResult.Payload != nil {
-		t.Fatalf("expected null payload for invalid token, got: %+v", badResult.Payload)
+	if _, err := plug.VerifyJWT(ctx, "invalid.jwt.token", ""); err == nil {
+		t.Fatalf("expected invalid token to fail verification")
 	}
 
 	// 5. Test User SignUp, /get-session (set-auth-jwt header), and GET /token
@@ -320,23 +287,12 @@ func TestJWTPlugin_Endpoints(t *testing.T) {
 		t.Fatalf("expected non-empty token from /token")
 	}
 
-	// Verify the token obtained from /token via POST /api/auth/verify-jwt
-	verifyBody2, _ := json.Marshal(map[string]string{"token": tokenRes.Token})
-	vReq2, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/auth/verify-jwt", bytes.NewReader(verifyBody2))
-	vReq2.Header.Set("Content-Type", "application/json")
-	vReq2.Header.Set("Origin", ts.URL)
-	vResp2, err := http.DefaultClient.Do(vReq2)
+	// Verify the token obtained from /token from Go
+	tokClaims, err := plug.VerifyJWT(ctx, tokenRes.Token, "")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("verify /token JWT: %v", err)
 	}
-	defer vResp2.Body.Close()
-	var vResult2 struct {
-		Payload map[string]any `json:"payload"`
-	}
-	if err := json.NewDecoder(vResp2.Body).Decode(&vResult2); err != nil {
-		t.Fatal(err)
-	}
-	if vResult2.Payload["email"] != "jwt-user@example.com" {
-		t.Fatalf("expected email jwt-user@example.com in token payload, got: %+v", vResult2.Payload)
+	if tokClaims["email"] != "jwt-user@example.com" {
+		t.Fatalf("expected email jwt-user@example.com in token payload, got: %+v", tokClaims)
 	}
 }

@@ -10,6 +10,8 @@ The **JWT Plugin** provides official [Better Auth](https://better-auth.com) feat
 - Better Auth uses **Ed25519** (an Edwards-curve digital signature algorithm over Curve25519) with the `EdDSA` signature algorithm.
 - Ed25519 provides 128-bit security level with high performance, resistance to side-channel attacks, and compact signatures (64 bytes) and keys (32 bytes).
 - Standard RFC 8037 (`Crv: "Ed25519"`, `Kty: "OKP"`) is used for encoding keys into standard JWK format.
+- Ed25519 is the default. `Jwks.KeyPairConfig.Alg` also accepts `ES256` (EC P-256), `ES512` (EC P-521),
+  `PS256` and `RS256` (RSA, `ModulusLength` default 2048); `ECDH-ES` cannot sign and is rejected at Init.
 
 ### 1.2 Public JWKS Endpoint (`/jwks`)
 - The plugin publishes the active public keys at `GET /api/auth/jwks` (and alias `GET /jwks`).

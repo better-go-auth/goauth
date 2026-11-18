@@ -5,6 +5,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -21,8 +22,56 @@ import (
 	accTokInterfaces "github.com/better-go-auth/goauth/src/plugins/access-token/services/interfaces"
 )
 
+// validEmail accepts only a bare address ("a@b.co"), rejecting display-name forms like "Bob <a@b.co>"
+// (same rule as core sign-up).
+func validEmail(email string) bool {
+	a, err := mail.ParseAddress(email)
+	return err == nil && a.Address == email
+}
+
+// validateRegisterInput checks a /signup body like core sign-up does: a bare email address and a password
+// within EmailAndPassword.MinPasswordLength..MaxPasswordLength (default 8..128).
+func (aus *AuthService) validateRegisterInput(input accesstokendtos.RegisterClientInput) error {
+	// Step 1: the email must be a bare address
+	if !validEmail(input.Email) {
+		return autherr.ErrInvalidEmail
+	}
+	// Step 2: the password must be set and within the configured bounds
+	if input.Password == "" {
+		return autherr.ErrInvalidPassword
+	}
+	minLen, maxLen := aus.MinPasswordLength, aus.MaxPasswordLength
+	if minLen <= 0 {
+		minLen = 8
+	}
+	if maxLen <= 0 {
+		maxLen = 128
+	}
+	if len(input.Password) < minLen {
+		return autherr.ErrPasswordTooShort
+	}
+	if len(input.Password) > maxLen {
+		return autherr.ErrPasswordTooLong
+	}
+	return nil
+}
+
 // RegisterWithEmail (acc-01) , [AccountStatus], set(pwd,)
 func (aus *AuthService) RegisterWithEmail(ctx context.Context, input accesstokendtos.RegisterClientInput) (*svcint.SignUpResult, error) {
+	// Step 1: validate the input (HTTP callers are also checked by Huma; Go callers only here)
+	if err := aus.validateRegisterInput(input); err != nil {
+		return nil, err
+	}
+	// Step 2: store emails lower-cased, as core sign-up does (sign-in looks them up lower-cased)
+	input.Email = strings.ToLower(input.Email)
+	// Step 3: an absent avatar is stored as NULL, not ""
+	var image *string
+	if input.Avatar != "" {
+		avatar := input.Avatar
+		image = &avatar
+	}
+
+	// Step 4: create the user and its credential account in one transaction
 	var res *svcint.SignUpResult
 	var created *models.User
 	err := aus.TxMgr.Transaction(ctx, func(txCtx context.Context) error {
@@ -36,7 +85,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input accesstoken
 			// generate clone user
 			now := time.Now().UTC()
 			res = &svcint.SignUpResult{User: modeldtos.UserResponse{
-				ID: models.NewID(), Name: input.FirstName, Email: input.Email, Image: &input.Avatar,
+				ID: models.NewID(), Name: input.FirstName, Email: input.Email, Image: image,
 				CreatedAt: modeldtos.Time(now), UpdatedAt: modeldtos.Time(now),
 			}}
 			// todo: add on existing user signup function here
@@ -50,7 +99,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input accesstoken
 			return err
 		}
 		u := &models.User{Base: models.Base{ID: models.NewID()}}
-		u.Name, u.Email, u.Image, u.Role = input.FirstName, input.Email, &input.Avatar, enums.User
+		u.Name, u.Email, u.Image, u.Role = input.FirstName, input.Email, image, enums.User
 		u.FirstName, u.LastName = input.FirstName, input.LastName
 		// u.AccountStatus = enums.AccountPendingVerification
 		if created, err = aus.UserRepo.CreateUser(txCtx, u); err != nil {

@@ -7,7 +7,7 @@ import (
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// RegisterRoutes registers the JWT plugin endpoints onto the Huma API.
+// RegisterRoutes registers the JWT plugin endpoints onto the Huma API (GET /jwks and GET /token).
 func RegisterRoutes(api huma.API, basePath string, jwksPath string, handler *JWTHandler) {
 	if basePath == "" {
 		basePath = "/api/auth"
@@ -52,23 +52,6 @@ func RegisterRoutes(api huma.API, basePath string, jwksPath string, handler *JWT
 		Tags:        []string{"JWT"},
 	}, handler.GetToken)
 
-	// 3. POST /sign-jwt
-	huma.Register(api, huma.Operation{
-		OperationID: "signJWT",
-		Method:      http.MethodPost,
-		Path:        basePath + "/sign-jwt",
-		Summary:     "Sign a JWT token",
-		Description: "Sign a JWT token with custom payload",
-		Tags:        []string{"JWT"},
-	}, handler.SignJWT)
-
-	// 4. POST /verify-jwt
-	huma.Register(api, huma.Operation{
-		OperationID: "verifyJWT",
-		Method:      http.MethodPost,
-		Path:        basePath + "/verify-jwt",
-		Summary:     "Verify a JWT token",
-		Description: "Verify a JWT token using stored public keys",
-		Tags:        []string{"JWT"},
-	}, handler.VerifyJWT)
+	// POST /sign-jwt and POST /verify-jwt are SERVER_ONLY in better-auth and are deliberately not
+	// registered: they are available from Go through the plugin's SignJWT / VerifyJWT methods.
 }

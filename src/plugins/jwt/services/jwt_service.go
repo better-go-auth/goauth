@@ -2,8 +2,7 @@ package services
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
+	"crypto"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -28,8 +27,23 @@ type JWTService struct {
 	repo    repository.IJwksRepo
 }
 
+// SignJWTOptions overrides the plugin's JWT options for a single SignJWT call (better-auth's
+// signJWT overrideOptions.jwt). Zero fields keep the plugin configuration.
+type SignJWTOptions struct {
+	// Issuer replaces the "iss" claim (default: JWT.Issuer, then the base URL).
+	Issuer string
+	// Audience replaces the "aud" claim (default: JWT.Audience, then the base URL).
+	Audience string
+	// ExpirationTime replaces the token lifetime (default: JWT.ExpirationTime, then 15 minutes).
+	ExpirationTime time.Duration
+}
+
 // NewJWTService creates a new instance of JWTService.
+// An invalid Jwks.KeyPairConfig is reported by CreateKey (the plugin rejects it earlier, in Init).
 func NewJWTService(cfg jwtconfig.JWTConfig, secret, baseURL string, repo repository.IJwksRepo) *JWTService {
+	if kp, err := cfg.Jwks.KeyPairConfig.Normalize(); err == nil {
+		cfg.Jwks.KeyPairConfig = kp
+	}
 	return &JWTService{
 		config:  cfg,
 		secret:  secret,
@@ -38,29 +52,21 @@ func NewJWTService(cfg jwtconfig.JWTConfig, secret, baseURL string, repo reposit
 	}
 }
 
-// CreateKey generates a new key pair and stores it in the database.
+// CreateKey generates a new key pair for the configured algorithm (Jwks.KeyPairConfig) and stores it in
+// the database.
 func (s *JWTService) CreateKey(ctx context.Context) (*models.JWK, error) {
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	// Step 1: validate the configured algorithm and generate a key pair for it
+	kp, err := s.config.Jwks.KeyPairConfig.Normalize()
 	if err != nil {
-		return nil, fmt.Errorf("jwt: generate ed25519 key: %w", err)
+		return nil, err
 	}
-
-	x := base64.RawURLEncoding.EncodeToString(pub)
-	d := base64.RawURLEncoding.EncodeToString(priv.Seed())
-
-	pubJWK := map[string]any{
-		"kty": "OKP",
-		"crv": "Ed25519",
-		"x":   x,
-		"use": "sig",
+	pubJWK, privJWK, err := generateKeyPair(kp)
+	if err != nil {
+		return nil, err
 	}
-	privJWK := map[string]any{
-		"kty": "OKP",
-		"crv": "Ed25519",
-		"x":   x,
-		"d":   d,
-	}
+	pubJWK["use"] = "sig"
 
+	// Step 2: serialize both JWKs and encrypt the private one
 	pubBytes, err := json.Marshal(pubJWK)
 	if err != nil {
 		return nil, err
@@ -83,6 +89,7 @@ func (s *JWTService) CreateKey(ctx context.Context) (*models.JWK, error) {
 		storedPrivKey = string(privBytes)
 	}
 
+	// Step 3: store the key with its algorithm and curve (expiring after RotationInterval, if set)
 	now := time.Now()
 	var expiresAt *time.Time
 	if s.config.Jwks.RotationInterval > 0 {
@@ -97,8 +104,8 @@ func (s *JWTService) CreateKey(ctx context.Context) (*models.JWK, error) {
 		PrivateKey: storedPrivKey,
 		CreatedAt:  now,
 		ExpiresAt:  expiresAt,
-		Alg:        "EdDSA",
-		Crv:        "Ed25519",
+		Alg:        kp.Alg,
+		Crv:        kp.Crv,
 	}
 
 	if err := s.repo.CreateJWK(ctx, jwkRecord); err != nil {
@@ -109,18 +116,33 @@ func (s *JWTService) CreateKey(ctx context.Context) (*models.JWK, error) {
 }
 
 // GetOrCreateActiveKey returns the current valid signing key or creates one.
+// The active key is the newest key whose algorithm matches Jwks.KeyPairConfig.Alg, so changing the
+// algorithm starts signing with a new key while older keys stay in the JWKS for verification.
 func (s *JWTService) GetOrCreateActiveKey(ctx context.Context) (*models.JWK, error) {
-	key, err := s.repo.GetLatestKey(ctx)
+	// Step 1: load the keys, newest first
+	keys, err := s.repo.GetAllKeys(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if key == nil || (key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now())) {
-		return s.CreateKey(ctx)
+
+	// Step 2: the newest key with the configured algorithm is active unless it has expired
+	want := s.config.Jwks.KeyPairConfig.Alg
+	for i := range keys {
+		key := &keys[i]
+		if keyAlg(key, want) != want {
+			continue
+		}
+		if key.ExpiresAt != nil && key.ExpiresAt.Before(time.Now()) {
+			break
+		}
+		return key, nil
 	}
-	return key, nil
+
+	// Step 3: no usable key, create one
+	return s.CreateKey(ctx)
 }
 
-func (s *JWTService) decryptPrivateKey(key *models.JWK) (ed25519.PrivateKey, error) {
+func (s *JWTService) decryptPrivateKey(key *models.JWK) (crypto.Signer, error) {
 	privStr := key.PrivateKey
 	if !s.config.Jwks.DisablePrivateKeyEncryption && s.secret != "" {
 		var hexStr string
@@ -134,22 +156,7 @@ func (s *JWTService) decryptPrivateKey(key *models.JWK) (ed25519.PrivateKey, err
 		privStr = dec
 	}
 
-	var privMap map[string]any
-	if err := json.Unmarshal([]byte(privStr), &privMap); err != nil {
-		return nil, fmt.Errorf("jwt: parse private key jwk: %w", err)
-	}
-
-	dVal, ok := privMap["d"].(string)
-	if !ok || dVal == "" {
-		return nil, errors.New("jwt: private key jwk missing 'd'")
-	}
-
-	seed, err := base64.RawURLEncoding.DecodeString(dVal)
-	if err != nil {
-		return nil, fmt.Errorf("jwt: decode private key seed: %w", err)
-	}
-
-	return ed25519.NewKeyFromSeed(seed), nil
+	return parsePrivateJWK(privStr)
 }
 
 // GetJWKS returns all valid public keys matching Better Auth's JWKS response specification.
@@ -191,11 +198,7 @@ func (s *JWTService) GetJWKS(ctx context.Context) ([]models.JWKKey, error) {
 		}
 		jwk.Kid = k.ID
 		if jwk.Alg == "" {
-			if k.Alg != "" {
-				jwk.Alg = k.Alg
-			} else {
-				jwk.Alg = "EdDSA"
-			}
+			jwk.Alg = keyAlg(&k, s.config.Jwks.KeyPairConfig.Alg)
 		}
 		if jwk.Crv == "" && k.Crv != "" {
 			jwk.Crv = k.Crv
@@ -206,12 +209,20 @@ func (s *JWTService) GetJWKS(ctx context.Context) ([]models.JWKKey, error) {
 	return publicKeys, nil
 }
 
-// SignJWT signs an arbitrary payload using the active key pair.
-func (s *JWTService) SignJWT(ctx context.Context, payload map[string]any, overrideOptions map[string]any) (string, error) {
+// SignJWT signs an arbitrary payload using the active key pair. It is the Go equivalent of better-auth's
+// server-only auth.api.signJWT: it is not exposed over HTTP, call it from your own server code.
+// Missing iat, exp, iss and aud claims are filled in from the plugin configuration (or opts, which may
+// be nil). A nil payload is treated as empty.
+func (s *JWTService) SignJWT(ctx context.Context, payload map[string]any, opts *SignJWTOptions) (string, error) {
+	// Step 1: a custom signer replaces the built-in keys
 	if s.config.JWT.Sign != nil {
 		return s.config.JWT.Sign(payload)
 	}
+	if opts == nil {
+		opts = &SignJWTOptions{}
+	}
 
+	// Step 2: load the active key pair and decrypt its private key
 	key, err := s.GetOrCreateActiveKey(ctx)
 	if err != nil {
 		return nilToken(err)
@@ -222,6 +233,7 @@ func (s *JWTService) SignJWT(ctx context.Context, payload map[string]any, overri
 		return nilToken(err)
 	}
 
+	// Step 3: build the claims (payload plus defaults for the registered claims)
 	now := time.Now().Unix()
 	claims := jwt.MapClaims{}
 	for k, v := range payload {
@@ -233,6 +245,9 @@ func (s *JWTService) SignJWT(ctx context.Context, payload map[string]any, overri
 	}
 
 	expDuration := s.config.JWT.ExpirationTime
+	if opts.ExpirationTime > 0 {
+		expDuration = opts.ExpirationTime
+	}
 	if expDuration <= 0 {
 		expDuration = 15 * time.Minute
 	}
@@ -244,10 +259,8 @@ func (s *JWTService) SignJWT(ctx context.Context, payload map[string]any, overri
 	if iss == "" {
 		iss = s.baseURL
 	}
-	if overrideOptions != nil {
-		if overrideIss, ok := overrideOptions["issuer"].(string); ok && overrideIss != "" {
-			iss = overrideIss
-		}
+	if opts.Issuer != "" {
+		iss = opts.Issuer
 	}
 	if _, ok := claims["iss"]; !ok && iss != "" {
 		claims["iss"] = iss
@@ -257,21 +270,19 @@ func (s *JWTService) SignJWT(ctx context.Context, payload map[string]any, overri
 	if aud == "" {
 		aud = s.baseURL
 	}
-	if overrideOptions != nil {
-		if overrideAud, ok := overrideOptions["audience"].(string); ok && overrideAud != "" {
-			aud = overrideAud
-		}
+	if opts.Audience != "" {
+		aud = opts.Audience
 	}
 	if _, ok := claims["aud"]; !ok && aud != "" {
 		claims["aud"] = aud
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
-	alg := key.Alg
-	if alg == "" {
-		alg = "EdDSA"
+	// Step 4: sign with the key's algorithm; the kid header names the key in the JWKS
+	method, err := signingMethod(keyAlg(key, s.config.Jwks.KeyPairConfig.Alg))
+	if err != nil {
+		return nilToken(err)
 	}
-	token.Header["alg"] = alg
+	token := jwt.NewWithClaims(method, claims)
 	token.Header["kid"] = key.ID
 
 	signed, err := token.SignedString(privKey)
@@ -291,13 +302,18 @@ func (s *JWTService) GetJWTToken(ctx context.Context, session *dtos.SessionWithU
 		return "", errors.New("jwt: session is required")
 	}
 
+	// Step 1: the claims come from DefinePayload, or default to the user object
 	var payload map[string]any
 	if s.config.JWT.DefinePayload != nil {
 		customPayload, err := s.config.JWT.DefinePayload(session)
 		if err != nil {
 			return "", err
 		}
-		payload = customPayload
+		// copy so "sub" is never written into the caller's map (and a nil map counts as empty)
+		payload = make(map[string]any, len(customPayload)+1)
+		for k, v := range customPayload {
+			payload[k] = v
+		}
 	} else {
 		payload = map[string]any{
 			"id":            session.User.ID,
@@ -314,6 +330,7 @@ func (s *JWTService) GetJWTToken(ctx context.Context, session *dtos.SessionWithU
 		}
 	}
 
+	// Step 2: the subject is always added (user ID unless GetSubject overrides it)
 	sub := session.User.ID
 	if s.config.JWT.GetSubject != nil {
 		if customSub, err := s.config.JWT.GetSubject(session); err == nil && customSub != "" {
@@ -322,11 +339,16 @@ func (s *JWTService) GetJWTToken(ctx context.Context, session *dtos.SessionWithU
 	}
 	payload["sub"] = sub
 
+	// Step 3: sign with the active key
 	return s.SignJWT(ctx, payload, nil)
 }
 
-// VerifyJWT parses and verifies a JWT token string against stored public keys.
+// VerifyJWT parses and verifies a JWT token string against stored public keys. It is the Go equivalent
+// of better-auth's server-only auth.api.verifyJWT. issuer overrides the expected "iss" claim ("" uses
+// the plugin's issuer). The signature, exp, iss, aud and the presence of sub are checked; the token's
+// alg must be the algorithm of the key named by its kid.
 func (s *JWTService) VerifyJWT(ctx context.Context, tokenStr string, issuer string) (map[string]any, error) {
+	// Step 1: read the kid from the token header
 	parts := strings.Split(tokenStr, ".")
 	if len(parts) != 3 {
 		return nil, errors.New("jwt: invalid token format")
@@ -347,6 +369,7 @@ func (s *JWTService) VerifyJWT(ctx context.Context, tokenStr string, issuer stri
 		return nil, errors.New("jwt: missing kid in header")
 	}
 
+	// Step 2: find the stored key named by kid
 	keys, err := s.repo.GetAllKeys(ctx)
 	if err != nil {
 		return nil, err
@@ -363,23 +386,16 @@ func (s *JWTService) VerifyJWT(ctx context.Context, tokenStr string, issuer stri
 		return nil, fmt.Errorf("jwt: no jwk found for kid: %s", kid)
 	}
 
-	var pubJWK models.JWKKey
-	if err := json.Unmarshal([]byte(matchedKey.PublicKey), &pubJWK); err != nil {
-		return nil, fmt.Errorf("jwt: parse public jwk: %w", err)
-	}
-
-	pubBytes, err := base64.RawURLEncoding.DecodeString(pubJWK.X)
+	// Step 3: verify the signature with the key's public key, accepting only the key's algorithm
+	pubKey, err := parsePublicJWK(matchedKey.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("jwt: decode public key x: %w", err)
+		return nil, err
 	}
-	edPub := ed25519.PublicKey(pubBytes)
+	alg := keyAlg(matchedKey, s.config.Jwks.KeyPairConfig.Alg)
 
 	token, err := jwt.Parse(tokenStr, func(t *jwt.Token) (any, error) {
-		if t.Method.Alg() != "EdDSA" {
-			return nil, fmt.Errorf("jwt: unexpected alg %s", t.Method.Alg())
-		}
-		return edPub, nil
-	})
+		return pubKey, nil
+	}, jwt.WithValidMethods([]string{alg}))
 	if err != nil {
 		return nil, fmt.Errorf("jwt: verify failed: %w", err)
 	}
@@ -389,6 +405,7 @@ func (s *JWTService) VerifyJWT(ctx context.Context, tokenStr string, issuer stri
 		return nil, errors.New("jwt: invalid token claims")
 	}
 
+	// Step 4: check the issuer, audience and subject claims
 	expectedIss := issuer
 	if expectedIss == "" {
 		expectedIss = s.config.JWT.Issuer

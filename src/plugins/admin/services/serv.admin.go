@@ -155,13 +155,12 @@ func (s *AdminService) SetUserRole(ctx context.Context, input admindtos.AdminSet
 		return nil, err
 	}
 
-	// Refresh sessions
-	if s.sessionMgr != nil {
-		if err := s.sessionMgr.DeleteUserSessions(ctx, input.UserID); err != nil {
-			return nil, err
-		}
-	} else {
-		_ = s.adminRepo.RevokeUserSessions(ctx, input.UserID)
+	// Refresh sessions: like better-auth the user stays signed in; sessions cached in secondary storage
+	// hold a copy of the user, so rewrite it there and the new role applies on the next request
+	if refresher, ok := s.sessionMgr.(interface {
+		RefreshUser(ctx context.Context, user *models.User)
+	}); ok && user != nil {
+		refresher.RefreshUser(ctx, user)
 	}
 
 	u := dtos.UserFromModel(user)

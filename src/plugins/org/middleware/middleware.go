@@ -157,15 +157,14 @@ func (m *OrgAuthMiddleware) resolveOrgAndRole(ctx context.Context, claims token.
 		return "", "", autherr.ErrForbidden
 	}
 
-	// Step 2: Resolve role from token claims, falling back to database member lookup if necessary
-	role := claims.ActiveOrgRole
-	if role == "" {
-		member, err := m.service.GetMember(ctx, orgID, claims.UserID)
-		if err != nil || member == nil {
-			return "", "", autherr.ErrForbidden
-		}
-		role = string(member.Role)
+	// Step 2: Resolve the role from the member row on every request (like better-auth's hasPermission).
+	// The role cached on the session / access token at set-active is not trusted: it goes stale when the
+	// member's role is changed or the member is removed from the organization.
+	member, err := m.service.GetMember(ctx, orgID, claims.UserID)
+	if err != nil || member == nil {
+		return "", "", autherr.ErrForbidden
 	}
+	role := string(member.Role)
 
 	return orgID, role, nil
 }

@@ -66,7 +66,8 @@ func (h *AccessTokenHandler) Register(ctx context.Context, inputs *humatypes.Hum
 		Token: nil,
 	}
 	gresp := dtos.SuccessCreated(resp, 1)
-	return humatypes.MakeResPtr(&gresp, 200), nil
+	// 201 like /login and /refresh, matching the envelope's status
+	return humatypes.MakeResPtr(&gresp, http.StatusCreated), nil
 }
 
 // Login handles POST /login.

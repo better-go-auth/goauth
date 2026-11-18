@@ -138,3 +138,18 @@ it is doing a redundant logic.
 - [x] Internal errors: body is `{code, message}`; `requestId` + `X-Request-Id` only with `Advanced.GoAuth.ErrorRequestID` (the ID is always logged).
 - [x] Multi-session: only a validly signed device cookie is required (better-auth); `MultiSessionConfig.GoAuth.StrictDeviceCookie` also requires it to hold the exact token.
 
+
+## Plugin examples and docs (2026-11-18)
+
+- [x] `src/example/internal/exkit`: shared example wiring (in-memory/file SQLite, goauth on Huma, `Outbox` for sent codes/links, protected `/api/example/me`, graceful `Serve`) and an HTTP test client.
+- [x] One runnable, tested package per plugin under `src/example/<plugin>` (`go run` serves on :8080, `go test` runs the flow): access-token, admin, anonymous, bearer, email-otp, generic-oauth, jwt, magic-link, multi-session, one-time-token, org, passkey, phone-number, social, two-factor, username. All pass `go test -race`.
+- [x] `src/plugins/<plugin>/example.md` for all 16 plugins (setup, options, endpoints, curl flow, errors, notes); admin and org cover authorization in detail.
+- [x] Bugs found while writing the examples (fixed):
+  - [x] jwt: `POST /sign-jwt` and `/verify-jwt` are public HTTP routes; anyone can mint a JWKS-valid token for any `sub` (better-auth: server-only). Fixed: routes removed (404); Go API `jwtPlugin.SignJWT` / `VerifyJWT`; `JWTService.SignJWT` takes `*SignJWTOptions`.
+  - [x] org: `RequirePermission` trusts the role cached on the session at set-active; update-member-role / remove-member don't refresh it, so demoted or removed members keep access. Fixed: the middleware reads the member row on every request.
+  - [x] org: `AuthorizeRole` lets role "owner" pass every check, even resources it has no statement for. Fixed: owner bypass only with legacy permissions (and for goauth-only operation checks).
+  - [x] admin: impersonate-user sets no cookies for cookie-authenticated admins. Fixed: `humatypes.MakeResPtr` dropped its cookies; admin routes authenticate with the full session (token, banned flag) before the claims-only one.
+  - [x] admin: set-role revokes all of the target's sessions (better-auth doesn't). Fixed: sessions stay; cached sessions get the new user via `RefreshUser`.
+  - [x] email-otp: banned user gets `USER_BANNED` instead of `BANNED_USER`. Fixed (also admin impersonate of a banned user, which now ignores expired bans).
+  - [x] jwt: nil `DefinePayload` result panics; `KeyPairConfig.Alg/Crv` ignored (always Ed25519). Fixed: nil payload = empty; EdDSA, ES256, ES512, PS256, RS256 (`ModulusLength`) supported, invalid config fails at Init.
+  - [x] access-token: no logout route; `/signup` uses gin `binding:` tags (no validation), `lName` required, image stored as "". Fixed: core `POST /sign-out` accepts access/refresh tokens (Bearer or cookie) and expires the plugin cookies; `/signup` validates email + password bounds (core config), `lName`/`avatar` optional, image NULL, email lower-cased, answers 201.

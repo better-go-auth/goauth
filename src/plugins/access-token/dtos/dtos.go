@@ -55,12 +55,15 @@ type ChangeActiveCompanyInput struct {
 // ─── Legacy /signup, /login and /refresh types (moved here from the core models package) ─────────────
 
 // RegisterClientInput is the legacy POST /signup body.
+// Huma validates the tags below (a 400 VALIDATION_ERROR); the password length bounds come from the core
+// EmailAndPassword.MinPasswordLength / MaxPasswordLength config and are checked by AuthService.RegisterWithEmail,
+// which also rejects display-name email forms ("Bob <a@b.co>") like core sign-up does.
 type RegisterClientInput struct {
-	FirstName string `json:"fName" binding:"required,min=2" `
-	LastName  string `json:"lName" `
-	Email     string `json:"email" binding:"required,email" `
-	Password  string `json:"password" binding:"required,min=6"`
-	Avatar    string `json:"avatar,omitempty" `
+	FirstName string `json:"fName" minLength:"2" doc:"First name (also stored as the user's name)"`
+	LastName  string `json:"lName,omitempty" doc:"Last name (optional)"`
+	Email     string `json:"email" format:"email" doc:"Email address"`
+	Password  string `json:"password" minLength:"1" doc:"Password; length bounds follow EmailAndPassword.MinPasswordLength/MaxPasswordLength (default 8..128)"`
+	Avatar    string `json:"avatar,omitempty" doc:"Image URL (optional); stored as the user's image"`
 	Country   string `json:"country,omitempty"`
 }
 

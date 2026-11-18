@@ -70,84 +70,38 @@ Generates and returns a signed JWT token representing the caller's currently act
 
 ---
 
-## 3. `POST /api/auth/sign-jwt`
+## 3. Server-only: `signJWT` (no HTTP route)
 
 ### Description
-Signs an arbitrary payload using the server's active Ed25519 private key. This endpoint is useful for backend services or authorized clients that need to issue custom JWTs (e.g. for service-to-service calls or custom claims).
+In better-auth, `POST /sign-jwt` is `SERVER_ONLY` (callable only as `auth.api.signJWT`). goauth does **not**
+register it over HTTP: an unauthenticated caller could otherwise mint a JWKS-valid token for any `sub`.
+`POST /api/auth/sign-jwt` answers `404`. Sign from Go instead:
 
-### Request
-- **Method**: `POST`
-- **Path**: `/api/auth/sign-jwt`
-- **Headers**: `Content-Type: application/json`
-- **Body**:
-  ```json
-  {
-    "payload": {
-      "sub": "custom-subject-123",
-      "role": "admin",
-      "scopes": ["read", "write"]
-    },
-    "header": {
-      "typ": "JWT"
-    },
-    "expirationTime": "1h"
-  }
-  ```
-
-### Fields:
-- `payload` (required): JSON object containing the claims to encode.
-- `header` (optional): Custom header values to include (the system automatically injects `alg: "EdDSA"` and `kid: "<active-key-id>"`).
-- `expirationTime` (optional): Expiration duration string (e.g., `"15m"`, `"1h"`, `"7d"`) or numeric seconds. Defaults to `config.JWT.ExpirationTime` (15 minutes).
-
-### Response (`200 OK`)
-```json
-{
-  "token": "eyJhbGciOiJFZERTQSIsImtpZCI6IlA1VXdSNzNLZkdRWDNoNFZJ..."
-}
+```go
+tok, err := jwtPlugin.SignJWT(ctx, map[string]any{
+	"sub":    "custom-subject-123",
+	"role":   "admin",
+	"scopes": []string{"read", "write"},
+}, &jwtplugin.SignJWTOptions{ExpirationTime: time.Hour}) // opts may be nil
+// equivalently: jwtPlugin.Service().SignJWT(ctx, payload, opts)
 ```
+
+- `payload`: the claims (nil is an empty payload). Missing `iat`, `exp`, `iss` and `aud` are filled in.
+- `SignJWTOptions` (better-auth's `overrideOptions.jwt`): `Issuer`, `Audience`, `ExpirationTime`.
+- The header carries the active key's `alg` and `kid`.
 
 ---
 
-## 4. `POST /api/auth/verify-jwt`
+## 4. Server-only: `verifyJWT` (no HTTP route)
 
 ### Description
-Cryptographically validates a JWT token against the server's JWKS public keys and returns the decoded payload if valid.
+Also `SERVER_ONLY` in better-auth (`auth.api.verifyJWT`); `POST /api/auth/verify-jwt` answers `404`.
+Verifies a token against the stored keys (signature with the algorithm of the key named by `kid`, `exp`,
+`iss`, `aud`, presence of `sub`) and returns its claims:
 
-### Request
-- **Method**: `POST`
-- **Path**: `/api/auth/verify-jwt`
-- **Headers**: `Content-Type: application/json`
-- **Body**:
-  ```json
-  {
-    "token": "eyJhbGciOiJFZERTQSIsImtpZCI6IlA1VXdSNzNLZkdRWDNoNFZJ..."
-  }
-  ```
-
-### Response (`200 OK`)
-When the token is valid, the decoded claims payload is returned:
-```json
-{
-  "payload": {
-    "iss": "http://localhost:3000",
-    "sub": "custom-subject-123",
-    "aud": "http://localhost:3000",
-    "exp": 1791972759,
-    "iat": 1791971859,
-    "role": "admin",
-    "scopes": ["read", "write"]
-  }
-}
+```go
+claims, err := jwtPlugin.VerifyJWT(ctx, token, "") // "" = configured issuer; err != nil when invalid
 ```
-
-### When Token is Invalid or Expired:
-- Returns `200 OK` with:
-  ```json
-  {
-    "payload": null
-  }
-  ```
-- Or returns `400 Bad Request` if the token string is malformed.
 
 ---
 

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	humaauth "github.com/better-go-auth/goauth/src/common/types"
 	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -64,9 +65,11 @@ func (h *AdminHandler) ImpersonateUser(ctx context.Context, input *humatypes.Hum
 		return nil, humaauth.RespondErr(err)
 	}
 
+	// keep the admin's own session token in the admin_session cookie (restored by stop-impersonating)
+	// and switch the session cookie to the impersonation session, like better-auth
 	var cookies []http.Cookie
-	if h.Cookies != nil && adminSession.Session.Token != "" && signInResp.Token != "" {
-		cookies = h.Cookies.AdminSessionCookies(adminSession.Session.Token, signInResp.Token)
+	if adminToken := h.adminSessionToken(ctx, adminSession, input.AuthHeaders); h.Cookies != nil && adminToken != "" && signInResp.Token != "" {
+		cookies = h.Cookies.AdminSessionCookies(adminToken, signInResp.Token)
 	}
 
 	// sessionWithUsr:= dtos
@@ -97,4 +100,24 @@ func (h *AdminHandler) StopImpersonating(ctx context.Context, input *humatypes.H
 		Status:  true,
 		Message: "Impersonation session terminated successfully",
 	}, 200, cookies...), nil
+}
+
+// adminSessionToken returns the caller's own session token: from the resolved session, else the
+// verified session cookie, else the bearer token a transport middleware resolved.
+func (h *AdminHandler) adminSessionToken(ctx context.Context, session *dtos.SessionWithUser, auth humatypes.AuthHeaders) string {
+	// Step 1: the resolved session carries it
+	if session != nil && session.Session.Token != "" {
+		return session.Session.Token
+	}
+	// Step 2: the signed session cookie of the request
+	if h.Cookies != nil {
+		if tok, ok := h.Cookies.SessionToken(auth.Cookie); ok && tok != "" {
+			return tok
+		}
+	}
+	// Step 3: a bearer token resolved by the bearer / access-token plugin
+	if tok, ok := humaadapter.FromBearerContext(ctx); ok {
+		return tok
+	}
+	return ""
 }

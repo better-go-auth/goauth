@@ -547,8 +547,10 @@ func (s *OrgService) HasOperation(ctx context.Context, orgID, role, operationID 
 }
 
 func (s *OrgService) AuthorizeRole(ctx context.Context, orgID, role string, check AuthCheck) (bool, error) {
-	// Step 1: Owner always has full access
-	if role == string(models.OrgRoleOwner) {
+	// Step 1: with goauth's legacy rules the owner has full access; with better-auth access control (the
+	// default) the owner is checked like any role, so it only has the statements its role grants
+	// (operation checks below keep their owner bypass, operations are a goauth-only feature)
+	if role == string(models.OrgRoleOwner) && !s.Config.BetterAuthMode() {
 		return true, nil
 	}
 

@@ -59,6 +59,28 @@ func TestOrgMiddleware_Authorization(t *testing.T) {
 		}
 		require.NoError(t, db.Create(member).Error)
 
+		// Step 2b: Seed an "editor" and a "viewer" member; the middleware reads the role from the member
+		// row, not from the claims (a role cached on the session goes stale when the member changes)
+		seedMember := func(role string) string {
+			id := uuid.New().String()
+			require.NoError(t, db.Create(&coremodels.User{
+				Base: coremodels.Base{ID: id, CreatedAt: now, UpdatedAt: now},
+				UserDto: coremodels.UserDto{
+					Name:  role,
+					Email: role + "-mw-" + string(dbType) + "-" + uuid.New().String()[:8] + "@example.com",
+				},
+			}).Error)
+			require.NoError(t, db.Create(&orgmodels.Member{
+				Base:           coremodels.Base{ID: uuid.New().String(), CreatedAt: now, UpdatedAt: now},
+				OrganizationID: orgID,
+				UserID:         id,
+				Role:           orgmodels.OrgMemberRole(role),
+			}).Error)
+			return id
+		}
+		editorID := seedMember("editor")
+		viewerID := seedMember("viewer")
+
 		cfg := orgconfig.OrgConfig{
 			// these tests cover goauth's legacy permission rules (custom resources, owner bypass)
 			GoAuth: orgconfig.OrgGoAuth{LegacyPermissions: true},
@@ -107,7 +129,7 @@ func TestOrgMiddleware_Authorization(t *testing.T) {
 			// Request with claims containing ActiveOrgId and ActiveOrgRole
 			req := httptest.NewRequest("GET", "/posts/publish", nil)
 			req = req.WithContext(context.WithValue(req.Context(), consts.CtxClaims.Str(), token.CustomClaims{
-				UserID:        "user-1",
+				UserID:        editorID,
 				ActiveOrgId:   orgID,
 				ActiveOrgRole: "editor",
 			}))
@@ -124,7 +146,7 @@ func TestOrgMiddleware_Authorization(t *testing.T) {
 
 			req := httptest.NewRequest("POST", "/posts/delete", nil)
 			req = req.WithContext(context.WithValue(req.Context(), consts.CtxClaims.Str(), token.CustomClaims{
-				UserID:        "user-1",
+				UserID:        editorID,
 				ActiveOrgId:   orgID,
 				ActiveOrgRole: "editor",
 			}))
@@ -141,7 +163,7 @@ func TestOrgMiddleware_Authorization(t *testing.T) {
 
 			req := httptest.NewRequest("PUT", "/posts/1", nil)
 			req = req.WithContext(context.WithValue(req.Context(), consts.CtxClaims.Str(), token.CustomClaims{
-				UserID:        "user-1",
+				UserID:        editorID,
 				ActiveOrgId:   orgID,
 				ActiveOrgRole: "editor",
 			}))
@@ -181,7 +203,7 @@ func TestOrgMiddleware_Authorization(t *testing.T) {
 			// 1. Authorized call
 			req := httptest.NewRequest("POST", "/huma/publish", nil)
 			req = req.WithContext(context.WithValue(req.Context(), consts.CtxClaims.Str(), token.CustomClaims{
-				UserID:        "user-1",
+				UserID:        editorID,
 				ActiveOrgId:   orgID,
 				ActiveOrgRole: "editor",
 			}))
@@ -192,7 +214,7 @@ func TestOrgMiddleware_Authorization(t *testing.T) {
 			// 2. Unauthorized role
 			reqDenied := httptest.NewRequest("POST", "/huma/publish", nil)
 			reqDenied = reqDenied.WithContext(context.WithValue(reqDenied.Context(), consts.CtxClaims.Str(), token.CustomClaims{
-				UserID:        "user-2",
+				UserID:        viewerID,
 				ActiveOrgId:   orgID,
 				ActiveOrgRole: "viewer", // viewer doesn't have publishPost
 			}))

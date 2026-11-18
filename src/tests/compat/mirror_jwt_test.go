@@ -1,6 +1,7 @@
 package compattest
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"fmt"
@@ -98,37 +99,31 @@ func TestGoMirror_JWT(t *testing.T) {
 	tokClaims := verifyEdDSA(tokBody.Token)
 	require.Equal(t, email, tokClaims["email"])
 
-	// [5] POST /sign-jwt with custom claims
+	// [5] POST /sign-jwt and /verify-jwt are server-only in better-auth: not routed over HTTP
 	signRes := c.post(t, "/api/auth/sign-jwt", map[string]any{
-		"payload": map[string]any{
-			"sub":    "custom-subject-456",
-			"role":   "superadmin",
-			"scopes": []string{"read", "write", "delete"},
-		},
+		"payload": map[string]any{"sub": "custom-subject-456", "role": "superadmin"},
 	})
-	require.Equal(t, http.StatusOK, signRes.Status, string(signRes.Body))
-	var customBody struct {
-		Token string `json:"token"`
-	}
-	signRes.JSON(t, &customBody)
-	require.NotEmpty(t, customBody.Token)
-	customClaims := verifyEdDSA(customBody.Token)
+	require.Equal(t, http.StatusNotFound, signRes.Status, string(signRes.Body))
+	verRes := c.post(t, "/api/auth/verify-jwt", map[string]any{"token": tokBody.Token})
+	require.Equal(t, http.StatusNotFound, verRes.Status, string(verRes.Body))
+
+	// [6] custom claims are signed from Go (auth.api.signJWT) and verify with the JWKS key
+	jwtPlug, ok := s.Auth.Plugin(jwtplugin.PluginID).(*jwtplugin.Plugin)
+	require.True(t, ok)
+	customTok, err := jwtPlug.SignJWT(context.Background(), map[string]any{
+		"sub":    "custom-subject-456",
+		"role":   "superadmin",
+		"scopes": []string{"read", "write", "delete"},
+	}, nil)
+	require.NoError(t, err)
+	customClaims := verifyEdDSA(customTok)
 	require.Equal(t, "custom-subject-456", customClaims["sub"])
 	require.Equal(t, "superadmin", customClaims["role"])
 
-	// [6] POST /verify-jwt with valid custom JWT
-	verRes := c.post(t, "/api/auth/verify-jwt", map[string]any{"token": customBody.Token})
-	require.Equal(t, http.StatusOK, verRes.Status, string(verRes.Body))
-	var verBody struct {
-		Payload map[string]any `json:"payload"`
-	}
-	verRes.JSON(t, &verBody)
-	require.NotNil(t, verBody.Payload)
-	require.Equal(t, "custom-subject-456", verBody.Payload["sub"])
-
-	// [7] POST /verify-jwt with invalid token returns null payload
-	badRes := c.post(t, "/api/auth/verify-jwt", map[string]any{"token": "bad.jwt.token"})
-	require.Equal(t, http.StatusOK, badRes.Status, string(badRes.Body))
-	badRes.JSON(t, &verBody)
-	require.Nil(t, verBody.Payload)
+	// [7] auth.api.verifyJWT from Go: valid token returns the payload, an invalid one an error
+	payload, err := jwtPlug.VerifyJWT(context.Background(), customTok, "")
+	require.NoError(t, err)
+	require.Equal(t, "custom-subject-456", payload["sub"])
+	_, err = jwtPlug.VerifyJWT(context.Background(), "bad.jwt.token", "")
+	require.Error(t, err)
 }

@@ -211,6 +211,9 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
 	p.sessionSvc.Secret = ictx.Config.Secret
 	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
+	// /signup enforces the same password length bounds as core sign-up
+	p.authSvc.MinPasswordLength = ictx.Config.EmailAndPassword.MinPasswordLength
+	p.authSvc.MaxPasswordLength = ictx.Config.EmailAndPassword.MaxPasswordLength
 
 	// Register lifecycle hook to blacklist session and clean up sid index upon revocation
 	if ictx.Hooks != nil {
@@ -262,6 +265,10 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		if p.config.AutoRegisterMiddleware {
 			ictx.Api.UseMiddleware(p.middleware)
 		}
+		// Always let access-token clients log out through the core POST /sign-out route. Registered after the
+		// global middleware (when on), so a Bearer JWT that one already resolved is not looked up twice; the
+		// plugin is initialised before the core routes are mounted, so this wraps core sign-out.
+		ictx.Api.UseMiddleware(p.buildSignOutMiddleware(ictx.Config, cookieAttrs))
 		p.SetupHumaRoutes(ictx.Api, ictx.MiddleWare)
 	}
 
@@ -327,13 +334,7 @@ func (p *Plugin) HTTPMiddleware(authCfg ...config.AuthConfig) func(http.Handler)
 	if len(authCfg) > 0 {
 		cfg = authCfg[0]
 	}
-	accessSecret := p.sessionConf.JWT.AccessSecret
-	if accessSecret == "" && cfg.Secret != "" {
-		accessSecret = config.DeriveKey(cfg.Secret, "goauth-access")
-	}
-	if accessSecret == "" {
-		accessSecret = cfg.Secret
-	}
+	accessSecret := p.accessSecretFor(cfg)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

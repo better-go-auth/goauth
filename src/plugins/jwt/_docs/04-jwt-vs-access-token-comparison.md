@@ -19,7 +19,7 @@ This document breaks down their differences, overlapping capabilities, and decis
 | **Client SDK Support** | Built-in `@better-auth/client` `jwtClient()` plugin | Custom client fetch logic for token refresh |
 | **Database Tables** | `jwks` table (stores encrypted Ed25519 key pairs) | Uses core tables (`users`, `sessions`, `accounts`) |
 | **Response Headers** | `set-auth-jwt` on `/get-session` | `set-auth-token` (bearer session) / cookies |
-| **Custom Signing API** | Yes (`POST /sign-jwt`, `POST /verify-jwt`) | No custom signing endpoints |
+| **Custom Signing API** | Yes, server-only from Go (`SignJWT`, `VerifyJWT`; not over HTTP) | No custom signing endpoints |
 
 ---
 
@@ -81,7 +81,7 @@ This document breaks down their differences, overlapping capabilities, and decis
 - You are building a frontend using the official `@better-auth/client` with `jwtClient()`.
 - You have **downstream microservices**, API gateways (Kong, Traefik, AWS API Gateway), or serverless functions (Cloudflare Workers, AWS Lambda) that need to verify user authentication independently.
 - You want standard RFC 7517 / RFC 8037 compliance with public key rotation and zero-database verification overhead.
-- You need arbitrary token signing and verification APIs (`/sign-jwt`, `/verify-jwt`).
+- You need arbitrary token signing and verification from server code (`SignJWT`, `VerifyJWT`).
 
 ### Choose the `access-token` Plugin if:
 - You are maintaining legacy client integrations that rely on OAuth2-style dual-token flow (`access_token` + `refresh_token` endpoints).

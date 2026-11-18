@@ -124,57 +124,20 @@ async function main() {
     process.exit(1);
   }
 
-  // 5. Test client.$fetch("/sign-jwt")
-  console.log("\n[5] Testing client.$fetch('/sign-jwt')...");
-  const customClaims = {
-    sub: "custom-subject-456",
-    role: "superadmin",
-    scopes: ["read", "write", "delete"],
-  };
-  const signRes = await client.$fetch("/sign-jwt", {
-    method: "POST",
-    body: { payload: customClaims },
-  });
-  if (signRes.error || !signRes.data?.token) {
-    console.error("POST /sign-jwt failed:", signRes.error || signRes.data);
-    process.exit(1);
+  // 5. /sign-jwt and /verify-jwt are SERVER_ONLY in better-auth (auth.api.signJWT / verifyJWT):
+  // they must not be reachable over HTTP, otherwise anyone could mint a JWT for any subject.
+  console.log("\n[5] Checking /sign-jwt and /verify-jwt are not exposed over HTTP...");
+  for (const [path, body] of [
+    ["/sign-jwt", { payload: { sub: "custom-subject-456", role: "superadmin" } }],
+    ["/verify-jwt", { token: tokenRes.data.token }],
+  ]) {
+    const res = await client.$fetch(path, { method: "POST", body });
+    if (res.error?.status !== 404) {
+      console.error(`POST ${path} should be 404 (server-only), got:`, res.error || res.data);
+      process.exit(1);
+    }
+    console.log(`POST ${path} -> 404 (server-only)`);
   }
-  const customJwt = signRes.data.token;
-  console.log("Signed custom JWT:", customJwt);
-  const { payload: customVerified } = await jwtVerify(customJwt, importedKey);
-  console.log("Verified custom JWT with jose:", customVerified);
-  if (customVerified.sub !== "custom-subject-456" || customVerified.role !== "superadmin") {
-    console.error("Custom claims mismatch:", customVerified);
-    process.exit(1);
-  }
-
-  // 6. Test client.$fetch("/verify-jwt")
-  console.log("\n[6] Testing client.$fetch('/verify-jwt')...");
-  const verifyRes = await client.$fetch("/verify-jwt", {
-    method: "POST",
-    body: { token: customJwt },
-  });
-  if (verifyRes.error || !verifyRes.data?.payload) {
-    console.error("POST /verify-jwt failed:", verifyRes.error || verifyRes.data);
-    process.exit(1);
-  }
-  console.log("Server verification output:", verifyRes.data.payload);
-  if (verifyRes.data.payload.sub !== "custom-subject-456") {
-    console.error("Verify endpoint sub mismatch:", verifyRes.data.payload);
-    process.exit(1);
-  }
-
-  // 7. Test client.$fetch("/verify-jwt") with invalid token
-  console.log("\n[7] Testing /verify-jwt with bad token (expect null payload)...");
-  const badVerifyRes = await client.$fetch("/verify-jwt", {
-    method: "POST",
-    body: { token: "bad.jwt.token" },
-  });
-  if (badVerifyRes.data?.payload !== null && badVerifyRes.data?.payload !== undefined) {
-    console.error("Expected null payload for bad token, got:", badVerifyRes.data);
-    process.exit(1);
-  }
-  console.log("Bad token correctly returned null payload!");
 
   console.log("\n✅ All official better-auth/client JWT plugin tests passed successfully!");
 }
