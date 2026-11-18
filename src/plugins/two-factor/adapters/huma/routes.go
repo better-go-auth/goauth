@@ -2,6 +2,7 @@ package huma
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
@@ -12,14 +13,22 @@ import (
 // RateLimit is better-auth's two-factor rule for every /two-factor/* path: 3 requests per 10 seconds.
 var RateLimit = ratelimit.Rule{Window: 10 * time.Second, Max: 3}
 
+// RateLimitRules are the plugin's rules for goauth's global limiter (better-auth's two-factor `rateLimit`).
+func RateLimitRules() []ratelimit.PathRule {
+	return []ratelimit.PathRule{{
+		PathMatcher: func(path string) bool { return strings.HasPrefix(path, "/two-factor/") },
+		Window:      RateLimit.Window,
+		Max:         RateLimit.Max,
+	}}
+}
+
 // Register mounts the eight two-factor endpoints.
 func Register(api huma.API, kit *pluginkit.Kit, h *Handler) {
 	tags := []string{"two-factor"}
 	route := func(id, path, summary string, access pluginkit.Access) pluginkit.Route {
-		rl := RateLimit
 		return pluginkit.Route{
 			OperationID: id, Method: http.MethodPost, Path: path, Summary: summary, Tags: tags,
-			Access: access, RateLimit: &rl,
+			Access: access,
 		}
 	}
 	pluginkit.Register(kit, api, route("enableTwoFactor", "/two-factor/enable", "Enable two factor authentication", pluginkit.Session), h.Enable)

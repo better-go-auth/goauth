@@ -175,6 +175,42 @@ api := fiberadapter.New(app, adapters.WithDocs("/docs"))
   - `DisabledOps` & `DisabledPaths`: Mount-level or middleware-level operation/route disabling.
 - **CSRF & Origin Protection**: Origin and Referer validation on mutating requests across core and plugin routes (`CheckOriginOnPluginMutations`).
 - **Secondary Storage Blacklists**: Redis and in-memory cache abstractions for revoked sessions and rate limits.
+- **Global Rate Limiter** (`AuthConfig.RateLimit`, better-auth's `rateLimit`): see below.
+
+### Core Options (better-auth parity)
+
+These `config.AuthConfig` fields port better-auth's options of the same name:
+
+| Option | better-auth | Behaviour |
+|---|---|---|
+| `RateLimit` | `rateLimit` | One limiter in front of every core and plugin route, per client IP (`Advanced.IPAddress`) and path. `Enabled` (`*bool`) defaults to production only (`GOAUTH_ENV`/`GO_ENV`/`APP_ENV`/`NODE_ENV` = `production`). Default rule 100 requests / 10 s; special rules: `/sign-in*`, `/sign-up*`, `/change-password`, `/change-email` 3 / 10 s, password-reset and verification e-mails 3 / 60 s; plugin rules (`plugins.RateLimitProvider`); `CustomRules` (exact path or wildcard, `Disabled`, per-request `Resolve`). `Storage`: `memory`, `secondary-storage` (same keys and JSON as better-auth, so a TypeScript server can share Redis) or `CustomStorage`. A limited request gets `429` `{"message":"Too many requests. Please try again later."}` with `X-Retry-After`. |
+| `Hooks.Before` / `Hooks.After` | `hooks.before` / `hooks.after` | Endpoint middleware (`src/common/endpointhooks`): before hooks can change the request body/headers/query, answer instead of the endpoint or fail it; after hooks see the response and the new session and can replace it. Plugins add hooks with `plugins.EndpointHooksProvider`. |
+| `OnAPIError` | `onAPIError` | `ErrorURL` replaces the `<baseURL><basePath>/error` page (OAuth callbacks, `GET /error`); `OnError(err, r)` receives unexpected errors and errors raised before the endpoint (origin check, before hooks); `Throw` panics with them instead. |
+| `Logger` | `logger` | `Level` (`debug` … `error`, default `warn`), `Disabled`, custom `Log` func; default output is `slog`. |
+| `Advanced.BackgroundTasks.Handler` | `advanced.backgroundTasks.handler` | Runs senders (verification/reset e-mails, OTPs, magic links, invitations) without blocking the response, e.g. `func(task func()) { go task() }`; their errors are then logged. Default: synchronous. |
+
+```go
+cfg := config.AuthConfig{
+	RateLimit: config.RateLimitOptions{
+		Enabled: new(true),
+		CustomRules: map[string]ratelimit.CustomRule{
+			"/sign-in/email": {Window: time.Minute, Max: 5},
+			"/get-session":   {Disabled: true},
+		},
+	},
+	Hooks: config.HooksOptions{
+		Before: func(c *endpointhooks.Context) (*endpointhooks.Response, error) {
+			if c.Path == "/sign-up/email" && !strings.HasSuffix(fmt.Sprint(c.Body["email"]), "@example.com") {
+				return nil, autherr.New("EMAIL_DOMAIN_NOT_ALLOWED", "Email domain not allowed", http.StatusBadRequest)
+			}
+			return nil, nil
+		},
+	},
+	OnAPIError: config.OnAPIErrorOptions{ErrorURL: "https://app.example.com/auth-error"},
+	Logger:     logger.Options{Level: logger.LevelInfo},
+	Advanced:   config.Advanced{BackgroundTasks: config.BackgroundTasks{Handler: func(task func()) { go task() }}},
+}
+```
 
 ### Official Plugins
 

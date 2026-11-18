@@ -82,7 +82,10 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 			_, _ = s.passwords.Hash(in.Password)
 			// config: OnExistingUserSignUp lets the app warn the real owner (e.g. "someone tried to register")
 			if emlpwdCfg.OnExistingUserSignUp != nil {
-				_ = emlpwdCfg.OnExistingUserSignUp(config.ExistingUserSignUpData{User: *existing}, request(ctx))
+				data := config.ExistingUserSignUpData{User: *existing}
+				_ = s.cfg.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
+					return emlpwdCfg.OnExistingUserSignUp(data, request(ctx))
+				})
 			}
 			// fake user with a fresh ID, shaped exactly like a real sign-up response; nothing is stored
 			now := time.Now().UTC()

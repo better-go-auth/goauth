@@ -646,7 +646,7 @@ func TestUserCreationHooksFire(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	e := newEnv(t, mlconfig.MagicLinkConfig{}, nil, compattest.WithConfig(func(c *config.AuthConfig) {
-		c.RateLimit.Enabled = true
+		c.RateLimit.Enabled = new(true)
 	}))
 	// default rule: 5 requests per 60s
 	for i := 0; i < 5; i++ {
@@ -671,7 +671,7 @@ func TestRateLimit(t *testing.T) {
 
 func TestRateLimitCustomRuleAndDisabled(t *testing.T) {
 	e := newEnv(t, mlconfig.MagicLinkConfig{}, []magiclink.Option{magiclink.WithRateLimit(time.Minute, 2)},
-		compattest.WithConfig(func(c *config.AuthConfig) { c.RateLimit.Enabled = true }))
+		compattest.WithConfig(func(c *config.AuthConfig) { c.RateLimit.Enabled = new(true) }))
 	for i := 0; i < 2; i++ {
 		if res := e.s.Post(t, signInPath, map[string]any{"email": "rl2@example.com"}); res.Status != http.StatusOK {
 			t.Fatalf("request %d: %d", i+1, res.Status)

@@ -45,17 +45,11 @@ func (h *Handler) SignIn(ctx context.Context, in *signInInput) (*signInOutput, e
 	if err != nil {
 		return nil, err
 	}
-	// Step 2: let plugins (two-factor) replace the response before any session cookie is written
-	ch, err := kit.SignInChallenge(ctx, SignInPath, res.Session, res.DontRemember)
-	if err != nil {
-		return nil, err
-	}
-	if ch.Replaces() {
-		return &signInOutput{SetCookie: ch.Cookies, Body: ch.Body}, nil
-	}
-	// Step 3: session cookies (plus extra cookies such as a rotated trust_device) and better-auth's {token, user}
+	// Step 2: plugins (two-factor) may still replace the response: goauth's endpoint-hook middleware runs
+	// the OnAfterSignIn interceptors on SignInPath responses before they are sent
+	// Step 3: session cookies and better-auth's {token, user}
 	return &signInOutput{
-		SetCookie: append(kit.SessionCookies(res.Session, res.DontRemember), ch.Extra()...),
+		SetCookie: kit.SessionCookies(res.Session, res.DontRemember),
 		Body:      dtos.SignInPhoneNumberResponse{Token: res.Session.Session.Token, User: res.Session.User},
 	}, nil
 }

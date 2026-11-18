@@ -53,7 +53,8 @@ type Kit struct {
 	Passwords *authcrypto.Passwords
 	Store     sec_storage.SecondaryStorage
 	DB        *gorm.DB
-	Limiter   *ratelimit.Limiter
+	// Limiter is goauth's global rate limiter (InitContext.RateLimiter); Route.RateLimit adds rules to it.
+	Limiter *ratelimit.Limiter
 
 	generateID func() string
 }
@@ -97,7 +98,7 @@ func New(ictx *plugins.InitContext) (*Kit, error) {
 		Passwords:  authcrypto.NewPasswords(ictx.Config),
 		Store:      ictx.SecondaryStorage,
 		DB:         ictx.DB,
-		Limiter:    ratelimit.New(ictx.SecondaryStorage),
+		Limiter:    ictx.RateLimiter,
 		generateID: ictx.GenerateID,
 	}, nil
 }
@@ -129,7 +130,9 @@ type Route struct {
 	// FormCSRF applies the sign-in CSRF check (origin required for cookieless browser requests) to
 	// non-Form access levels, e.g. an optional-session endpoint that also signs users in.
 	FormCSRF bool
-	// RateLimit applies better-auth's per-path rule when AuthConfig.RateLimit.Enabled is set.
+	// RateLimit adds a plugin rate-limit rule for this route's path to goauth's global limiter (it applies
+	// while AuthConfig.RateLimit is enabled). Prefer plugins.RateLimitProvider for better-auth style
+	// prefix rules.
 	RateLimit *ratelimit.Rule
 	// SkipOriginCheck disables the origin check (GET callbacks validate their own redirect targets).
 	SkipOriginCheck bool
@@ -148,13 +151,11 @@ func (k *Kit) Disabled(r Route) bool {
 	return config.OperationSet(k.Conf.DisabledOps)[r.OperationID]
 }
 
-// Middlewares returns the middleware chain for a route: rate limit → origin/CSRF → session resolution.
+// Middlewares returns the middleware chain for a route: origin/CSRF → session resolution. Rate limiting is
+// done by goauth's global limiter, which runs before every route.
 func (k *Kit) Middlewares(r Route) huma.Middlewares {
 	var mws huma.Middlewares
-	// Step 1: better-auth's rate limiter runs first so rejected requests do no work
-	if r.RateLimit != nil {
-		mws = append(mws, k.rateLimit(r.Path, *r.RateLimit))
-	}
+	// Step 1: (rate limiting moved to the global limiter, see Register)
 	// Step 2: origin / CSRF check for mutating requests
 	if !r.SkipOriginCheck {
 		mws = append(mws, humaadapter.OriginCheck(k.Conf, k.Origins, r.Access == Form || r.FormCSRF))
@@ -177,6 +178,12 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 	if api == nil || k.Disabled(r) {
 		return
 	}
+	// a per-route rule becomes a plugin rule of the global limiter (path parameters match one segment)
+	if r.RateLimit != nil {
+		k.Limiter.AddPluginRules(ratelimit.PathRule{
+			PathMatcher: routeMatcher(r.Path), Window: r.RateLimit.Window, Max: r.RateLimit.Max,
+		})
+	}
 	huma.Register(api, huma.Operation{
 		OperationID: r.OperationID,
 		Method:      r.Method,
@@ -189,27 +196,18 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 	}, handler)
 }
 
-// rateLimit enforces rule per client IP and path when AuthConfig.RateLimit.Enabled is set,
-// answering 429 {"message": "Too many requests. Please try again later."} with X-Retry-After.
-func (k *Kit) rateLimit(path string, rule ratelimit.Rule) func(huma.Context, func(huma.Context)) {
-	return func(ctx huma.Context, next func(huma.Context)) {
-		if !k.Conf.RateLimit.Enabled {
-			next(ctx)
-			return
-		}
-		ip := humaadapter.ClientIP(k.Conf, config.GetHTTPRequest(ctx.Context()))
-		if ip == "" {
-			ip = "unknown"
-		}
-		if ok, retry := k.Limiter.Allow(ctx.Context(), ip+"|"+path, rule); !ok {
-			ctx.SetHeader("X-Retry-After", ratelimit.RetryAfterHeader(retry))
-			ctx.SetHeader("Content-Type", "application/json")
-			ctx.SetStatus(http.StatusTooManyRequests)
-			_, _ = ctx.BodyWriter().Write([]byte(`{"message":"Too many requests. Please try again later."}`))
-			return
-		}
-		next(ctx)
+// routeMatcher matches request paths against a route path whose {param} segments match any one segment.
+func routeMatcher(path string) func(string) bool {
+	if !strings.Contains(path, "{") {
+		return func(p string) bool { return p == path }
 	}
+	segs := strings.Split(path, "/")
+	for i, s := range segs {
+		if strings.HasPrefix(s, "{") && strings.HasSuffix(s, "}") {
+			segs[i] = "*"
+		}
+	}
+	return ratelimit.WildcardMatch(strings.Join(segs, "/"))
 }
 
 // ─── Request helpers ─────────────────────────────────────────────────────────
@@ -314,14 +312,6 @@ func (k *Kit) ExpireSessionCookies(keepDontRemember bool) []http.Cookie {
 		out = append(out, k.Cookies.ExpireCookie(cookies.CookieDontRemember))
 	}
 	return out
-}
-
-// SignInChallenge runs the AfterSignIn interceptors (two-factor) for a completed sign-in on path.
-func (k *Kit) SignInChallenge(ctx context.Context, path string, sw *dtos.SessionWithUser, dontRemember bool) (*plugins.SignInChallenge, error) {
-	if k.Hooks == nil || sw == nil {
-		return nil, nil
-	}
-	return k.Hooks.TriggerAfterSignIn(ctx, plugins.SignInEvent{Path: path, Session: sw, DontRemember: dontRemember, Request: k.Request(ctx)})
 }
 
 // RefreshUser rewrites the cached user copy inside the user's sessions (secondary storage).

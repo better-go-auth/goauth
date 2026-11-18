@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"html"
 	"net/http"
+	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -170,20 +172,51 @@ func (h *handler) ok(context.Context, *struct{}) (*okOutput, error) {
 }
 
 type errorInput struct {
-	Error string `query:"error"`
+	Error            string `query:"error"`
+	ErrorDescription string `query:"error_description"`
 }
 
 type errorOutput struct {
+	Status      int
 	ContentType string `header:"Content-Type"`
+	Location    string `header:"Location"`
 	Body        []byte
 }
 
+// safeErrorCode is better-auth's check for the error code shown or forwarded by GET /error.
+var safeErrorCode = regexp.MustCompile(`^['A-Za-z0-9_-]+$`)
+
+// errorPage is better-auth's GET /error: with OnAPIError.ErrorURL it redirects there with ?error=CODE
+// (and error_description), in production it redirects to "/?error=CODE", otherwise it shows an HTML page.
 func (h *handler) errorPage(_ context.Context, in *errorInput) (*errorOutput, error) {
+	// Step 1: only codes made of safe characters are shown or forwarded
 	code := in.Error
-	if code == "" {
+	if code == "" || !safeErrorCode.MatchString(code) {
 		code = "UNKNOWN"
 	}
+	q := url.Values{}
+	q.Set("error", code)
+	if in.ErrorDescription != "" {
+		q.Set("error_description", in.ErrorDescription)
+	}
+	// Step 2: config OnAPIError.ErrorURL replaces the default page
+	if target := h.Conf.OnAPIError.ErrorURL; target != "" {
+		sep := "?"
+		if strings.Contains(target, "?") {
+			sep = "&"
+		}
+		return &errorOutput{Status: http.StatusFound, Location: target + sep + q.Encode()}, nil
+	}
+	// Step 3: production sends users back to the app instead of showing the page
+	if config.IsProduction() {
+		return &errorOutput{Status: http.StatusFound, Location: "/?" + q.Encode()}, nil
+	}
+	// Step 4: the HTML error page
+	desc := ""
+	if in.ErrorDescription != "" {
+		desc = `<p>` + html.EscapeString(in.ErrorDescription) + `</p>`
+	}
 	page := fmt.Sprintf(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Error</title></head>`+
-		`<body><h1>Something went wrong</h1><p>Error code: <code>%s</code></p></body></html>`, html.EscapeString(code))
-	return &errorOutput{ContentType: "text/html; charset=utf-8", Body: []byte(page)}, nil
+		`<body><h1>Something went wrong</h1><p>Error code: <code>%s</code></p>%s</body></html>`, html.EscapeString(code), desc)
+	return &errorOutput{Status: http.StatusOK, ContentType: "text/html; charset=utf-8", Body: []byte(page)}, nil
 }

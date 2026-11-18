@@ -446,7 +446,10 @@ func (s *Service) sendVerificationOnSignUp(ctx context.Context, user *models.Use
 		callbackURL = "/"
 	}
 	link := s.kit.BaseURL() + "/verify-email?token=" + tok + "&callbackURL=" + encodeURIComponent(callbackURL)
-	_ = ev.SendVerificationEmail(config.EmailVerificationData{User: *user, URL: link, Token: tok}, s.kit.Request(ctx))
+	data := config.EmailVerificationData{User: *user, URL: link, Token: tok}
+	_ = s.kit.Conf.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
+		return ev.SendVerificationEmail(data, s.kit.Request(ctx))
+	})
 }
 
 // encodeURIComponent mirrors JavaScript's encodeURIComponent.

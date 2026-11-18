@@ -843,7 +843,7 @@ func TestUserDeletionRemovesTwoFactor(t *testing.T) {
 
 func TestRateLimit(t *testing.T) {
 	e := newEnv(t, tfconfig.Config{}, false, func(c *config.AuthConfig) {
-		c.RateLimit.Enabled = true
+		c.RateLimit.Enabled = new(true)
 	})
 	for i := 0; i < 3; i++ {
 		expectError(t, e.post("/two-factor/verify-totp", map[string]any{"code": "123456"}), 401, "INVALID_TWO_FACTOR_COOKIE")

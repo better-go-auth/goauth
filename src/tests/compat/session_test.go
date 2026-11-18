@@ -62,8 +62,9 @@ func TestOkAndErrorEndpoints(t *testing.T) {
 	if r.Status != http.StatusOK || !strings.HasPrefix(r.Header.Get("Content-Type"), "text/html") {
 		t.Fatalf("error page: %d %s", r.Status, r.Header.Get("Content-Type"))
 	}
-	if strings.Contains(string(r.Body), "<script>") || !strings.Contains(string(r.Body), "&lt;script&gt;") {
-		t.Fatalf("error code must be HTML-escaped: %s", r.Body)
+	// like better-auth, codes with characters outside [A-Za-z0-9_'-] are replaced by UNKNOWN
+	if strings.Contains(string(r.Body), "<script>") || !strings.Contains(string(r.Body), "UNKNOWN") {
+		t.Fatalf("unsafe error code must not be shown: %s", r.Body)
 	}
 }
 

@@ -127,8 +127,9 @@ curl -b jar -c jar $H -d '{"phoneNumber":"+15550005678","code":"123456","updateP
 
 ## Notes
 
-- Rate limits are only enforced when `AuthConfig.RateLimit.Enabled` is true. `/phone-number/*` allows
-  10 requests per 60s and `/sign-in/phone-number` allows 3 per 10s, per client IP.
+- Rate limits are enforced by goauth's global limiter while `AuthConfig.RateLimit` is enabled (default:
+  production only). `/phone-number/*` allows 10 requests per 60s (the plugin's rule) and
+  `/sign-in/phone-number` 3 per 10s (the `/sign-in` special rule), per client IP.
 - With `updatePhoneNumber`, the code is used up before the session check, as in better-auth. A request
   without a session therefore burns the code.
 - `EmailAndPassword.RevokeSessionsOnPasswordReset` and `OnPasswordReset` also apply to the SMS reset.

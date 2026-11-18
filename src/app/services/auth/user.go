@@ -194,7 +194,9 @@ func (s *Service) DeleteUser(ctx context.Context, current *dtos.SessionWithUser,
 			callbackURL = *in.CallbackURL
 		}
 		link := s.baseURL() + "/delete-user/callback?token=" + tok + "&callbackURL=" + url.QueryEscape(callbackURL)
-		if err := send(config.DeleteAccountVerificationData{User: *user, URL: link, Token: tok}, request(ctx)); err != nil {
+		// config: Advanced.BackgroundTasks.Handler runs the sender without blocking the response
+		data := config.DeleteAccountVerificationData{User: *user, URL: link, Token: tok}
+		if err := s.cfg.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error { return send(data, request(ctx)) }); err != nil {
 			return "", err
 		}
 		return MsgVerificationEmailSent, nil

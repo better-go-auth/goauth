@@ -19,6 +19,7 @@ import (
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	accesstoken "github.com/better-go-auth/goauth/src/plugins/access-token"
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
+	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -56,6 +57,11 @@ func WithConfig(fn func(*config.AuthConfig)) Option {
 // WithoutSecondaryStorage runs the server with the database only.
 func WithoutSecondaryStorage() Option {
 	return func(o *goauth.GoAuthOptions) { o.SecondaryStorage = nil }
+}
+
+// WithSecondaryStorage runs the server with store (e.g. one store shared by two servers).
+func WithSecondaryStorage(store sec_storage.SecondaryStorage) Option {
+	return func(o *goauth.GoAuthOptions) { o.SecondaryStorage = store }
 }
 
 // WithPlugin adds a plugin to the test server options.

@@ -15,6 +15,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/danielgtaylor/huma/v2"
 	"gorm.io/gorm"
@@ -43,6 +44,9 @@ type InitContext struct {
 	DB               *gorm.DB
 	CookieManager    *cookies.Manager
 	GenerateID       func() string
+	// RateLimiter is goauth's one rate limiter (AuthConfig.RateLimit). Plugins add rules with
+	// RateLimitProvider (or pluginkit.Route.RateLimit); nil outside SetupGoAuth.
+	RateLimiter *ratelimit.Limiter
 
 	// Extras is intentionally disabled. We do not use this field; all
 	// dependencies are provided via the typed fields above (DB,

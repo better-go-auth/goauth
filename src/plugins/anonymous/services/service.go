@@ -4,7 +4,7 @@ package services
 
 import (
 	"context"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"net/http"
 	"net/mail"
 	"strings"
@@ -206,7 +206,7 @@ func (s *Service) OnNewSession(ctx context.Context, ev plugins.NewSessionEvent) 
 	}
 	// Step 5: delete it (failures are logged, the sign-in still succeeds)
 	if err := s.deleteUser(ctx, old.User.ID); err != nil {
-		slog.Error("anonymous: failed to clean up anonymous user during post-link cleanup", "anonymousUserId", old.User.ID, "err", err)
+		logger.Error("anonymous: failed to clean up anonymous user during post-link cleanup", "anonymousUserId", old.User.ID, "err", err)
 	}
 	return nil
 }

@@ -48,7 +48,7 @@ public URL of the auth server. The plugin has no tables of its own. Tokens are s
 | `DisableSignUp` | false | Verify won't create users. Unknown addresses are redirected with `?error=new_user_signup_disabled` |
 | `GenerateToken` | 32 random letters | Custom token generator `func(email string) string` |
 | `StoreToken` | `{Mode: "plain"}` | `"hashed"` stores base64url(SHA-256(token)). `"custom-hasher"` with `Hash` uses your own hash |
-| `RateLimit` | 5 requests / 60s | Per IP and path on both endpoints. Only enforced when `AuthConfig.RateLimit.Enabled` is true |
+| `RateLimit` | 5 requests / 60s | Plugin rule for both endpoints, per IP and path. Enforced by goauth's global limiter while `AuthConfig.RateLimit` is enabled (default: production only) |
 
 Functional options: `magiclink.WithSendMagicLink`, `WithExpiresIn`, `WithDisableSignUp`,
 `WithGenerateToken`, `WithStoreToken`, `WithRateLimit`.

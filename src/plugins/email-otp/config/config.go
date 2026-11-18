@@ -64,10 +64,12 @@ const (
 	ResendStrategyReuse ResendStrategy = "reuse"
 )
 
-// EmailOTPRateLimitConfig mirrors Better Auth's `rateLimit` option on Email OTP endpoints.
+// EmailOTPRateLimitConfig mirrors Better Auth's `rateLimit` option on Email OTP endpoints. The plugin
+// declares these rules to goauth's global limiter, so they apply while AuthConfig.RateLimit is enabled
+// (by default in production only, like better-auth).
 type EmailOTPRateLimitConfig struct {
-	// Enabled controls whether per-endpoint rate limiting is enforced.
-	// When nil, rate limiting is enabled automatically if Window > 0, Max > 0, or root RateLimit.Enabled is true.
+	// Enabled = false drops the plugin's rules (the OTP paths then use the special and global rules);
+	// nil or true declares them.
 	Enabled *bool
 	// Window specifies the rate limit window duration (default: 60s).
 	Window time.Duration

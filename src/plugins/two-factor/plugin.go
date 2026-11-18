@@ -16,6 +16,7 @@ import (
 	tfconfig "github.com/better-go-auth/goauth/src/plugins/two-factor/config"
 	"github.com/better-go-auth/goauth/src/plugins/two-factor/repository"
 	"github.com/better-go-auth/goauth/src/plugins/two-factor/services"
+	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 )
 
 // PluginID is better-auth's plugin id.
@@ -32,8 +33,9 @@ type Plugin struct {
 }
 
 var (
-	_ plugins.Plugin       = (*Plugin)(nil)
-	_ plugins.HookProvider = (*Plugin)(nil)
+	_ plugins.Plugin            = (*Plugin)(nil)
+	_ plugins.HookProvider      = (*Plugin)(nil)
+	_ plugins.RateLimitProvider = (*Plugin)(nil)
 )
 
 // Option configures the plugin.
@@ -113,6 +115,9 @@ func (p *Plugin) Services() map[string]any {
 
 // Routes returns nil: endpoints are mounted on the Huma API in Init.
 func (p *Plugin) Routes() []plugins.RouteDescriptor { return nil }
+
+// RateLimitRules is better-auth's two-factor rule: every /two-factor/* path, 3 requests per 10 seconds.
+func (p *Plugin) RateLimitRules() []ratelimit.PathRule { return humatf.RateLimitRules() }
 
 // Hooks returns the lifecycle hooks (twoFactor rows are deleted with the user).
 func (p *Plugin) Hooks() plugins.HookService {
