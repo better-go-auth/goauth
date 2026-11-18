@@ -11,8 +11,8 @@ func (opts *GoAuthOptions) SetDefaults() {
 
 // Validate verifies that required options are present and valid.
 func (opts *GoAuthOptions) Validate() error {
-	if opts.Conn == nil && opts.Repositories == nil {
-		return errors.New("goauth: either database connection (Conn) or Repositories must be provided")
+	if opts.Conn == nil && opts.Repositories == nil && opts.Adapter == nil {
+		return errors.New("goauth: either a database connection (Conn), an Adapter or Repositories must be provided")
 	}
 
 	return opts.AuthConfig.Validate()

@@ -31,13 +31,15 @@ type factory struct {
 	// ids is the registry's id strategy: with IDDatabase / IDSerial the database creates ids, and with
 	// IDSerial every field holding an id is stored as an integer (strings in records).
 	ids schema.IDStrategy
+	// opts are the options New was called with (Bind reuses them)
+	opts []Option
 }
 
 // New wraps backend b in the shared factory for registry reg. With the registry's id strategy IDDatabase
 // or IDSerial, records created without an id get the id the database generates (WithIDGenerator is then
 // not used).
 func New(reg *schema.Registry, b Backend, opts ...Option) Adapter {
-	f := &factory{reg: reg, b: b, caps: b.Capabilities(), genID: idgen.GenerateID, ids: reg.IDStrategy()}
+	f := &factory{reg: reg, b: b, caps: b.Capabilities(), genID: idgen.GenerateID, ids: reg.IDStrategy(), opts: opts}
 	for _, o := range opts {
 		o(f)
 	}
@@ -49,6 +51,15 @@ func (f *factory) ID() string { return f.b.ID() }
 
 // Unwrap returns the backend (see As).
 func (f *factory) Unwrap() Backend { return f.b }
+
+// Bind returns an adapter on the same backend for another registry (adapter.Binder): the backend's own
+// Bind when it has one, else New with this adapter's options followed by opts.
+func (f *factory) Bind(reg *schema.Registry, opts ...Option) (Adapter, error) {
+	if b, ok := f.b.(Binder); ok {
+		return b.Bind(reg, append(append([]Option(nil), f.opts...), opts...)...)
+	}
+	return New(reg, f.b, append(append([]Option(nil), f.opts...), opts...)...), nil
+}
 
 // Registry returns the registry the adapter maps names with.
 func (f *factory) Registry() *schema.Registry { return f.reg }

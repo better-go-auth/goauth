@@ -117,6 +117,39 @@ type Introspector interface {
 	Inspect(ctx context.Context) (*schema.Snapshot, error)
 }
 
+// Binder builds an Adapter for a schema registry. Storage packages return one from their constructors
+// (sqladapter.New, mongoadapter.New), so an application can hand goauth a backend before the registry
+// exists: GoAuthOptions.Adapter takes a Binder and SetupGoAuth binds it to the registry it builds (core
+// models, configuration and every plugin schema). Adapters from New are Binders too: binding one returns
+// an adapter on the same backend for the new registry.
+type Binder interface {
+	Bind(reg *schema.Registry, opts ...Option) (Adapter, error)
+}
+
+// IDGeneratorProvider is an optional Backend capability: the id generator the backend prefers when the
+// application configured none (MongoDB: ObjectId hex strings). SetupGoAuth uses it for every record id.
+type IDGeneratorProvider interface {
+	DefaultIDGenerator() func() string
+}
+
+// RequiredColumnError reports required fields without a default that a migration would add to tables
+// that already have rows: existing rows would have no value, so goauth refuses to add them.
+type RequiredColumnError struct {
+	// Changes are the AddColumn changes that can't be applied.
+	Changes []schema.Change
+	// SQL is the statement for each change, for an operator who backfills the column themselves.
+	SQL []string
+}
+
+func (e *RequiredColumnError) Error() string {
+	var lines []string
+	for i, c := range e.Changes {
+		lines = append(lines, fmt.Sprintf("  %s.%s on table %q (would run: %s)", c.Model, c.Field.Name, c.Table, e.SQL[i]))
+	}
+	return "goauth migrations: these required fields have no default and their tables already have rows; give " +
+		"each a Default, make it optional, or add and backfill the column yourself, then restart:\n" + strings.Join(lines, "\n")
+}
+
 // Joiner is an optional capability: load a record together with related records in one round trip.
 // FindOneJoined falls back to one query per join for backends without it.
 type Joiner interface {

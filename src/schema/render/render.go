@@ -5,6 +5,10 @@
 // output drives goauth's own migrator (Migrations.Mode auto / verify), `goauth schema` (Atlas declarative,
 // versioned and external_schema workflows) and `goauth migrate generate` (goose, golang-migrate). Like the
 // schema package it imports no ORM or driver.
+//
+// The same registry also renders as Atlas HCL (HCL), Ent schemas (Ent), Go structs for GORM or sqlx-style
+// libraries (Go) and a better-auth compatible schema.prisma (Prisma): plain text generation, consistent
+// with the SQL's types, defaults and index names (`goauth schema --format hcl|ent|go|prisma`).
 package render
 
 import (

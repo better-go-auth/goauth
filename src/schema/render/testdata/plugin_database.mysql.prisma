@@ -1,0 +1,138 @@
+// goauth schema, Prisma (mysql). Generated from goauth's schema registry (core models,
+// additionalFields and plugin schemas); regenerate instead of editing.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Users {
+  id                  String    @id @default(dbgenerated("(uuid())")) @db.VarChar(36)
+  name                String    @db.Text
+  email               String
+  emailVerified       Boolean   @default(false)
+  image               String?   @db.Text
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  role                String?   @db.Text
+  banned              Boolean?  @default(false)
+  banReason           String?   @db.Text
+  banExpires          DateTime?
+  phoneNumber         String?
+  phoneNumberVerified Boolean?
+  twoFactorEnabled    Boolean?  @default(false)
+  username            String?
+  displayUsername     String?   @db.Text
+  isAnonymous         Boolean?  @default(false)
+  firstName           String?   @db.Text
+  lastName            String?   @db.Text
+  displayName         String?   @db.Text
+  bio                 String?   @db.Text
+  dateOfBirth         DateTime?
+  gender              String?   @db.Text
+  locale              String?   @db.Text
+  timezone            String?   @db.Text
+  lastLoginIP         String?   @db.Text
+  lastLoginAt         DateTime?
+  lastSeen            DateTime?
+  deletedAt           DateTime?
+  loyaltyTier         String    @db.Text
+  score               Float?
+  tags                String?   @db.Text
+  sessions            Session[]
+  accounts            Account[]
+  notes               Note[]
+
+  @@unique([email])
+  @@unique([phoneNumber])
+  @@unique([username])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Session {
+  id                     String    @id @default(dbgenerated("(uuid())")) @db.VarChar(36)
+  expiresAt              DateTime
+  token                  String
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  ipAddress              String?   @db.Text
+  userAgent              String?   @db.Text
+  userId                 String
+  users                  Users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy         String?   @db.Text
+  activeOrganizationId   String?   @db.Text
+  activeTeamId           String?   @db.Text
+  activeOrganizationType String?   @db.Text
+  activeOrganizationRole String?   @db.Text
+  deviceToken            String?   @db.Text
+  deviceId               String?   @db.Text
+  deviceName             String?   @db.Text
+  deviceType             String?   @db.Text
+  lastUsedAt             DateTime?
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id @default(dbgenerated("(uuid())")) @db.VarChar(36)
+  accountId             String    @db.Text
+  providerId            String    @db.Text
+  userId                String
+  users                 Users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?   @db.Text
+  refreshToken          String?   @db.Text
+  idToken               String?   @db.Text
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?   @db.Text
+  password              String?   @db.Text
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId(length: 191), accountId(length: 191)])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id          String   @id @default(dbgenerated("(uuid())")) @db.VarChar(36)
+  identifier  String   @db.Text
+  value       String   @db.Text
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String?  @db.Text
+  callbackUrl String?  @db.Text
+
+  @@index([identifier(length: 191)])
+  @@map("verification")
+}
+
+model RateLimit {
+  id          String @id @default(dbgenerated("(uuid())")) @db.VarChar(36)
+  key         String
+  count       BigInt
+  lastRequest BigInt
+
+  @@unique([key])
+  @@map("rateLimit")
+}
+
+model Note {
+  id        String   @id @default(dbgenerated("(uuid())")) @db.VarChar(36)
+  createdAt DateTime @default(now())
+  pinned    Boolean? @default(false)
+  title     String   @db.Text
+  userId    String
+  users     Users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, title(length: 191)])
+  @@map("note")
+}
