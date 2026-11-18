@@ -1,26 +1,30 @@
 package dtos
 
-import "github.com/better-go-auth/goauth/src/plugins/org/models"
+import (
+	"encoding/json"
+
+	"github.com/better-go-auth/goauth/src/plugins/org/models"
+)
 
 // ─── Org Request DTOs ────────────────────────────────────────────────────────
 
 // CreateOrgInput matches better-auth POST /organization/create body.
 type CreateOrgInput struct {
-	Name                          string  `json:"name"                          validate:"required,min=1"`
-	Slug                          string  `json:"slug"                          validate:"required,min=1,max=100"`
-	Logo                          *string `json:"logo,omitempty"`
-	Metadata                      *string `json:"metadata,omitempty"`
-	OrgType                       *string `json:"orgType,omitempty"`
-	KeepCurrentActiveOrganization bool    `json:"keepCurrentActiveOrganization,omitempty"`
+	Name                          string      `json:"name"                          validate:"required,min=1"`
+	Slug                          string      `json:"slug"                          validate:"required,min=1,max=100"`
+	Logo                          *string     `json:"logo,omitempty"`
+	Metadata                      *JSONString `json:"metadata,omitempty"`
+	OrgType                       *string     `json:"orgType,omitempty"`
+	KeepCurrentActiveOrganization bool        `json:"keepCurrentActiveOrganization,omitempty"`
 }
 
 // UpdateOrgData holds nested fields sent by official better-auth/client organization.update.
 type UpdateOrgData struct {
-	Name     *string `json:"name,omitempty"`
-	Slug     *string `json:"slug,omitempty"`
-	Logo     *string `json:"logo,omitempty"`
-	Metadata *string `json:"metadata,omitempty"`
-	OrgType  *string `json:"orgType,omitempty"`
+	Name     *string     `json:"name,omitempty"`
+	Slug     *string     `json:"slug,omitempty"`
+	Logo     *string     `json:"logo,omitempty"`
+	Metadata *JSONString `json:"metadata,omitempty"`
+	OrgType  *string     `json:"orgType,omitempty"`
 }
 
 // UpdateOrgInput matches better-auth POST /organization/update body (both flat and nested `data` formats).
@@ -29,7 +33,7 @@ type UpdateOrgInput struct {
 	Name           *string        `json:"name,omitempty"`
 	Slug           *string        `json:"slug,omitempty"`
 	Logo           *string        `json:"logo,omitempty"`
-	Metadata       *string        `json:"metadata,omitempty"`
+	Metadata       *JSONString    `json:"metadata,omitempty"`
 	OrgType        *string        `json:"orgType,omitempty"`
 	Data           *UpdateOrgData `json:"data,omitempty"`
 }
@@ -73,8 +77,30 @@ type InvitationInput struct {
 
 // SetActiveOrgInput matches better-auth POST /organization/set-active body.
 type SetActiveOrgInput struct {
-	OrganizationID   *string `json:"organizationId,omitempty"`   // nil to unset active org
-	OrganizationSlug *string `json:"organizationSlug,omitempty"` // optional slug fallback
+	OrganizationID   *string `json:"organizationId,omitempty" nullable:"true"` // null to unset active org
+	OrganizationSlug *string `json:"organizationSlug,omitempty"`               // optional slug fallback
+	// OrganizationIDNull is set when the body carries "organizationId": null (better-auth unsets the active
+	// organization), as opposed to omitting the key (better-auth keeps the active one).
+	OrganizationIDNull bool `json:"-"`
+}
+
+// UnmarshalJSON records an explicit "organizationId": null.
+func (in *SetActiveOrgInput) UnmarshalJSON(b []byte) error {
+	// Step 1: decode the fields normally
+	type plain SetActiveOrgInput
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*in = SetActiveOrgInput(p)
+	// Step 2: detect the explicit null
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err == nil {
+		if v, ok := raw["organizationId"]; ok && string(v) == "null" {
+			in.OrganizationIDNull = true
+		}
+	}
+	return nil
 }
 
 // LeaveOrgInput matches better-auth POST /organization/leave body.
@@ -149,7 +175,29 @@ type RemoveTeamMemberInput struct {
 
 // SetActiveTeamInput matches better-auth POST /organization/set-active-team body.
 type SetActiveTeamInput struct {
-	TeamID *string `json:"teamId,omitempty"` // nil to unset active team
+	TeamID *string `json:"teamId,omitempty" nullable:"true"` // null to unset active team
+	// TeamIDNull is set when the body carries "teamId": null (better-auth unsets the active team), as
+	// opposed to omitting the key (better-auth returns the active team).
+	TeamIDNull bool `json:"-"`
+}
+
+// UnmarshalJSON records an explicit "teamId": null.
+func (in *SetActiveTeamInput) UnmarshalJSON(b []byte) error {
+	// Step 1: decode the fields normally
+	type plain SetActiveTeamInput
+	var p plain
+	if err := json.Unmarshal(b, &p); err != nil {
+		return err
+	}
+	*in = SetActiveTeamInput(p)
+	// Step 2: detect the explicit null
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(b, &raw); err == nil {
+		if v, ok := raw["teamId"]; ok && string(v) == "null" {
+			in.TeamIDNull = true
+		}
+	}
+	return nil
 }
 
 // ─── Dynamic Access Control DTOs ─────────────────────────────────────────────

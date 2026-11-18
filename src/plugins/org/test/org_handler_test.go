@@ -72,8 +72,9 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SetActiveOrg handler failed: %v", err)
 		}
-		if setActResp != nil && setActResp.Body.Session.Token != "" {
-			ownerAuth.Authorization = "Bearer " + setActResp.Body.Session.Token
+		// better-auth returns the organization (the session token itself does not change)
+		if setActResp == nil || setActResp.Body == nil || setActResp.Body.ID != orgID {
+			t.Fatalf("SetActiveOrg should return the organization %s", orgID)
 		}
 
 		resp, err := env.OrgHandler.UpdateOrg(ctx, &humaorg.UpdateOrgInput{
@@ -98,7 +99,7 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListOrgs handler failed: %v", err)
 		}
-		if resp == nil || len(resp.Body.Organizations) == 0 {
+		if resp == nil || len(resp.Body) == 0 {
 			t.Fatalf("Expected at least 1 organization in list")
 		}
 	})
@@ -113,10 +114,10 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("SetActiveOrg handler failed: %v", err)
 		}
-		if resp == nil || resp.Body.Session.Token == "" {
-			t.Fatalf("Expected valid session token in SetActiveOrg response")
+		// better-auth returns the now active organization
+		if resp == nil || resp.Body == nil || resp.Body.ID != orgID {
+			t.Fatalf("Expected the active organization in SetActiveOrg response")
 		}
-		ownerAuth.Authorization = "Bearer " + resp.Body.Session.Token
 	})
 
 	t.Run("06 Invite Member", func(t *testing.T) {
@@ -145,7 +146,7 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("ListInvitations handler failed: %v", err)
 		}
-		if resp == nil || len(resp.Body.Invitations) == 0 {
+		if resp == nil || len(resp.Body) == 0 {
 			t.Fatalf("Expected at least 1 invitation")
 		}
 	})
@@ -173,8 +174,9 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("AcceptInvitation handler failed: %v", err)
 		}
-		if resp == nil || !resp.Body.Success {
-			t.Fatalf("Expected success true on AcceptInvitation")
+		// better-auth returns {invitation, member}
+		if resp == nil || resp.Body.Invitation == nil || resp.Body.Invitation.Status != "accepted" || resp.Body.Member == nil || resp.Body.Member.UserID != memberUserID {
+			t.Fatalf("Expected {invitation: accepted, member} on AcceptInvitation, got %+v", resp)
 		}
 	})
 
@@ -243,8 +245,9 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("RemoveMember handler failed: %v", err)
 		}
-		if resp == nil || !resp.Body.Success {
-			t.Fatalf("Expected success true on RemoveMember")
+		// better-auth returns {member} of the removed member
+		if resp == nil || resp.Body.Member.ID != targetMemberID {
+			t.Fatalf("Expected removed member %s, got %+v", targetMemberID, resp)
 		}
 	})
 
@@ -258,8 +261,9 @@ func TestOrgHandler_FullFlow(t *testing.T) {
 		if err != nil {
 			t.Fatalf("DeleteOrg handler failed: %v", err)
 		}
-		if resp == nil || !resp.Body.Success {
-			t.Fatalf("Expected success true on DeleteOrg")
+		// better-auth returns the deleted organization
+		if resp == nil || resp.Body.ID != orgID {
+			t.Fatalf("Expected the deleted organization on DeleteOrg")
 		}
 	})
 

@@ -1,9 +1,13 @@
 package models
 
 import (
+	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	coremodels "github.com/better-go-auth/goauth/src/models"
+	"github.com/danielgtaylor/huma/v2"
 )
 
 type OrgStatus string
@@ -39,6 +43,35 @@ type Organization struct {
 type OrgMemberRole string
 
 func (s OrgMemberRole) Str() string { return string(s) }
+
+// Schema documents (and lets Huma validate) better-auth's role input: a string or an array of strings.
+func (OrgMemberRole) Schema(huma.Registry) *huma.Schema {
+	return &huma.Schema{
+		Description: "Role, or roles (stored comma-joined)",
+		OneOf: []*huma.Schema{
+			{Type: huma.TypeString},
+			{Type: huma.TypeArray, Items: &huma.Schema{Type: huma.TypeString}},
+		},
+	}
+}
+
+// UnmarshalJSON accepts better-auth's role input: a string or an array of strings, which better-auth's
+// parseRoles stores comma-joined ("admin,sale").
+func (s *OrgMemberRole) UnmarshalJSON(b []byte) error {
+	// Step 1: the plain string form
+	var single string
+	if err := json.Unmarshal(b, &single); err == nil {
+		*s = OrgMemberRole(single)
+		return nil
+	}
+	// Step 2: the array form, joined like parseRoles
+	var many []string
+	if err := json.Unmarshal(b, &many); err != nil {
+		return fmt.Errorf("role must be a string or an array of strings")
+	}
+	*s = OrgMemberRole(strings.Join(many, ","))
+	return nil
+}
 
 const (
 	OrgRoleOwner  OrgMemberRole = "owner"

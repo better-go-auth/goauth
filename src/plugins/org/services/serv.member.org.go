@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
-	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	"github.com/better-go-auth/goauth/src/plugins/org/dtos"
@@ -58,6 +57,16 @@ func (s *OrgService) UpdateMemberRole(ctx context.Context, input dtos.UpdateMemb
 	if err != nil || target == nil {
 		return nil, orgerrors.ErrMemberNotFound
 	}
+	if input.OrganizationID == "" {
+		input.OrganizationID = target.OrganizationID
+	}
+
+	// Step 1b: better-auth's update-member-role rules (only when the update is made by a member)
+	if requestingUserID != "" {
+		if err := s.checkMemberRoleUpdate(ctx, input, target, requestingUserID); err != nil {
+			return nil, err
+		}
+	}
 
 	// Step 2: Fetch requesting user and organization for hook context
 	var reqUser *coremodels.User
@@ -104,20 +113,40 @@ func (s *OrgService) UpdateMemberRole(ctx context.Context, input dtos.UpdateMemb
 }
 
 func (s *OrgService) RemoveMember(ctx context.Context, input dtos.RemoveMemberInput, requestingUserID string) error {
-	// Step 1: Permission check - requester must be an organization admin/owner
-	if !s.isOrgAdmin(ctx, input.OrganizationID, requestingUserID, "member", "delete") {
-		return autherr.ErrForbidden
-	}
-
-	// Step 2: Fetch target member and validate it belongs to the organization
-	target, err := s.memberRepo.GetMemberByID(ctx, input.MemberID)
-	if err != nil || target.OrganizationID != input.OrganizationID {
+	// Step 1: the requester must be a member
+	requester, err := s.memberRepo.GetMemberByOrgAndUser(ctx, input.OrganizationID, requestingUserID)
+	if err != nil || requester == nil {
 		return orgerrors.ErrMemberNotFound
 	}
 
-	// Step 3: Organization owner cannot be removed
-	if target.Role == models.OrgRoleOwner {
-		return autherr.New("CANNOT_REMOVE_OWNER", "Cannot remove the organization owner", 400)
+	// Step 2: Fetch target member
+	target, err := s.memberRepo.GetMemberByID(ctx, input.MemberID)
+	if err != nil || target == nil {
+		return orgerrors.ErrMemberNotFound
+	}
+
+	// Step 3: like better-auth, an owner (creator role) can only be removed by an owner, and never the last one
+	creatorRole := s.CreatorRole()
+	if HasRole(string(target.Role), creatorRole) {
+		if !HasRole(string(requester.Role), creatorRole) {
+			return orgerrors.ErrCannotLeaveAsSoleOwner
+		}
+		owners, err := s.countRoleHolders(ctx, input.OrganizationID, creatorRole)
+		if err != nil {
+			return err
+		}
+		if owners <= 1 {
+			return orgerrors.ErrCannotLeaveAsSoleOwner
+		}
+	}
+
+	// Step 3b: Permission check - member:delete (better-auth answers 401 YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER)
+	if !s.isOrgAdmin(ctx, input.OrganizationID, requestingUserID, "member", "delete") {
+		return orgerrors.ErrNotAllowedToDeleteMember
+	}
+	// Step 3c: the target must belong to the organization
+	if target.OrganizationID != input.OrganizationID {
+		return orgerrors.ErrMemberNotFound
 	}
 
 	// Step 4: Fetch requesting user and organization for hook context
@@ -164,34 +193,13 @@ func (s *OrgService) LeaveOrganization(ctx context.Context, orgID, userID, sessi
 		return orgerrors.ErrMemberNotFound
 	}
 
-	// Step 2: If leaving member is an owner, ensure at least one other owner remains
-	if member.Role == models.OrgRoleOwner {
-		members, total, listErr := s.memberRepo.ListMembersByOrgID(ctx, orgID, models.Pagination{Limit: 1000})
-		if listErr != nil {
-			return listErr
+	// Step 2: If leaving member is an owner (creator role, multi-role aware), ensure at least one other owner remains
+	if HasRole(string(member.Role), s.CreatorRole()) {
+		owners, err := s.countRoleHolders(ctx, orgID, s.CreatorRole())
+		if err != nil {
+			return err
 		}
-		hasOtherOwner := false
-		for _, m := range members {
-			if m.Role == models.OrgRoleOwner && m.UserID != userID {
-				hasOtherOwner = true
-				break
-			}
-		}
-		// Check remaining pages if organization has more than 1000 members
-		for offset := len(members); !hasOtherOwner && int64(offset) < total; {
-			page, _, pageErr := s.memberRepo.ListMembersByOrgID(ctx, orgID, models.Pagination{Limit: 1000, Offset: offset})
-			if pageErr != nil || len(page) == 0 {
-				break
-			}
-			for _, m := range page {
-				if m.Role == models.OrgRoleOwner && m.UserID != userID {
-					hasOtherOwner = true
-					break
-				}
-			}
-			offset += len(page)
-		}
-		if !hasOtherOwner {
+		if owners <= 1 {
 			return orgerrors.ErrCannotLeaveAsSoleOwner
 		}
 	}
@@ -254,6 +262,81 @@ func (s *OrgService) LeaveOrganization(ctx context.Context, orgID, userID, sessi
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
+
+// CreatorRole returns the role given to organization creators (Config.CreatorRole, default "owner").
+func (s *OrgService) CreatorRole() string {
+	if s.Config.CreatorRole != "" {
+		return s.Config.CreatorRole
+	}
+	return models.OrgRoleOwner.Str()
+}
+
+// HasRole reports whether the comma-separated member role contains role (better-auth's role.split(",")).
+func HasRole(memberRole, role string) bool {
+	for _, r := range strings.Split(memberRole, ",") {
+		if strings.TrimSpace(r) == role {
+			return true
+		}
+	}
+	return false
+}
+
+// checkMemberRoleUpdate applies better-auth's update-member-role rules: the target must belong to the
+// organization, only an owner (creator role) may change an owner or grant the owner role, and the last owner
+// cannot remove the role from themselves.
+func (s *OrgService) checkMemberRoleUpdate(ctx context.Context, input dtos.UpdateMemberRoleInput, target *models.Member, requestingUserID string) error {
+	// Step 1: the updater must be a member of the organization
+	updater, err := s.memberRepo.GetMemberByOrgAndUser(ctx, input.OrganizationID, requestingUserID)
+	if err != nil || updater == nil {
+		return orgerrors.ErrMemberNotFound
+	}
+	// Step 2: the target must be in the same organization
+	if target.OrganizationID != input.OrganizationID {
+		return orgerrors.ErrNotAllowedToUpdateMember
+	}
+	// Step 3: owner-related rules
+	creatorRole := s.CreatorRole()
+	updaterIsCreator := HasRole(string(updater.Role), creatorRole)
+	isUpdatingCreator := HasRole(string(target.Role), creatorRole)
+	isSettingCreatorRole := HasRole(string(input.Role), creatorRole)
+	if (isUpdatingCreator || isSettingCreatorRole) && !updaterIsCreator {
+		return orgerrors.ErrNotAllowedToUpdateMember
+	}
+	// Step 4: the last owner cannot drop the owner role from themselves
+	if updaterIsCreator && updater.ID == target.ID && !isSettingCreatorRole {
+		owners, err := s.countRoleHolders(ctx, input.OrganizationID, creatorRole)
+		if err != nil {
+			return err
+		}
+		if owners <= 1 {
+			return orgerrors.ErrCannotLeaveWithoutOwner
+		}
+	}
+	return nil
+}
+
+// countRoleHolders counts the members of orgID holding role, paging through large organizations.
+func (s *OrgService) countRoleHolders(ctx context.Context, orgID, role string) (int, error) {
+	count := 0
+	for offset := 0; ; {
+		// Step 1: load one page of members
+		page, total, err := s.memberRepo.ListMembersByOrgID(ctx, orgID, models.Pagination{Limit: 1000, Offset: offset})
+		if err != nil {
+			return 0, err
+		}
+		// Step 2: count the role holders on the page
+		for _, m := range page {
+			if HasRole(string(m.Role), role) {
+				count++
+			}
+		}
+		// Step 3: stop after the last page
+		offset += len(page)
+		if len(page) == 0 || int64(offset) >= total {
+			return count, nil
+		}
+	}
+}
 
 func isAdminOrOwner(m *models.Member) bool {
 	return m != nil && (m.Role == models.OrgRoleOwner || m.Role == models.OrgRoleAdmin)

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	humatypes "github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
@@ -153,13 +152,12 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			t.Fatalf("ListOrgs failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var listResp struct {
-			Organizations []orgdtos.OrgResponse `json:"organizations"`
-		}
+		// better-auth returns an array of organizations
+		var listResp []orgdtos.OrgResponse
 		if err := json.Unmarshal([]byte(body), &listResp); err != nil {
 			t.Fatalf("Failed to decode ListOrgs response: %v, raw: %s", err, body)
 		}
-		if len(listResp.Organizations) == 0 {
+		if len(listResp) == 0 {
 			t.Fatalf("Expected at least 1 organization, got 0")
 		}
 	})
@@ -173,12 +171,22 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			t.Fatalf("SetActiveOrg failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var swu dtos.SessionWithUser
-		if err := json.Unmarshal([]byte(body), &swu); err != nil {
+		// better-auth returns the now active organization
+		var activeOrg orgdtos.OrgResponse
+		if err := json.Unmarshal([]byte(body), &activeOrg); err != nil {
 			t.Fatalf("Failed to decode SetActiveOrg response: %v, raw: %s", err, body)
 		}
-		if swu.Session.Token == "" {
-			t.Fatalf("Expected valid session token in SetActiveOrg response")
+		if activeOrg.ID != orgID {
+			t.Fatalf("Expected the active organization %s in SetActiveOrg response, got %s", orgID, body)
+		}
+		// the session (token unchanged) now carries the active organization
+		sessResp, sessBody := env.GetJSON("/api/auth/get-session", ownerAuthHeader)
+		var swu dtos.SessionWithUser
+		if !isSuccess(sessResp.StatusCode) || json.Unmarshal([]byte(sessBody), &swu) != nil || swu.Session.Token == "" {
+			t.Fatalf("get-session after set-active failed: status %d, body: %s", sessResp.StatusCode, sessBody)
+		}
+		if swu.Session.ActiveOrganizationID == nil || *swu.Session.ActiveOrganizationID != orgID {
+			t.Fatalf("Expected activeOrganizationId %s on the session, got %s", orgID, sessBody)
 		}
 		ownerAuthHeader = map[string]string{"Authorization": helpers.SignedBearerAuth(swu.Session.Token, env.Options.Secret)}
 
@@ -241,13 +249,12 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			t.Fatalf("ListInvitations failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var listInvs struct {
-			Invitations []orgdtos.InvitationResponse `json:"invitations"`
-		}
+		// better-auth returns an array of invitations
+		var listInvs []orgdtos.InvitationResponse
 		if err := json.Unmarshal([]byte(body), &listInvs); err != nil {
 			t.Fatalf("Failed to decode ListInvitations response: %v, raw: %s", err, body)
 		}
-		if len(listInvs.Invitations) == 0 {
+		if len(listInvs) == 0 {
 			t.Fatalf("Expected at least 1 invitation, got 0")
 		}
 	})
@@ -277,12 +284,13 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			t.Fatalf("AcceptInvitation failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var success humatypes.SuccessBody
-		if err := json.Unmarshal([]byte(body), &success); err != nil {
+		// better-auth returns {invitation, member}
+		var accepted orgdtos.InvitationResultResponse
+		if err := json.Unmarshal([]byte(body), &accepted); err != nil {
 			t.Fatalf("Failed to decode AcceptInvitation response: %v, raw: %s", err, body)
 		}
-		if !success.Success {
-			t.Fatalf("Expected success true, got false")
+		if accepted.Invitation == nil || accepted.Invitation.Status != "accepted" || accepted.Member == nil || accepted.Member.OrganizationID != orgID {
+			t.Fatalf("Expected {invitation: accepted, member}, got %s", body)
 		}
 	})
 
@@ -361,12 +369,13 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			t.Fatalf("RemoveMember failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var success humatypes.SuccessBody
-		if err := json.Unmarshal([]byte(body), &success); err != nil {
+		// better-auth returns {member} of the removed member
+		var removed orgdtos.RemovedMemberResponse
+		if err := json.Unmarshal([]byte(body), &removed); err != nil {
 			t.Fatalf("Failed to decode RemoveMember response: %v, raw: %s", err, body)
 		}
-		if !success.Success {
-			t.Fatalf("Expected success true, got false")
+		if removed.Member.ID != targetMemberID {
+			t.Fatalf("Expected removed member %s, got %s", targetMemberID, body)
 		}
 	})
 
@@ -379,12 +388,13 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 			t.Fatalf("DeleteOrg failed: status %d, body: %s", resp.StatusCode, body)
 		}
 
-		var success humatypes.SuccessBody
-		if err := json.Unmarshal([]byte(body), &success); err != nil {
+		// better-auth returns the deleted organization
+		var deleted orgdtos.OrgResponse
+		if err := json.Unmarshal([]byte(body), &deleted); err != nil {
 			t.Fatalf("Failed to decode DeleteOrg response: %v, raw: %s", err, body)
 		}
-		if !success.Success {
-			t.Fatalf("Expected success true, got false")
+		if deleted.ID != orgID {
+			t.Fatalf("Expected the deleted organization %s, got %s", orgID, body)
 		}
 	})
 

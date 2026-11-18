@@ -11,7 +11,7 @@ type OrgResponse struct {
 	Name      string  `json:"name"`
 	Slug      string  `json:"slug"`
 	Logo      *string `json:"logo"`
-	Metadata  *string `json:"metadata"`
+	Metadata  any     `json:"metadata"`
 	Status    string  `json:"status"`
 	CreatedBy string  `json:"createdBy"`
 	OrgType   *string `json:"orgType,omitempty"`
@@ -20,12 +20,65 @@ type OrgResponse struct {
 
 // MemberResponse is the public member response.
 type MemberResponse struct {
-	ID             string                 `json:"id"`
-	OrganizationID string                 `json:"organizationId"`
-	UserID         string                 `json:"userId"`
-	Role           string                 `json:"role"`
-	User           *coredtos.UserResponse `json:"user,omitempty"`
-	CreatedAt      string                 `json:"createdAt"`
+	ID             string      `json:"id"`
+	OrganizationID string      `json:"organizationId"`
+	UserID         string      `json:"userId"`
+	Role           string      `json:"role"`
+	User           *MemberUser `json:"user,omitempty"`
+	CreatedAt      string      `json:"createdAt"`
+}
+
+// MemberUser is the user attached to a member by better-auth's org adapter: only id, name, email and image.
+type MemberUser struct {
+	ID    string  `json:"id"`
+	Name  string  `json:"name"`
+	Email string  `json:"email"`
+	Image *string `json:"image"`
+}
+
+// FullOrgResponse is better-auth's get-full-organization response: the organization with its members
+// (and their users), its invitations and, when teams are enabled, its teams.
+type FullOrgResponse struct {
+	OrgResponse
+	Members     []MemberResponse     `json:"members"`
+	Invitations []InvitationResponse `json:"invitations"`
+	// Teams is set (possibly to an empty list) only when the teams feature is enabled.
+	Teams *[]TeamResponse `json:"teams,omitempty"`
+}
+
+// CreatedOrgResponse is better-auth's create response: the organization plus the creator's membership.
+type CreatedOrgResponse struct {
+	OrgResponse
+	Members []MemberResponse `json:"members"`
+}
+
+// RemovedMemberResponse is better-auth's remove-member response.
+type RemovedMemberResponse struct {
+	Member MemberResponse `json:"member"`
+}
+
+// InvitationResultResponse is better-auth's accept-invitation / reject-invitation response
+// (member is null on reject).
+type InvitationResultResponse struct {
+	Invitation *InvitationResponse `json:"invitation"`
+	Member     *MemberResponse     `json:"member"`
+}
+
+// InvitationDetailsResponse is better-auth's get-invitation response: the invitation plus the
+// organization name and slug and the inviter's email.
+type InvitationDetailsResponse struct {
+	InvitationResponse
+	InviterEmail string `json:"inviterEmail"`
+}
+
+// ActiveMemberRoleResponse is better-auth's get-active-member-role response.
+type ActiveMemberRoleResponse struct {
+	Role string `json:"role"`
+}
+
+// MessageResponse is the {message} body of better-auth's remove-team and remove-team-member.
+type MessageResponse struct {
+	Message string `json:"message"`
 }
 
 // InvitationResponse is the public invitation response.
@@ -38,6 +91,7 @@ type InvitationResponse struct {
 	Role             string                 `json:"role"`
 	Status           string                 `json:"status"`
 	InviterID        string                 `json:"inviterId"`
+	TeamID           *string                `json:"teamId"`
 	Inviter          *coredtos.UserResponse `json:"inviter,omitempty"`
 	ExpiresAt        string                 `json:"expiresAt"`
 	CreatedAt        string                 `json:"createdAt"`
@@ -56,7 +110,7 @@ func OrgToResponse(o *models.Organization) *OrgResponse {
 		Name:      o.Name,
 		Slug:      o.Slug,
 		Logo:      o.Logo,
-		Metadata:  o.Metadata,
+		Metadata:  MetadataOutput(o.Metadata),
 		Status:    string(o.Status),
 		CreatedBy: o.CreatedBy,
 		OrgType:   o.OrgType,
@@ -78,8 +132,17 @@ func MemberToResponse(m *models.Member) *MemberResponse {
 		CreatedAt:      createdAt,
 	}
 	if m.User != nil {
-		u := coredtos.UserFromModel(m.User)
-		resp.User = &u
+		resp.User = &MemberUser{ID: m.User.ID, Name: m.User.Name, Email: m.User.Email, Image: m.User.Image}
+	}
+	return resp
+}
+
+// MemberWithoutUser returns the member response without the joined user (better-auth's raw member row,
+// as returned by update-member-role, accept-invitation and create).
+func MemberWithoutUser(m *models.Member) *MemberResponse {
+	resp := MemberToResponse(m)
+	if resp != nil {
+		resp.User = nil
 	}
 	return resp
 }
@@ -97,6 +160,7 @@ func InvitationToResponse(i *models.Invitation) *InvitationResponse {
 		Role:           string(i.Role),
 		Status:         string(i.Status),
 		InviterID:      i.InviterID,
+		TeamID:         i.TeamID,
 		ExpiresAt:      i.ExpiresAt.UTC().Format("2006-01-02T15:04:05.999Z"),
 		CreatedAt:      createdAt,
 	}

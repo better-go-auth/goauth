@@ -14,6 +14,7 @@ type GetOrgInput struct {
 	humatypes.AuthHeaders
 	OrganizationID   string `query:"organizationId,omitempty" doc:"Organization ID"`
 	OrganizationSlug string `query:"organizationSlug,omitempty" doc:"Organization Slug"`
+	MembersLimit     int    `query:"membersLimit,omitempty" doc:"Maximum number of members to return (default: the membership limit)"`
 }
 
 type (
@@ -47,6 +48,8 @@ type ListInvitationsInput struct {
 
 type ListUserInvitationsInput struct {
 	humatypes.AuthHeaders
+	// Email is better-auth's server-only email query; client calls passing it are rejected.
+	Email string `query:"email,omitempty" doc:"Server-side only; rejected for client requests"`
 }
 
 // ─── Member Inputs ────────────────────────────────────────────────────────────
@@ -59,7 +62,30 @@ type GetMemberInput struct {
 
 type ListMembersInput struct {
 	humatypes.AuthHeaders
-	OrganizationID string `query:"organizationId" doc:"Organization ID"`
+	OrganizationID   string `query:"organizationId" doc:"Organization ID"`
+	OrganizationSlug string `query:"organizationSlug,omitempty" doc:"Organization slug (wins over organizationId)"`
+	Limit            int    `query:"limit,omitempty" doc:"Number of members to return (default: the membership limit, else 100)"`
+	Offset           int    `query:"offset,omitempty" doc:"Offset to start from"`
+	SortBy           string `query:"sortBy,omitempty" doc:"Field to sort by"`
+	SortDirection    string `query:"sortDirection,omitempty" enum:"asc,desc" doc:"Sort direction"`
+}
+
+// GetActiveMemberInput is better-auth's GET /organization/get-active-member (no parameters).
+type GetActiveMemberInput struct {
+	humatypes.AuthHeaders
+}
+
+// GetActiveMemberRoleInput is better-auth's GET /organization/get-active-member-role query.
+type GetActiveMemberRoleInput struct {
+	humatypes.AuthHeaders
+	UserID           string `query:"userId,omitempty" doc:"User whose role to return (default: the caller)"`
+	OrganizationID   string `query:"organizationId,omitempty" doc:"Organization ID (default: the active organization)"`
+	OrganizationSlug string `query:"organizationSlug,omitempty" doc:"Organization slug (wins over organizationId)"`
+}
+
+// ListUserTeamsInput is better-auth's GET /organization/list-user-teams (no parameters).
+type ListUserTeamsInput struct {
+	humatypes.AuthHeaders
 }
 
 type (

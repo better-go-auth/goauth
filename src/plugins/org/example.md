@@ -192,28 +192,52 @@ POST /api/auth/admin/organization/approve
 
 ## Endpoints (under `/api/auth/organization`)
 
-| Method | Path | Body / query | Permission |
-|---|---|---|---|
-| POST | `/create` | `name`, `slug`, `logo?`, `metadata?`, `keepCurrentActiveOrganization?` | any user. Becomes the active organization |
-| POST | `/set-active` | `organizationId` or `organizationSlug` (`null` unsets) | member |
-| GET | `/get-full-organization` | `?organizationId` / `?organizationSlug` | member |
-| GET | `/list` | – | the caller's organizations |
-| POST | `/update` | `organizationId?`, `data: {name, slug, ...}` | `organization:update` |
-| POST | `/delete` | `organizationId` | `organization:delete` |
-| POST | `/invite-member` | `email`, `role`, `organizationId?`, `teamId?` | `invitation:create` (201) |
-| POST | `/accept-invitation` / `/reject-invitation` | `invitationId` | the invited email |
-| POST | `/cancel-invitation` | `invitationId` | `invitation:cancel` |
-| GET | `/get-invitation`, `/list-invitations`, `/list-user-invitations` | `?id` / `?organizationId` | invitee or owner/admin / owner/admin / caller |
-| GET | `/list-members`, `/get-member` | `?organizationId` | member |
-| POST | `/update-member-role` | `memberId`, `role`, `organizationId?` | `member:update` |
-| POST | `/remove-member` | `memberIdOrEmail`, `organizationId?` | `member:delete` |
-| POST | `/leave` | `organizationId` | member |
-| POST | `/has-permission` | `permissions`, `organizationId?` | member |
-| POST | `/create-role`, `/update-role`, `/delete-role`; GET `/list-roles`, `/get-role` | see above | `ac:*` (dynamic access control) |
-| POST | `/create-team`, `/update-team`, `/remove-team` | `name` / `teamId` | `team:*` (teams enabled) |
-| POST | `/add-team-member`, `/remove-team-member` | `teamId`, `userId` | `member:update` / `member:delete` |
-| POST | `/set-active-team` | `teamId` (`null` unsets) | team member. Sets `session.activeTeamId` |
-| GET | `/list-teams`, `/list-team-members` | `?organizationId` / `?teamId` | member |
+Every route answers like better-auth 1.6 (status 200, same JSON, same error codes), so the official
+`organizationClient()` works unchanged. Responses carry no Huma `$schema` field.
+
+| Method | Path | Body / query | Permission | Response |
+|---|---|---|---|---|
+| POST | `/create` | `name`, `slug`, `logo?`, `metadata?` (object), `keepCurrentActiveOrganization?` | any user. Becomes the active organization | organization + `members: [creator]` |
+| POST | `/check-slug` | `slug` | any user | `{status: true}`, or 400 `ORGANIZATION_SLUG_ALREADY_TAKEN` |
+| POST | `/set-active` | `organizationId` or `organizationSlug` (`organizationId: null` unsets) | member | the organization, or `null` |
+| GET | `/get-full-organization` | `?organizationId` / `?organizationSlug` / `?membersLimit` (default: the active organization) | member | organization + `members` (with `user`), `invitations`, `teams` (teams enabled); `null` when no organization is selected |
+| GET | `/list` | – | the caller's organizations | array |
+| POST | `/update` | `organizationId?`, `data: {name, slug, logo, metadata}` | `organization:update` | organization |
+| POST | `/delete` | `organizationId` | `organization:delete` | the deleted organization |
+| POST | `/invite-member` | `email`, `role` (string or array), `organizationId?`, `teamId?` | `invitation:create`; only owners may invite owners | invitation |
+| POST | `/accept-invitation` | `invitationId` | the invited email. Makes the organization active | `{invitation, member}` |
+| POST | `/reject-invitation` | `invitationId` | the invited email | `{invitation, member: null}` |
+| POST | `/cancel-invitation` | `invitationId` | `invitation:cancel` | invitation |
+| GET | `/get-invitation` | `?id` | the invited email (pending invitations only) | invitation + `organizationName`, `organizationSlug`, `inviterEmail` |
+| GET | `/list-invitations` | `?organizationId` | member | array |
+| GET | `/list-user-invitations` | – | caller with a verified email | array of pending invitations + `organizationName` (goauth also adds `organizationSlug`, `inviter`) |
+| GET | `/get-active-member` | – | member of the active organization | member + `user: {id, name, email, image}` |
+| GET | `/get-active-member-role` | `?userId`, `?organizationId`, `?organizationSlug` | member | `{role}` |
+| GET | `/list-members` | `?organizationId` / `?organizationSlug`, `?limit`, `?offset`, `?sortBy`, `?sortDirection` | member | `{members, total}` |
+| POST | `/update-member-role` | `memberId`, `role` (string or array), `organizationId?` | `member:update`; only owners change owners | member |
+| POST | `/remove-member` | `memberIdOrEmail`, `organizationId?` | `member:delete` (401 when missing); owners only by owners, never the last one | `{member}` |
+| POST | `/leave` | `organizationId` | member (not the last owner) | member |
+| POST | `/has-permission` | `permissions`, `organizationId?` | member | `{error, success}` |
+| POST | `/create-role`, `/update-role`, `/delete-role`; GET `/list-roles`, `/get-role` | see above | `ac:*` (dynamic access control) | |
+| POST | `/create-team`, `/update-team` | `name` / `teamId`, `data` | `team:create` / `team:update` (teams enabled) | team |
+| POST | `/remove-team` | `teamId` | `team:delete`; not the caller's active team | `{message: "Team removed successfully."}` |
+| POST | `/add-team-member` | `teamId`, `userId` | `member:update`. Adding twice returns the existing membership | team member |
+| POST | `/remove-team-member` | `teamId`, `userId` | `member:delete` | `{message: "Team member removed successfully."}` |
+| POST | `/set-active-team` | `teamId` (`null` unsets; omitted = the active team) | team member; team of the active organization | the team, or `null` |
+| GET | `/list-teams` | `?organizationId` | member | array |
+| GET | `/list-team-members` | `?teamId` (default: the active team) | team member | array (goauth adds `user`) |
+| GET | `/list-user-teams` | – | any user | the caller's teams in organizations they belong to |
+
+### goauth-only routes
+
+These paths do not exist in better-auth; official clients never call them:
+
+| Method | Path | Purpose |
+|---|---|---|
+| GET | `/organization/get-member` | a member (`?userId`, default the caller) of `?organizationId` |
+| DELETE | `/organization/delete` | alias of `POST /organization/delete` |
+| POST/GET | `/organization/team/create`, `/team/update`, `/team/delete`, `/team/list`, `/team/add-member`, `/team/remove-member`, `/team/list-members` | older aliases of the better-auth team routes |
+| POST/GET | `/admin/organization/create`, `/get`, `/list`, `/approve`, `/block`, `/unblock` | system-admin organization management and the approval workflow |
 
 ## Flow
 
@@ -229,7 +253,7 @@ curl -b owner $H -d '{"name":"Acme","slug":"acme"}' http://localhost:8080/api/au
 curl -b owner $H -d '{"email":"bob@example.com","role":"member"}' \
   http://localhost:8080/api/auth/organization/invite-member
 
-# 3. Bob signs up, accepts and activates the organization
+# 3. Bob signs up and accepts (accepting already makes the organization active; set-active switches later)
 curl -c bob $H -d '{"email":"bob@example.com","password":"Password123!","name":"Bob"}' \
   http://localhost:8080/api/auth/sign-up/email
 curl -b bob $H -d '{"invitationId":"<id>"}' http://localhost:8080/api/auth/organization/accept-invitation
@@ -249,14 +273,31 @@ and admins, teams, and that demoting or removing a member takes effect on the ne
 
 ## Errors
 
+Codes, messages and statuses are better-auth's `ORGANIZATION_ERROR_CODES`, per route:
+
 | Code | When |
 |---|---|
-| `FORBIDDEN` (403) | The role lacks the permission (endpoints and `RequirePermission`), or there is no organization to check against |
 | `UNAUTHORIZED` (401) | No session |
-| `ORGANIZATION_PENDING_APPROVAL` / `ORGANIZATION_SUSPENDED` / `ORGANIZATION_NOT_ACTIVE` (403) | The organization is not active (set-active, invite-member) |
+| `NO_ACTIVE_ORGANIZATION` (400) | No `organizationId` and no active organization (member, team and role routes, `has-permission`, `get-active-member`) |
+| `ORGANIZATION_NOT_FOUND` (400) | Unknown organization or slug |
+| `USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION` | Non-member on `update`/`delete`/`add-team-member` (400), `set-active`/`get-full-organization` (403), `has-permission` (401) |
+| `YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION` (403) | Non-member on `list-members`, `get-active-member-role` |
+| `MEMBER_NOT_FOUND` (400) | Non-member on `invite-member`, `update-member-role`, `remove-member`, `leave`, `get-active-member`; unknown member |
+| `YOU_ARE_NOT_ALLOWED_TO_UPDATE_THIS_ORGANIZATION` / `..._DELETE_THIS_ORGANIZATION` / `..._INVITE_USERS_TO_THIS_ORGANIZATION` / `..._CANCEL_THIS_INVITATION` / `..._UPDATE_THIS_MEMBER` (403) | Missing permission on the route |
+| `YOU_ARE_NOT_ALLOWED_TO_DELETE_THIS_MEMBER` (401) | `remove-member` without `member:delete` |
+| `YOU_ARE_NOT_ALLOWED_TO_INVITE_USER_WITH_THIS_ROLE` (403) | A non-owner invites an owner |
+| `YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER` / `..._WITHOUT_AN_OWNER` (400) | Removing, demoting or leaving as the last owner |
+| `ORGANIZATION_ALREADY_EXISTS` / `ORGANIZATION_SLUG_ALREADY_TAKEN` (400) | Slug used (`create` / `check-slug`, `update`) |
+| `YOU_ARE_NOT_ALLOWED_TO_CREATE_A_NEW_ORGANIZATION` / `YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_ORGANIZATIONS` (403) | `AllowUserToCreateOrganization` / `OrganizationLimit` |
+| `ORGANIZATION_MEMBERSHIP_LIMIT_REACHED` / `INVITATION_LIMIT_REACHED` (403) | `MembershipLimit` / `InvitationLimit` |
+| `ORGANIZATION_DELETION_DISABLED` (404) | `DisableOrganizationDeletion` |
+| `INVITATION_NOT_FOUND` (400) | Unknown, used or expired invitation |
+| `YOU_ARE_NOT_THE_RECIPIENT_OF_THE_INVITATION` (403) | Someone else's invitation |
+| `USER_IS_ALREADY_INVITED_TO_THIS_ORGANIZATION` / `USER_IS_ALREADY_A_MEMBER_OF_THIS_ORGANIZATION` (400) | Re-invite (without `CancelPendingInvitationsOnReInvite`) / invite a member |
+| `EMAIL_VERIFICATION_REQUIRED_BEFORE_ACCEPTING_OR_REJECTING_INVITATION` / `EMAIL_VERIFICATION_REQUIRED_FOR_INVITATION` (403) | Unverified email (`RequireEmailVerificationOnInvitation`, `list-user-invitations`) |
+| `TEAM_NOT_FOUND`, `USER_IS_NOT_A_MEMBER_OF_THE_TEAM`, `YOU_DO_NOT_HAVE_AN_ACTIVE_TEAM`, `UNABLE_TO_REMOVE_LAST_TEAM` (400); `TEAM_MEMBER_LIMIT_REACHED` (403); `YOU_HAVE_REACHED_THE_MAXIMUM_NUMBER_OF_TEAMS` (400) | Team routes |
+| `ORGANIZATION_PENDING_APPROVAL` / `ORGANIZATION_SUSPENDED` / `ORGANIZATION_NOT_ACTIVE` (403) | goauth's approval workflow: the organization is not active (set-active, invite-member) |
 | `INVALID_RESOURCE` | A dynamic role uses a resource that is not in `AccessControl` |
 | `YOU_ARE_NOT_ALLOWED_TO_CREATE_A_ROLE` (and update/delete/read/list) | Missing `ac:*` permission |
 | `CANNOT_DELETE_A_PRE_DEFINED_ROLE` / `ROLE_IS_ASSIGNED_TO_MEMBERS` | Role deletion refused |
-| `USER_IS_NOT_A_MEMBER_OF_THE_ORGANIZATION` | `has-permission` by a non-member |
-| `NO_ACTIVE_ORGANIZATION` | `has-permission` without an active organization or `organizationId` |
-| `CANNOT_DEMOTE_OWNER` / `CANNOT_REMOVE_OWNER` | Changing or removing the owner |
+| `FORBIDDEN` (403) | `RequirePermission` on your own routes, and goauth-only routes |

@@ -3,6 +3,7 @@ package orgsvc
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strings"
 	"time"
 
@@ -224,7 +225,7 @@ func (s *OrgService) GetInvitationForUser(ctx context.Context, invitationID, req
 	if s.Config.RequireEmailVerificationOnInvitation && s.userRepo != nil && requestingUserID != "" {
 		if user, err := s.userRepo.FindUserByID(ctx, requestingUserID); err == nil && user != nil {
 			if strings.EqualFold(user.Email, inv.Email) && !user.EmailVerified {
-				return nil, orgerrors.ErrEmailVerificationRequired
+				return nil, orgerrors.ErrEmailVerificationRequiredForInvitation
 			}
 		}
 	}
@@ -237,8 +238,9 @@ func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID 
 	if err != nil || inv == nil {
 		return orgerrors.ErrInvitationNotFound
 	}
+	// better-auth answers INVITATION_NOT_FOUND for used and expired invitations alike
 	if inv.Status != models.InvitationPending {
-		return autherr.New("INVITATION_ALREADY_USED", "This invitation has already been used", 400)
+		return orgerrors.ErrInvitationNotFound
 	}
 	if time.Now().After(inv.ExpiresAt) {
 		return orgerrors.ErrInvitationExpired
@@ -250,7 +252,7 @@ func (s *OrgService) AcceptInvitation(ctx context.Context, invitationID, userID 
 		return autherr.ErrUserNotFound
 	}
 	if user.Email == "" || !strings.EqualFold(user.Email, inv.Email) {
-		return autherr.ErrForbidden
+		return orgerrors.ErrNotRecipientOfInvitation
 	}
 
 	// Step 3: Require email verification on invitation if enabled in config
@@ -378,6 +380,10 @@ func (s *OrgService) RejectInvitation(ctx context.Context, invitationID string, 
 	inv, err := s.inviteRepo.GetInvitationByID(ctx, invitationID)
 	if err != nil || inv == nil {
 		return orgerrors.ErrInvitationNotFound
+	}
+	// better-auth: only pending invitations can be rejected ("Invitation not found!")
+	if inv.Status != models.InvitationPending {
+		return autherr.New(orgerrors.InvitationNotFound, "Invitation not found!", http.StatusBadRequest)
 	}
 
 	// Step 2: Fetch requesting user if available

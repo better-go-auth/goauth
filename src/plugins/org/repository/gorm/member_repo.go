@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -102,8 +103,18 @@ func (r *MemberRepo) ListMembersByOrgID(ctx context.Context, orgID string, pagi 
 		limit = pagi.Limit
 	}
 
+	// sortBy uses better-auth's field names; unknown fields and the default sort by createdAt (newest first
+	// unless sortDirection is "asc")
+	sortField := map[string]string{
+		"id": "ID", "userId": "UserID", "organizationId": "OrganizationID", "role": "Role", "createdAt": "CreatedAt",
+	}[pagi.SortBy]
+	if sortField == "" {
+		sortField = "CreatedAt"
+	}
+	desc := !strings.EqualFold(pagi.SortDir, "asc")
+
 	var members []models.Member
-	err := query.Limit(limit).Offset(pagi.Offset).Order(gormutil.OrderBy(r.db, &models.Member{}, "CreatedAt", true)).Find(&members).Error
+	err := query.Limit(limit).Offset(pagi.Offset).Order(gormutil.OrderBy(r.db, &models.Member{}, sortField, desc)).Find(&members).Error
 	if err != nil {
 		return nil, 0, fmt.Errorf("gorm/member: list: %w", err)
 	}

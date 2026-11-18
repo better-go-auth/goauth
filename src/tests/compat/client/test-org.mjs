@@ -92,22 +92,29 @@ async function main() {
   const slugOk = await owner.organization.checkSlug({ slug: `acme-${ts}` });
   assert(!slugOk.error && slugOk.data?.status === true, `checkSlug expected true: ${JSON.stringify(slugOk)}`);
 
-  const createRes = await owner.organization.create({ name: "Acme Corp", slug: `acme-${ts}` });
+  const createRes = await owner.organization.create({ name: "Acme Corp", slug: `acme-${ts}`, metadata: { plan: "pro" } });
   assert(!createRes.error && createRes.data?.id, `organization.create failed: ${JSON.stringify(createRes.error)}`);
   const org = createRes.data;
   console.log("Created org:", org.id, org.name);
+  // better-auth shape: the organization with the creator's membership and object metadata
+  assert(Array.isArray(org.members) && org.members.length === 1 && org.members[0].role === "owner", `create should return members: ${JSON.stringify(org)}`);
+  assert(org.metadata?.plan === "pro", `create should return metadata as an object: ${JSON.stringify(org.metadata)}`);
 
   // Slug is now taken
   const slugTaken = await owner.organization.checkSlug({ slug: `acme-${ts}` });
-  assert(slugTaken.error, "expected checkSlug to fail for existing slug");
+  assert(slugTaken.error?.code === "ORGANIZATION_SLUG_ALREADY_TAKEN", `expected ORGANIZATION_SLUG_ALREADY_TAKEN: ${JSON.stringify(slugTaken.error)}`);
 
   // 3. Get full org, list orgs, update org, setActive
   console.log("\n[3] Testing getFullOrganization, list, update, setActive...");
   const fullOrg = await owner.organization.getFullOrganization({ query: { organizationId: org.id } });
   assert(!fullOrg.error && fullOrg.data?.id === org.id, `getFullOrganization failed: ${JSON.stringify(fullOrg.error)}`);
+  assert(
+    fullOrg.data.members?.length === 1 && fullOrg.data.members[0].user?.email === ownerEmail && Array.isArray(fullOrg.data.invitations) && Array.isArray(fullOrg.data.teams),
+    `getFullOrganization should include members (with user), invitations and teams: ${JSON.stringify(fullOrg.data)}`
+  );
 
   const listRes = await owner.organization.list();
-  assert(!listRes.error && listRes.data?.organizations?.length >= 1, `list failed: ${JSON.stringify(listRes)}`);
+  assert(!listRes.error && Array.isArray(listRes.data) && listRes.data.length >= 1, `list failed: ${JSON.stringify(listRes)}`);
 
   const updateRes = await owner.organization.update({
     organizationId: org.id,
@@ -116,7 +123,16 @@ async function main() {
   assert(!updateRes.error && updateRes.data?.name === "Acme Updated", `update failed: ${JSON.stringify(updateRes)}`);
 
   const setActiveRes = await owner.organization.setActive({ organizationSlug: `acme-${ts}` });
-  assert(!setActiveRes.error, `setActive by slug failed: ${JSON.stringify(setActiveRes.error)}`);
+  assert(!setActiveRes.error && setActiveRes.data?.id === org.id, `setActive by slug should return the organization: ${JSON.stringify(setActiveRes)}`);
+
+  // New better-auth routes on the active organization
+  const ownerActive = await owner.organization.getActiveMember();
+  assert(
+    !ownerActive.error && ownerActive.data?.organizationId === org.id && ownerActive.data?.role === "owner" && ownerActive.data?.user?.email === ownerEmail,
+    `getActiveMember failed: ${JSON.stringify(ownerActive)}`
+  );
+  const ownerRole = await owner.organization.getActiveMemberRole();
+  assert(!ownerRole.error && ownerRole.data?.role === "owner", `getActiveMemberRole failed: ${JSON.stringify(ownerRole)}`);
 
   // 4. Teams: custom default team + createTeam + MaximumTeams + updateTeam
   console.log("\n[4] Testing Teams (custom default team, limits, updateTeam)...");
@@ -169,8 +185,8 @@ async function main() {
 
   // Verified invitee can check inbox via listUserInvitations (enriched with organizationName, slug, inviter)
   const inboxRes = await invitee.organization.listUserInvitations();
-  assert(!inboxRes.error && Array.isArray(inboxRes.data?.invitations), `listUserInvitations failed: ${JSON.stringify(inboxRes)}`);
-  const inboxInv = inboxRes.data.invitations.find((i) => i.id === inv2.id);
+  assert(!inboxRes.error && Array.isArray(inboxRes.data), `listUserInvitations failed: ${JSON.stringify(inboxRes)}`);
+  const inboxInv = inboxRes.data.find((i) => i.id === inv2.id);
   assert(
     inboxInv &&
       inboxInv.organizationName === "Acme Updated" &&
@@ -182,9 +198,32 @@ async function main() {
   // Verified invitee can now getInvitation and acceptInvitation
   const getInvOk = await invitee.organization.getInvitation({ query: { id: inv2.id } });
   assert(!getInvOk.error && getInvOk.data?.id === inv2.id, `verified getInvitation failed: ${JSON.stringify(getInvOk.error)}`);
+  assert(
+    getInvOk.data.organizationName === "Acme Updated" && getInvOk.data.organizationSlug === `acme-${ts}` && getInvOk.data.inviterEmail === ownerEmail,
+    `getInvitation should include organizationName, organizationSlug and inviterEmail: ${JSON.stringify(getInvOk.data)}`
+  );
+
+  // Before accepting, the invitee has no active organization
+  const noActive = await invitee.organization.getActiveMember();
+  assert(noActive.error?.code === "NO_ACTIVE_ORGANIZATION", `expected NO_ACTIVE_ORGANIZATION: ${JSON.stringify(noActive)}`);
 
   const acceptOk = await invitee.organization.acceptInvitation({ invitationId: inv2.id });
   assert(!acceptOk.error, `verified acceptInvitation failed: ${JSON.stringify(acceptOk.error)}`);
+  assert(
+    acceptOk.data?.invitation?.status === "accepted" && acceptOk.data?.member?.role === "admin",
+    `acceptInvitation should return {invitation, member}: ${JSON.stringify(acceptOk.data)}`
+  );
+
+  // Accepting made the organization active for the invitee
+  const inviteeActive = await invitee.organization.getActiveMember();
+  assert(
+    !inviteeActive.error && inviteeActive.data?.userId === inviteeUserId && inviteeActive.data?.role === "admin",
+    `invitee getActiveMember failed: ${JSON.stringify(inviteeActive)}`
+  );
+  const ownerRoleByQuery = await invitee.organization.getActiveMemberRole({
+    query: { organizationId: org.id, userId: ownerActive.data.userId },
+  });
+  assert(!ownerRoleByQuery.error && ownerRoleByQuery.data?.role === "owner", `getActiveMemberRole with query failed: ${JSON.stringify(ownerRoleByQuery)}`);
 
   // 6. Members & Team Members
   console.log("\n[6] Testing Members & Team Members...");
@@ -200,7 +239,17 @@ async function main() {
   });
   assert(!addTmRes.error, `addTeamMember failed: ${JSON.stringify(addTmRes.error)}`);
 
-  const listTmRes = await owner.organization.listTeamMembers({
+  // Only team members may list a team's members (better-auth): the owner is not in team2
+  const listTmDenied = await owner.organization.listTeamMembers({ query: { teamId: team2.id } });
+  assert(listTmDenied.error?.code === "USER_IS_NOT_A_MEMBER_OF_THE_TEAM", `expected USER_IS_NOT_A_MEMBER_OF_THE_TEAM: ${JSON.stringify(listTmDenied)}`);
+
+  const userTeams = await invitee.organization.listUserTeams();
+  assert(
+    !userTeams.error && Array.isArray(userTeams.data) && userTeams.data.length === 1 && userTeams.data[0].id === team2.id,
+    `listUserTeams failed: ${JSON.stringify(userTeams)}`
+  );
+
+  const listTmRes = await invitee.organization.listTeamMembers({
     query: { teamId: team2.id },
   });
   assert(
@@ -209,7 +258,7 @@ async function main() {
   );
 
   const setActiveTeamRes = await invitee.organization.setActiveTeam({ teamId: team2.id });
-  assert(!setActiveTeamRes.error, `setActiveTeam failed: ${JSON.stringify(setActiveTeamRes.error)}`);
+  assert(!setActiveTeamRes.error && setActiveTeamRes.data?.id === team2.id, `setActiveTeam should return the team: ${JSON.stringify(setActiveTeamRes)}`);
 
   const rmTmRes = await owner.organization.removeTeamMember({
     teamId: team2.id,
@@ -232,15 +281,28 @@ async function main() {
   const memListByMember = await invitee.organization.listMembers({ query: { organizationId: org.id } });
   assert(!memListByMember.error && memListByMember.data?.members?.length === 2, `member listMembers failed: ${JSON.stringify(memListByMember)}`);
 
+  const roleAfterUpdate = await invitee.organization.getActiveMemberRole();
+  assert(!roleAfterUpdate.error && roleAfterUpdate.data?.role === "member", `getActiveMemberRole after update failed: ${JSON.stringify(roleAfterUpdate)}`);
+
   // Sole owner cannot leave organization
   const soleOwnerLeave = await owner.organization.leave({ organizationId: org.id });
-  assert(soleOwnerLeave.error, "expected sole owner leave to fail with CANNOT_LEAVE_AS_SOLE_OWNER");
+  assert(
+    soleOwnerLeave.error?.code === "YOU_CANNOT_LEAVE_THE_ORGANIZATION_AS_THE_ONLY_OWNER",
+    `expected sole owner leave to fail: ${JSON.stringify(soleOwnerLeave.error)}`
+  );
 
   const rmMemRes = await owner.organization.removeMember({
     memberIdOrEmail: inviteeEmail,
     organizationId: org.id,
   });
-  assert(!rmMemRes.error, `removeMember by email failed: ${JSON.stringify(rmMemRes.error)}`);
+  assert(!rmMemRes.error && rmMemRes.data?.member?.userId === inviteeUserId, `removeMember by email failed: ${JSON.stringify(rmMemRes)}`);
+
+  // The removed member is no longer a member of the organization
+  const roleAfterRemoval = await invitee.organization.getActiveMemberRole({ query: { organizationId: org.id } });
+  assert(
+    roleAfterRemoval.error?.code === "YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION" && roleAfterRemoval.error?.status === 403,
+    `expected YOU_ARE_NOT_A_MEMBER_OF_THIS_ORGANIZATION: ${JSON.stringify(roleAfterRemoval)}`
+  );
 
   // 7. OrganizationLimit (max 2) + Self-Service LeaveOrganization
   console.log("\n[7] Testing OrganizationLimit=2 & leave...");

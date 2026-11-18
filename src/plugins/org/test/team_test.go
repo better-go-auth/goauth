@@ -411,7 +411,23 @@ func TestOrgTeams_HandlerFlow(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, memberID, addResp.Body.UserID)
 
-	// 5. Set active team via handler
+	// 4b. list-user-teams shows the team to the member
+	userTeams, err := env.OrgHandler.ListUserTeams(ctx, &humaorg.ListUserTeamsInput{AuthHeaders: memberAuth})
+	require.NoError(t, err)
+	require.Len(t, userTeams.Body, 1)
+	require.Equal(t, teamID, userTeams.Body[0].ID)
+
+	// 5. Set active team via handler (better-auth requires the team to be in the active organization)
+	_, err = env.OrgHandler.SetActiveTeam(ctx, &humaorg.SetActiveTeamInput{
+		AuthHeaders: memberAuth,
+		Body:        orgdtos.SetActiveTeamInput{TeamID: &teamID},
+	})
+	require.Error(t, err, "no active organization yet")
+	_, err = env.OrgHandler.SetActiveOrg(ctx, &humaorg.SetActiveOrgInput{
+		AuthHeaders: memberAuth,
+		Body:        orgdtos.SetActiveOrgInput{OrganizationID: &createdOrg.ID},
+	})
+	require.NoError(t, err)
 	setActiveResp, err := env.OrgHandler.SetActiveTeam(ctx, &humaorg.SetActiveTeamInput{
 		AuthHeaders: memberAuth,
 		Body: orgdtos.SetActiveTeamInput{
@@ -419,8 +435,8 @@ func TestOrgTeams_HandlerFlow(t *testing.T) {
 		},
 	})
 	require.NoError(t, err)
-	require.NotNil(t, setActiveResp.Body.Session.ActiveTeamID)
-	require.Equal(t, teamID, *setActiveResp.Body.Session.ActiveTeamID)
+	require.NotNil(t, setActiveResp.Body)
+	require.Equal(t, teamID, setActiveResp.Body.ID)
 
 	// 6. Remove member via handler
 	_, err = env.OrgHandler.RemoveTeamMember(ctx, &humaorg.RemoveTeamMemberInput{
