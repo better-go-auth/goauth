@@ -238,6 +238,10 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 
 	// Step 3: Initialize EmailOTPService and attach secondary storage for rate limiting
 	passwords := authcrypto.NewPasswords(ictx.Config)
+	if ictx.Hooks != nil {
+		// new passwords (reset-password) go through the password-hash hooks, e.g. have-i-been-pwned
+		passwords = passwords.WithBeforeHash(ictx.Hooks.TriggerPasswordHash)
+	}
 
 	p.service = services.NewEmailOTPService(
 		p.config,

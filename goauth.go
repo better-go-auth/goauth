@@ -143,6 +143,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	api.UseMiddleware(humaadapter.RequestContext())
 	// config: OnAPIError.OnError / Throw receive the errors better-auth's router hands to onError
 	api.UseMiddleware(humaadapter.APIErrorReporter(opts.OnAPIError))
+	// plugin request hooks (better-auth's plugin onRequest, e.g. captcha) run before the rate limiter; the
+	// set is filled after each plugin's Init (1c below)
+	requestHooks := humaadapter.NewRequestHookSet()
+	api.UseMiddleware(humaadapter.RequestHooks(opts.AuthConfig, requestHooks))
 	// config: RateLimit — one limiter in front of every core and plugin route (better-auth's router onRequest)
 	limiter, err := newRateLimiter(opts)
 	if err != nil {
@@ -319,6 +323,9 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		}
 		if hp, ok := p.(plugin.EndpointHooksProvider); ok {
 			endpointHooks.AddPlugin(hp.EndpointHooks())
+		}
+		if rh, ok := p.(plugin.RequestHooksProvider); ok {
+			requestHooks.Add(rh.RequestHooks()...)
 		}
 	}
 

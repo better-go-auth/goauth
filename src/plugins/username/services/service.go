@@ -287,7 +287,10 @@ func (s *Service) SignIn(ctx context.Context, in SignInInput) (*SignInResult, er
 		return nil, err
 	}
 	if user == nil {
-		_, _ = s.kit.Passwords.Hash(in.Password)
+		// spend the hashing time; a password-hash hook error is returned like better-auth
+		if _, err := s.kit.Passwords.HashContext(ctx, in.Password); err != nil {
+			return nil, err
+		}
 		return nil, ErrInvalidUsernameOrPassword
 	}
 	// Step 4: the password lives on the credential account

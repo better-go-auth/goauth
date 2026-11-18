@@ -212,7 +212,12 @@ func (r *hookRun) runBefore(hooks []endpointhooks.BeforeHook) *endpointhooks.Res
 	if body := encodeBody(r.hc.Body); body != nil && !bytes.Equal(body, origBody) {
 		r.w.setBody(body)
 	}
-	// Step 4: refresh the *http.Request stored in the context so handlers and callbacks see the changes
+	// Step 4: refresh the *http.Request stored in the context so handlers and callbacks see the changes. The
+	// endpoint context derives from r.hc.Ctx, so values a before hook attached (context.WithValue, e.g. a
+	// per-request base URL) reach the endpoint
+	if r.hc.Ctx != nil {
+		r.w.reqCtx = r.hc.Ctx
+	}
 	req := httpRequestOf(r.w)
 	r.w.reqCtx = config.WithHTTPRequest(r.w.reqCtx, req)
 	r.hc.Request = req

@@ -62,9 +62,9 @@ func (s *Service) Provider(id string) (*gproviders.Provider, bool) {
 	return p, ok
 }
 
-// callbackURI is "<baseURL>/oauth2/callback/<providerId>".
-func (s *Service) callbackURI(providerID string) string {
-	return s.kit.BaseURL() + "/oauth2/callback/" + providerID
+// callbackURI is "<baseURL>/oauth2/callback/<providerId>" (the per-request base URL of pluginkit.WithBaseURL when set).
+func (s *Service) callbackURI(ctx context.Context, providerID string) string {
+	return s.kit.RequestBaseURL(ctx) + "/oauth2/callback/" + providerID
 }
 
 // ─── POST /sign-in/oauth2 ────────────────────────────────────────────────────
@@ -118,7 +118,7 @@ func (s *Service) SignIn(ctx context.Context, in godtos.SignInOAuth2Input) (*Sta
 	u, err := p.BuildAuthorizationURL(authURL, gproviders.AuthURLRequest{
 		State:        st.State,
 		CodeVerifier: st.CodeVerifier,
-		RedirectURI:  s.callbackURI(cfg.ProviderID),
+		RedirectURI:  s.callbackURI(ctx, cfg.ProviderID),
 		Scopes:       scopes,
 		Prompt:       cfg.Prompt,
 		AccessType:   cfg.AccessType,
@@ -177,7 +177,7 @@ func (s *Service) Link(ctx context.Context, current *dtos.SessionWithUser, in go
 	u, err := p.BuildAuthorizationURL(authURL, gproviders.AuthURLRequest{
 		State:        st.State,
 		CodeVerifier: st.CodeVerifier,
-		RedirectURI:  s.callbackURI(cfg.ProviderID),
+		RedirectURI:  s.callbackURI(ctx, cfg.ProviderID),
 		Scopes:       scopes,
 		Prompt:       cfg.Prompt,
 		AccessType:   cfg.AccessType,
@@ -278,7 +278,7 @@ func (s *Service) Callback(ctx context.Context, providerID string, q CallbackPar
 		TokenURL:     tokenURL,
 		Code:         q.Code,
 		CodeVerifier: state.CodeVerifier,
-		RedirectURI:  s.callbackURI(cfg.ProviderID),
+		RedirectURI:  s.callbackURI(ctx, cfg.ProviderID),
 		Extra:        p.TokenParams(ctx),
 	})
 	if err != nil || tokens == nil {

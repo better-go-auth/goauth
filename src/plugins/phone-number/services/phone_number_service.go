@@ -491,7 +491,7 @@ func (s *PhoneNumberService) ResetPassword(ctx context.Context, phoneNumber, otp
 		return autherr.ErrPasswordTooLong
 	}
 	// Step 4: hash and store the password, creating the credential account when the user had none
-	hash, err := s.kit.Passwords.Hash(newPassword)
+	hash, err := s.kit.Passwords.HashContext(ctx, newPassword)
 	if err != nil {
 		return err
 	}

@@ -729,7 +729,7 @@ func (s *EmailOTPService) ResetPassword(ctx context.Context, email, otp, newPass
 		return ErrPasswordTooLong
 	}
 
-	hash, err := s.passwords.Hash(newPassword)
+	hash, err := s.passwords.HashContext(ctx, newPassword)
 	if err != nil {
 		return err
 	}

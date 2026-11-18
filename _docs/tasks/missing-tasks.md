@@ -116,13 +116,13 @@ Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
 
 - [ ] **5.1 api-key** (`@better-auth/api-key`: keys, rate limits, permissions via the new `access` package,
   `x-api-key` session) – highest value for Go backends.
-- [ ] **5.2 captcha** (Turnstile / reCAPTCHA / hCaptcha / CaptchaFox before-hook) – after 3.3
-- [ ] **5.3 haveibeenpwned** (k-anonymity check on sign-up / change / reset password) – after 3.3
-- [ ] **5.4 custom-session** (`/get-session` response callback)
-- [ ] **5.5 last-login-method** (cookie / field updated on every sign-in) – after 1.7
-- [ ] **5.6 one-tap** (Google One Tap, reuse social `VerifyIDToken`)
-- [ ] **5.7 oauth-proxy** (preview deployments)
-- [ ] **5.8 open-api reference** at `/api/auth/reference` (Huma already generates the document)
+- [x] **5.2 captcha** (Turnstile / reCAPTCHA / hCaptcha / CaptchaFox before-hook) – after 3.3
+- [x] **5.3 haveibeenpwned** (k-anonymity check on sign-up / change / reset password) – after 3.3
+- [x] **5.4 custom-session** (`/get-session` response callback)
+- [x] **5.5 last-login-method** (cookie / field updated on every sign-in) – after 1.7
+- [x] **5.6 one-tap** (Google One Tap, reuse social `VerifyIDToken`)
+- [x] **5.7 oauth-proxy** (preview deployments)
+- [x] **5.8 open-api reference** at `/api/auth/reference` (Huma already generates the document)
 
 ## Stage 6 – Larger and identity-provider features (L)
 

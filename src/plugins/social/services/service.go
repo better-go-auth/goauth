@@ -53,9 +53,9 @@ func (s *Service) Provider(id string) (providers.Provider, bool) {
 // Kit exposes the plugin kit (handlers build cookies with it).
 func (s *Service) Kit() *pluginkit.Kit { return s.kit }
 
-// redirectURI is "<baseURL>/callback/<id>".
-func (s *Service) redirectURI(p providers.Provider) string {
-	return s.kit.BaseURL() + "/callback/" + p.ID()
+// redirectURI is "<baseURL>/callback/<id>" (the per-request base URL of pluginkit.WithBaseURL when set).
+func (s *Service) redirectURI(ctx context.Context, p providers.Provider) string {
+	return s.kit.RequestBaseURL(ctx) + "/callback/" + p.ID()
 }
 
 // disableSignUp is `provider.disableImplicitSignUp && !requestSignUp || provider.disableSignUp`.
@@ -101,7 +101,7 @@ func (s *Service) SignInSocial(ctx context.Context, in socialdtos.SignInSocialIn
 	u, err := p.CreateAuthorizationURL(ctx, providers.AuthorizationURLInput{
 		State:        st.State,
 		CodeVerifier: st.CodeVerifier,
-		RedirectURI:  s.redirectURI(p),
+		RedirectURI:  s.redirectURI(ctx, p),
 		Scopes:       in.Scopes,
 		LoginHint:    in.LoginHint,
 	})
@@ -205,7 +205,7 @@ func (s *Service) LinkSocial(ctx context.Context, current *dtos.SessionWithUser,
 	u, err := p.CreateAuthorizationURL(ctx, providers.AuthorizationURLInput{
 		State:        st.State,
 		CodeVerifier: st.CodeVerifier,
-		RedirectURI:  s.redirectURI(p),
+		RedirectURI:  s.redirectURI(ctx, p),
 		Scopes:       in.Scopes,
 	})
 	if err != nil {
@@ -389,7 +389,7 @@ func (s *Service) Callback(ctx context.Context, providerID string, q CallbackPar
 		Code:         q.Code,
 		CodeVerifier: state.CodeVerifier,
 		DeviceID:     q.DeviceID,
-		RedirectURI:  s.redirectURI(p),
+		RedirectURI:  s.redirectURI(ctx, p),
 	})
 	if err != nil || tokens == nil {
 		return fail("invalid_code")

@@ -203,6 +203,12 @@ func (s *Service) generateState(ctx context.Context, link *StateLink, in stateRe
 // parseState is better-auth's parseGenericState. It returns the cookies to set (the expired state cookie)
 // along with the data, or a *StateError.
 func (s *Service) parseState(ctx context.Context, state string) (*StateData, []http.Cookie, error) {
+	return s.parseStateWith(ctx, state, s.cfg.SkipStateCookieCheck)
+}
+
+// parseStateWith is parseState with better-auth's settings.skipStateCookieCheck (which wins over the
+// configured SkipStateCookieCheck), e.g. oauth-proxy cleaning up a state started in another deployment.
+func (s *Service) parseStateWith(ctx context.Context, state string, skipStateCookieCheck bool) (*StateData, []http.Cookie, error) {
 	// Step 1: the state parameter is mandatory
 	if state == "" {
 		return nil, nil, &StateError{Code: "state_not_found", Message: "State not found in OAuth callback"}
@@ -252,7 +258,7 @@ func (s *Service) parseState(ctx context.Context, state string) (*StateData, []h
 			return nil, nil, &StateError{Code: "state_mismatch", ErrorURL: data.ErrorURL, Message: "State mismatch: OAuth state parameter does not match stored state"}
 		}
 		// Step 3b: the signed state cookie binds the flow to the browser that started it
-		if !s.cfg.SkipStateCookieCheck {
+		if !skipStateCookieCheck {
 			if cv, ok := s.kit.Cookies.ReadSigned(cookieHeader, StateCookie); !ok || !authcrypto.SecureEqual(cv, state) {
 				return nil, nil, &StateError{Code: "state_mismatch", ErrorURL: data.ErrorURL, Message: "State mismatch: State not persisted correctly"}
 			}
