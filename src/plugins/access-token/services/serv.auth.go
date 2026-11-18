@@ -81,7 +81,9 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input accesstoken
 		}
 		if existing != nil {
 			// hash anyway so both branches take the same time
-			_, _ = aus.Passwords.Hash(input.Password)
+			if _, err := aus.Passwords.HashContext(txCtx, input.Password); err != nil {
+				return err
+			}
 			// generate clone user
 			now := time.Now().UTC()
 			res = &svcint.SignUpResult{User: modeldtos.UserResponse{
@@ -94,7 +96,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input accesstoken
 		}
 
 		// new user: hash with the configured hasher (scrypt in compat mode)
-		hash, err := aus.Passwords.Hash(input.Password)
+		hash, err := aus.Passwords.HashContext(txCtx, input.Password)
 		if err != nil {
 			return err
 		}

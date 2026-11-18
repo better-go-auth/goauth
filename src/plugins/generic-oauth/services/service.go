@@ -62,9 +62,10 @@ func (s *Service) Provider(id string) (*gproviders.Provider, bool) {
 	return p, ok
 }
 
-// callbackURI is "<baseURL>/oauth2/callback/<providerId>".
+// callbackURI is "<baseURL>/oauth2/callback/<providerId>": the per-request base URL of pluginkit.WithBaseURL
+// when set, else the (possibly dynamic) base URL of the request.
 func (s *Service) callbackURI(ctx context.Context, providerID string) string {
-	return s.kit.BaseURL(ctx) + "/oauth2/callback/" + providerID
+	return s.kit.RequestBaseURL(ctx) + "/oauth2/callback/" + providerID
 }
 
 // ─── POST /sign-in/oauth2 ────────────────────────────────────────────────────

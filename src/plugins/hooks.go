@@ -156,6 +156,11 @@ func NewResponseEvent(ctx context.Context, path string, status int, reqCookies s
 // ResponseHook inspects and amends a response before it is sent (it cannot fail the request).
 type ResponseHook func(ev *ResponseEvent)
 
+// PasswordHashHook sees a new password right before an endpoint hashes it (sign-up, change-password,
+// reset-password, set-password, ...). ctx carries the request (config.GetHTTPRequest), so a hook can decide
+// by path like better-auth's getCurrentAuthContext().path. A returned error aborts the request unchanged.
+type PasswordHashHook func(ctx context.Context, password string) error
+
 // HookService defines the hook lifecycle methods that a plugin or service can implement.
 // A plugin can implement this interface and register it with the HookRegistry as a whole,
 // instead of binding separate callbacks on init.
@@ -229,6 +234,9 @@ type HookRegistry interface {
 	// OnResponse registers a hook that runs right before every goauth response is sent (better-auth's
 	// hooks.after), after the OnNewSession hooks (e.g. multi-session cookies, one-time-token `set-ott` header).
 	OnResponse(fn ResponseHook)
+	// OnPasswordHash registers a hook that runs before an endpoint hashes a new password (better-auth plugins
+	// wrapping ctx.password.hash, e.g. have-i-been-pwned); an error aborts the request.
+	OnPasswordHash(fn PasswordHashHook)
 
 	// Triggers
 	TriggerBeforeUserCreate(ctx context.Context, user *models.User) error
@@ -252,6 +260,9 @@ type HookRegistry interface {
 	TriggerResponse(ev *ResponseEvent)
 	// HasResponseHooks reports whether any response hook is registered (lets the HTTP layer skip work).
 	HasResponseHooks() bool
+	// TriggerPasswordHash runs the password-hash hooks in order; the first error aborts. It has the
+	// authcrypto.BeforeHashFunc signature, so endpoints pass it to Passwords.WithBeforeHash.
+	TriggerPasswordHash(ctx context.Context, password string) error
 
 	// Verification Override allows plugins (e.g. email-otp) to suppress or replace the core default verification email.
 	OverrideEmailVerification()
@@ -282,6 +293,7 @@ type DefaultHookRegistry struct {
 	userInput           []UserInputHook
 	newSession          []NewSessionHook
 	response            []ResponseHook
+	passwordHash        []PasswordHashHook
 }
 
 // NewHookRegistry creates a new HookRegistry instance.
@@ -595,6 +607,29 @@ func (h *DefaultHookRegistry) TriggerResponse(ev *ResponseEvent) {
 	for _, fn := range fns {
 		fn(ev)
 	}
+}
+
+func (h *DefaultHookRegistry) OnPasswordHash(fn PasswordHashHook) {
+	if fn == nil {
+		return
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.passwordHash = append(h.passwordHash, fn)
+}
+
+func (h *DefaultHookRegistry) TriggerPasswordHash(ctx context.Context, password string) error {
+	// Step 1: copy the hooks so they can run without holding the lock (they may call the network)
+	h.mu.RLock()
+	fns := append([]PasswordHashHook(nil), h.passwordHash...)
+	h.mu.RUnlock()
+	// Step 2: run them in registration order; the first error aborts the hash
+	for _, fn := range fns {
+		if err := fn(ctx, password); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // IsTruthy reports whether a decoded JSON value is truthy in JavaScript terms (better-auth checks such as

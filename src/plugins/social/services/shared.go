@@ -44,6 +44,12 @@ func (s *Service) ParseState(ctx context.Context, state string) (*StateData, []h
 	return s.parseState(ctx, state)
 }
 
+// ParseStateSkipCookieCheck is better-auth's parseGenericState(ctx, state, {skipStateCookieCheck: true}): the
+// signed `state` cookie of the database strategy is not required (oauth-proxy callbacks).
+func (s *Service) ParseStateSkipCookieCheck(ctx context.Context, state string) (*StateData, []http.Cookie, error) {
+	return s.parseStateWith(ctx, state, true)
+}
+
 // HandleOAuthUserInfo is better-auth's handleOAuthUserInfo (sign in, implicit link or sign up + session).
 func (s *Service) HandleOAuthUserInfo(ctx context.Context, in OAuthUserInput) (*OAuthUserResult, error) {
 	return s.handleOAuthUserInfo(ctx, in)

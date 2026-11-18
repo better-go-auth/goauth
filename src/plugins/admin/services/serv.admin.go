@@ -46,6 +46,16 @@ type AdminService struct {
 
 var _ IAdminService = (*AdminService)(nil)
 
+// passwords returns the configured password hasher; new passwords go through the password-hash hooks
+// (e.g. have-i-been-pwned on /admin/set-user-password when configured).
+func (s *AdminService) passwords() *authcrypto.Passwords {
+	p := authcrypto.NewPasswords(s.authConfig)
+	if s.hooks != nil {
+		p = p.WithBeforeHash(s.hooks.TriggerPasswordHash)
+	}
+	return p
+}
+
 // SetHooks configures the lifecycle hooks for the admin service.
 func (s *AdminService) SetHooks(hooks plugins.HookRegistry) {
 	s.hooks = hooks
@@ -114,7 +124,7 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 		role = input.Role
 	}
 
-	hash, err := authcrypto.NewPasswords(s.authConfig).Hash(input.Password)
+	hash, err := s.passwords().HashContext(ctx, input.Password)
 	if err != nil {
 		return nil, fmt.Errorf("adminsvc: hash password: %w", err)
 	}
@@ -184,7 +194,7 @@ func (s *AdminService) SetUserPassword(ctx context.Context, input admindtos.Admi
 		return autherr.ErrUserNotFound
 	}
 
-	hash, err := authcrypto.NewPasswords(s.authConfig).Hash(input.NewPassword)
+	hash, err := s.passwords().HashContext(ctx, input.NewPassword)
 	if err != nil {
 		return fmt.Errorf("adminsvc: hash password: %w", err)
 	}

@@ -55,11 +55,12 @@ func (s *Service) Kit() *pluginkit.Kit { return s.kit }
 
 // redirectURI is "<baseURL>/callback/<id>", or "<baseURL><path>" for providers with their own callback route
 // (generic-oauth providers: "/oauth2/callback/<id>", like better-auth registers them in ctx.socialProviders).
+// The base URL is the per-request one of pluginkit.WithBaseURL when set (oauth-proxy), else the request's.
 func (s *Service) redirectURI(ctx context.Context, p providers.Provider) string {
 	if cp, ok := p.(providers.CallbackPather); ok {
-		return s.kit.BaseURL(ctx) + cp.CallbackPath()
+		return s.kit.RequestBaseURL(ctx) + cp.CallbackPath()
 	}
-	return s.kit.BaseURL(ctx) + "/callback/" + p.ID()
+	return s.kit.RequestBaseURL(ctx) + "/callback/" + p.ID()
 }
 
 // disableSignUp is `provider.disableImplicitSignUp && !requestSignUp || provider.disableSignUp`.

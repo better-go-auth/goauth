@@ -66,6 +66,10 @@ func New(d Deps) *Service {
 	if d.Passwords == nil {
 		d.Passwords = authcrypto.NewPasswords(d.Config)
 	}
+	// plugins may check new passwords before they are hashed (e.g. have-i-been-pwned)
+	if d.Hooks != nil {
+		d.Passwords = d.Passwords.WithBeforeHash(d.Hooks.TriggerPasswordHash)
+	}
 	// invalid names are reported by ValidateConfig at setup; here they just disable update-session
 	fields, _ := updatableSessionFields(d.Config)
 	return &Service{cfg: d.Config, repos: d.Repos, sessionMgr: d.Sessions, passwords: d.Passwords, tx: d.Tx, sessionFields: fields, Hooks: d.Hooks}

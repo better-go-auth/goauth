@@ -1,6 +1,14 @@
 package authcrypto
 
-import "github.com/better-go-auth/goauth/src/config"
+import (
+	"context"
+
+	"github.com/better-go-auth/goauth/src/config"
+)
+
+// BeforeHashFunc runs before a new password is hashed with HashContext, like a better-auth plugin wrapping
+// ctx.password.hash (e.g. have-i-been-pwned). A returned error aborts the hash and is returned unchanged.
+type BeforeHashFunc func(ctx context.Context, password string) error
 
 // Passwords hashes and verifies user passwords according to the auth configuration.
 // A nil *Passwords behaves with default Better Auth settings (scrypt hashing, all formats verified).
@@ -8,6 +16,35 @@ type Passwords struct {
 	custom *config.PasswordHasher
 	format string
 	rehash bool
+	// beforeHash runs in HashContext before the password is hashed (nil = nothing)
+	beforeHash BeforeHashFunc
+}
+
+// WithBeforeHash returns a copy of p whose HashContext runs fn before hashing (better-auth plugins that
+// wrap ctx.password.hash). A nil fn returns p unchanged.
+func (p *Passwords) WithBeforeHash(fn BeforeHashFunc) *Passwords {
+	if fn == nil {
+		return p
+	}
+	cp := Passwords{format: FormatScrypt}
+	if p != nil {
+		cp = *p
+	}
+	cp.beforeHash = fn
+	return &cp
+}
+
+// HashContext hashes a new password like Hash, after the before-hash hook (WithBeforeHash) accepted it.
+// Endpoints hash through it so plugins see the request in ctx (path, headers).
+func (p *Passwords) HashContext(ctx context.Context, password string) (string, error) {
+	// Step 1: plugins may veto the password (e.g. a compromised password)
+	if p != nil && p.beforeHash != nil {
+		if err := p.beforeHash(ctx, password); err != nil {
+			return "", err
+		}
+	}
+	// Step 2: hash with the configured hasher
+	return p.Hash(password)
 }
 
 // NewPasswords uses Better Auth's default scrypt hasher, unless a custom hasher is set.

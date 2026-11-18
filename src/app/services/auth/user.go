@@ -274,7 +274,7 @@ func (s *Service) SetPassword(ctx context.Context, userID, newPassword string) e
 	} else if err != autherr.ErrCredentialAccountNotFound {
 		return err
 	}
-	hash, err := s.passwords.Hash(newPassword)
+	hash, err := s.passwords.HashContext(ctx, newPassword)
 	if err != nil {
 		return err
 	}

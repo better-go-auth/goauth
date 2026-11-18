@@ -19,3 +19,11 @@ type RateLimitProvider interface {
 type EndpointHooksProvider interface {
 	EndpointHooks() endpointhooks.Hooks
 }
+
+// RequestHooksProvider is an optional interface for plugins that inspect requests before goauth handles
+// them (better-auth's plugin `onRequest`, e.g. captcha). SetupGoAuth reads it after the plugin's Init; the
+// hooks run in plugin order before the rate limiter and every other middleware, and the first response or
+// error answers the request.
+type RequestHooksProvider interface {
+	RequestHooks() []endpointhooks.RequestFunc
+}

@@ -79,8 +79,11 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 			if !requireVerification {
 				return autherr.ErrUserAlreadyExistsUseAnotherEmail
 			}
-			// hash anyway so both branches take the same time
-			_, _ = s.passwords.Hash(in.Password)
+			// hash anyway so both branches take the same time; like better-auth, a password-hash hook error
+			// (e.g. a compromised password) still fails the request
+			if _, err := s.passwords.HashContext(ctx, in.Password); err != nil {
+				return err
+			}
 			// config: OnExistingUserSignUp lets the app warn the real owner (e.g. "someone tried to register")
 			if emlpwdCfg.OnExistingUserSignUp != nil {
 				data := config.ExistingUserSignUpData{User: *existing}
@@ -98,7 +101,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		}
 
 		// new user: hash with the configured hasher (scrypt in compat mode)
-		hash, err := s.passwords.Hash(in.Password)
+		hash, err := s.passwords.HashContext(ctx, in.Password)
 		if err != nil {
 			return err
 		}
@@ -195,7 +198,10 @@ func (s *Service) SignInEmail(ctx context.Context, in dtos.SignInEmailInput, met
 	}
 	if account == nil || account.Password == nil || *account.Password == "" {
 		// unknown user or no password: still spend the hashing time so response timing doesn't reveal it
-		_, _ = s.passwords.Hash(in.Password)
+		// (a password-hash hook error is returned like better-auth's throwing ctx.password.hash)
+		if _, err := s.passwords.HashContext(ctx, in.Password); err != nil {
+			return nil, err
+		}
 		return nil, autherr.ErrInvalidEmailOrPassword
 	}
 	// Verify accepts scrypt, bcrypt and argon2 hashes; with RehashPasswords it also returns a new hash

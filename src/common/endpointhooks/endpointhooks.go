@@ -26,7 +26,8 @@ import (
 
 // Context is the endpoint context a hook receives (better-auth's hook ctx).
 type Context struct {
-	// Ctx is the request context.
+	// Ctx is the request context. A before hook may replace it with a context derived from it (e.g.
+	// context.WithValue); the endpoint and the later hooks then run with that context.
 	Ctx context.Context
 	// Path is the route path relative to BasePath, with Huma path parameters
 	// (e.g. "/sign-in/email", "/reset-password/{token}"). better-auth writes parameters as ":token".
@@ -277,3 +278,9 @@ func MatchPrefix(prefixes ...string) Matcher {
 		return false
 	}
 }
+
+// RequestFunc is a plugin request hook (better-auth's plugin `onRequest`). It runs for every request under
+// BasePath before anything else goauth does with it: before the rate limiter, the origin check, session
+// resolution and the before hooks. r is the incoming request (read-only; its body is not available).
+// A non-nil Response answers the request; an error fails it like a before-hook error; (nil, nil) continues.
+type RequestFunc func(r *http.Request) (*Response, error)

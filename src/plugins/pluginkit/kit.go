@@ -95,12 +95,22 @@ func New(ictx *plugins.InitContext) (*Kit, error) {
 		Origins:    origin.New(ictx.Config),
 		Hooks:      ictx.Hooks,
 		Tx:         ictx.TxManager,
-		Passwords:  authcrypto.NewPasswords(ictx.Config),
+		Passwords:  newPasswords(ictx),
 		Store:      ictx.SecondaryStorage,
 		DB:         ictx.DB,
 		Limiter:    ictx.RateLimiter,
 		generateID: ictx.GenerateID,
 	}, nil
+}
+
+// newPasswords builds the configured password hasher; new passwords go through the password-hash hooks
+// (plugins.HookRegistry.OnPasswordHash) when hashed with Passwords.HashContext.
+func newPasswords(ictx *plugins.InitContext) *authcrypto.Passwords {
+	p := authcrypto.NewPasswords(ictx.Config)
+	if ictx.Hooks != nil {
+		p = p.WithBeforeHash(ictx.Hooks.TriggerPasswordHash)
+	}
+	return p
 }
 
 // Access selects the middlewares an endpoint runs behind (same levels as the core routes).
@@ -437,6 +447,26 @@ func (k *Kit) CheckURL(ctx context.Context, raw string, invalid *autherr.AuthErr
 // BaseURL returns "<BaseURL><BasePath>" (better-auth's ctx.context.baseURL); with a DynamicBaseURL the origin
 // is the one resolved for the current request.
 func (k *Kit) BaseURL(ctx context.Context) string { return k.Conf.RequestBaseURL(ctx) + k.BasePath }
+
+// baseURLKey is the context key of the per-request base URL (WithBaseURL).
+type baseURLKey struct{}
+
+// WithBaseURL returns ctx carrying a per-request base URL ("<origin><basePath>"), better-auth's
+// `ctx.context.baseURL = ...` in a before hook (e.g. oauth-proxy switching the OAuth redirect_uri to the
+// production deployment). A before hook sets it on endpointhooks.Context.Ctx; RequestBaseURL reads it.
+func WithBaseURL(ctx context.Context, baseURL string) context.Context {
+	return context.WithValue(ctx, baseURLKey{}, strings.TrimRight(baseURL, "/"))
+}
+
+// RequestBaseURL returns the per-request base URL set with WithBaseURL, or BaseURL(ctx).
+func (k *Kit) RequestBaseURL(ctx context.Context) string {
+	if ctx != nil {
+		if v, ok := ctx.Value(baseURLKey{}).(string); ok && v != "" {
+			return v
+		}
+	}
+	return k.BaseURL(ctx)
+}
 
 // ResolveURL resolves a (possibly relative) callback URL against the app's BaseURL origin, like
 // better-auth's new URL(callbackURL, ctx.context.baseURL).

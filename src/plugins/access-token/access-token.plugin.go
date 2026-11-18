@@ -198,6 +198,10 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	if p.passwords == nil {
 		p.passwords = authcrypto.NewPasswords(ictx.Config)
 	}
+	if ictx.Hooks != nil {
+		// new passwords (/signup) go through the password-hash hooks, e.g. have-i-been-pwned
+		p.passwords = p.passwords.WithBeforeHash(ictx.Hooks.TriggerPasswordHash)
+	}
 
 	// 1. Initialize services
 	sessMgr := ictx.SessionManager

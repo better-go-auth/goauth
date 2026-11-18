@@ -99,15 +99,25 @@ func (s *Service) ValidateResetToken(ctx context.Context, token string) error {
 
 // ResetPassword mirrors better-auth's POST `/reset-password`.
 //
-// Flow: validate the new password and the token → delete the token (single use) → store the new hash on the
-// user's credential account (creating one if the user only had OAuth) → run OnPasswordReset →
-// optionally sign the user out everywhere.
+// Flow: validate the new password and the token → hash the new password → delete the token (single use) →
+// store the new hash on the user's credential account (creating one if the user only had OAuth) → run
+// OnPasswordReset → optionally sign the user out everywhere.
 func (s *Service) ResetPassword(ctx context.Context, in dtos.ResetPasswordInput) error {
 	if in.Token == "" {
 		return autherr.ErrInvalidToken
 	}
 	// config: MinPasswordLength / MaxPasswordLength
 	if err := s.checkPasswordLength(in.NewPassword); err != nil {
+		return err
+	}
+	// the token must exist before the password is hashed (better-auth's order: an invalid token wins)
+	if _, err := s.findResetToken(ctx, in.Token); err != nil {
+		return err
+	}
+	// hash first, like better-auth: a password-hash hook error (e.g. a compromised password) leaves the
+	// token usable for another attempt
+	hash, err := s.passwords.HashContext(ctx, in.NewPassword)
+	if err != nil {
 		return err
 	}
 	// consume atomically before changing anything: of two concurrent requests with the same token only one gets the row
@@ -120,10 +130,6 @@ func (s *Service) ResetPassword(ctx context.Context, in dtos.ResetPasswordInput)
 	}
 	// the verification row's value is the user id it was issued for
 	userID := v.Value
-	hash, err := s.passwords.Hash(in.NewPassword)
-	if err != nil {
-		return err
-	}
 	// find-then-create/update the credential account as one unit
 	err = s.inTx(ctx, func(ctx context.Context) error {
 		account, err := acceptNotFound(s.repos.FindAccountByUserAndProvider(ctx, userID, models.ProvCredential))
@@ -185,7 +191,7 @@ func (s *Service) ChangePassword(ctx context.Context, current *dtos.SessionWithU
 		return nil, err
 	}
 	// hashed before the check, in better-auth's order, so a wrong current password costs the same time
-	hash, err := s.passwords.Hash(in.NewPassword)
+	hash, err := s.passwords.HashContext(ctx, in.NewPassword)
 	if err != nil {
 		return nil, err
 	}
