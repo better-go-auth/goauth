@@ -2,7 +2,6 @@ package session
 
 import (
 	"context"
-	"log/slog"
 
 	"encoding/json"
 	"fmt"
@@ -99,8 +98,7 @@ func (mgr *Manager) updateActive(ctx context.Context, userID string, mutate func
 			return b, ttl, false
 		})
 		if err != nil {
-			logger.ErrorCtx(ctx, "sessions: update active-sessions failed", err, nil)
-			slog.Warn("sessions: update active-sessions failed", "userID", userID, "err", err)
+			logger.Warn("sessions: update active-sessions failed", "userID", userID, "err", err)
 			incCacheError(ctx)
 		}
 		return
@@ -113,8 +111,7 @@ func (mgr *Manager) updateActive(ctx context.Context, userID string, mutate func
 	// 3. if no active sessions remain, delete the active index key entirely
 	if len(list) == 0 {
 		if err := mgr.secStore.Delete(ctx, activeKey(userID)); err != nil {
-			logger.ErrorCtx(ctx, "sessions: untrack active-sessions delete failed", err, nil)
-			slog.Warn("sessions: untrack active-sessions delete failed", "userID", userID, "err", err)
+			logger.Warn("sessions: untrack active-sessions delete failed", "userID", userID, "err", err)
 			incCacheError(ctx)
 		}
 		return
@@ -162,8 +159,7 @@ func (mgr *Manager) saveActive(ctx context.Context, userID string, list []active
 	}
 	// 2. save to secondary storage
 	if err := mgr.secStore.Set(ctx, activeKey(userID), b, ttl); err != nil {
-		logger.ErrorCtx(ctx, "sessions: save active-sessions failed", err, nil)
-		slog.Warn("sessions: save active-sessions failed", "userID", userID, "err", err)
+		logger.Warn("sessions: save active-sessions failed", "userID", userID, "err", err)
 		incCacheError(ctx)
 	}
 }
@@ -200,8 +196,7 @@ func (mgr *Manager) RefreshUser(ctx context.Context, user *models.User) {
 		if swu, _ := mgr.fromStore(ctx, e.Token); swu != nil {
 			swu.User = dtos.UserFromModel(user)
 			if err := mgr.cache(ctx, swu); err != nil {
-				logger.ErrorCtx(ctx, "sessions: RefreshUser cache failed", err, nil)
-				slog.Warn("sessions: RefreshUser cache failed", "userID", user.ID, "err", err)
+				logger.Warn("sessions: RefreshUser cache failed", "userID", user.ID, "err", err)
 				incCacheError(ctx)
 			}
 		}

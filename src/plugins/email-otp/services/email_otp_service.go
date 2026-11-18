@@ -8,14 +8,12 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/mail"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
@@ -30,7 +28,6 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
-	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 )
 
 var (
@@ -38,7 +35,6 @@ var (
 	ErrInvalidOTP          = autherr.Err(http.StatusBadRequest, "INVALID_OTP", "Invalid OTP")
 	ErrOTPExpired          = autherr.Err(http.StatusBadRequest, "OTP_EXPIRED", "OTP expired")
 	ErrTooManyAttempts     = autherr.Err(http.StatusForbidden, "TOO_MANY_ATTEMPTS", "Too many attempts")
-	ErrRateLimitExceeded   = autherr.Err(http.StatusTooManyRequests, "TOO_MANY_REQUESTS", "Rate limit exceeded. Please try again later.")
 	ErrSenderNotConfigured = autherr.Err(http.StatusInternalServerError, "SENDER_NOT_CONFIGURED", "No sendVerificationOTP callback configured")
 	ErrUserNotFound        = autherr.ErrUserNotFound
 	// better-auth answers a missing user with 400 USER_NOT_FOUND on OTP endpoints
@@ -52,11 +48,6 @@ var (
 	ErrChangeEmailDisabled    = autherr.ErrChangeEmailDisabled
 )
 
-type rlBucket struct {
-	Count     int       `json:"count"`
-	ExpiresAt time.Time `json:"expiresAt"`
-}
-
 type EmailOTPService struct {
 	config     emailotpconfig.EmailOTPConfig
 	rootConfig config.AuthConfig
@@ -64,11 +55,7 @@ type EmailOTPService struct {
 	sessionMgr authint.ISessionManager
 	passwords  *authcrypto.Passwords
 	txMgr      interfaces.ITransactionManager
-	secStorage sec_storage.SecondaryStorage
 	hooks      plugins.HookRegistry
-
-	rlMu      sync.Mutex
-	rlBuckets map[string]rlBucket
 }
 
 func NewEmailOTPService(
@@ -105,13 +92,7 @@ func NewEmailOTPService(
 		sessionMgr: sessionMgr,
 		passwords:  passwords,
 		txMgr:      txMgr,
-		rlBuckets:  make(map[string]rlBucket),
 	}
-}
-
-// SetSecondaryStorage configures secondary storage used for distributed rate limiting.
-func (s *EmailOTPService) SetSecondaryStorage(storage sec_storage.SecondaryStorage) {
-	s.secStorage = storage
 }
 
 // SetHooks lets OTP sign-up run the BeforeUserCreate / AfterUserCreate lifecycle hooks like core sign-up.
@@ -453,89 +434,6 @@ func (s *EmailOTPService) verifyOTPAttempt(ctx context.Context, identifier, prov
 // maxOTPCASRetries bounds how often an OTP check is retried after losing a compare-and-swap race.
 const maxOTPCASRetries = 10
 
-// ─── Rate Limiting ────────────────────────────────────────────────────────────
-
-func (s *EmailOTPService) rateLimitSettings() (enabled bool, window time.Duration, max int) {
-	rl := s.config.RateLimit
-	if rl.Enabled != nil {
-		enabled = *rl.Enabled
-	} else {
-		enabled = rl.Window > 0 || rl.Max > 0 || s.rootConfig.RateLimit.Enabled
-	}
-	if !enabled {
-		return false, 0, 0
-	}
-	window = rl.Window
-	if window <= 0 {
-		window = s.rootConfig.RateLimit.Window
-	}
-	if window <= 0 {
-		window = 60 * time.Second
-	}
-	max = rl.Max
-	if max <= 0 {
-		max = s.rootConfig.RateLimit.Max
-	}
-	if max <= 0 {
-		max = 3
-	}
-	return true, window, max
-}
-
-// CheckRateLimit enforces per-endpoint rate limiting matching Better Auth's rateLimit option.
-func (s *EmailOTPService) CheckRateLimit(ctx context.Context, endpointPath, clientKey string) error {
-	// Step 1: Check whether rate limiting is active and resolve window/max
-	enabled, window, max := s.rateLimitSettings()
-	if !enabled {
-		return nil
-	}
-	if clientKey == "" {
-		clientKey = "global"
-	}
-	key := fmt.Sprintf("email-otp:rl:%s:%s", endpointPath, clientKey)
-	now := time.Now().UTC()
-
-	s.rlMu.Lock()
-	defer s.rlMu.Unlock()
-
-	// Step 2: Check SecondaryStorage if available, otherwise fall back to in-memory buckets
-	if s.secStorage != nil {
-		var bucket rlBucket
-		if raw, exists, err := s.secStorage.Get(ctx, key); err == nil && exists {
-			switch v := raw.(type) {
-			case string:
-				_ = json.Unmarshal([]byte(v), &bucket)
-			case []byte:
-				_ = json.Unmarshal(v, &bucket)
-			}
-		}
-		if bucket.ExpiresAt.IsZero() || now.After(bucket.ExpiresAt) {
-			bucket = rlBucket{Count: 1, ExpiresAt: now.Add(window)}
-		} else {
-			if bucket.Count >= max {
-				return ErrRateLimitExceeded
-			}
-			bucket.Count++
-		}
-		if b, err := json.Marshal(bucket); err == nil {
-			_ = s.secStorage.Set(ctx, key, string(b), time.Until(bucket.ExpiresAt))
-		}
-		return nil
-	}
-
-	bucket, ok := s.rlBuckets[key]
-	if !ok || now.After(bucket.ExpiresAt) {
-		s.rlBuckets[key] = rlBucket{Count: 1, ExpiresAt: now.Add(window)}
-		return nil
-	}
-	if bucket.Count >= max {
-		return ErrRateLimitExceeded
-	}
-	bucket.Count++
-	s.rlBuckets[key] = bucket
-	return nil
-}
-
 // ─── Public OTP Flows ─────────────────────────────────────────────────────────
 
 // SendVerificationOTP generates (or reuses), stores, and dispatches an OTP code via the configured sender.
@@ -581,11 +479,7 @@ func (s *EmailOTPService) issueOTP(ctx context.Context, identifier, email string
 	// Step 3: Check reuse strategy before generating a fresh OTP
 	if s.config.ResendStrategy == emailotpconfig.ResendStrategyReuse {
 		if reusedCode, ok := s.tryReuseOTP(ctx, identifier); ok {
-			return s.config.SendVerificationOTP(emailotpconfig.SendVerificationOTPData{
-				Email: email,
-				OTP:   reusedCode,
-				Type:  otpType,
-			}, req)
+			return s.sendOTP(ctx, emailotpconfig.SendVerificationOTPData{Email: email, OTP: reusedCode, Type: otpType}, req)
 		}
 	}
 
@@ -613,11 +507,14 @@ func (s *EmailOTPService) issueOTP(ctx context.Context, identifier, email string
 	}
 
 	// Step 6: Dispatch plaintext OTP via caller's email sender callback
-	return s.config.SendVerificationOTP(emailotpconfig.SendVerificationOTPData{
-		Email: email,
-		OTP:   code,
-		Type:  otpType,
-	}, req)
+	return s.sendOTP(ctx, emailotpconfig.SendVerificationOTPData{Email: email, OTP: code, Type: otpType}, req)
+}
+
+// sendOTP hands the code to the app's SendVerificationOTP, through Advanced.BackgroundTasks.Handler when set.
+func (s *EmailOTPService) sendOTP(ctx context.Context, data emailotpconfig.SendVerificationOTPData, req *http.Request) error {
+	return s.rootConfig.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
+		return s.config.SendVerificationOTP(data, config.HTTPRequestOr(ctx, req))
+	})
 }
 
 // CheckVerificationOTP checks an OTP code without consuming it (tracks failed attempts).

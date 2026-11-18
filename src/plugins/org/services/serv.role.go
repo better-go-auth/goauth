@@ -3,7 +3,7 @@ package orgsvc
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"net/http"
 	"strings"
 
@@ -359,7 +359,7 @@ func (s *OrgService) checkIfMemberHasPermission(ctx context.Context, orgID, role
 	if len(missing) > 0 {
 		// better-auth also returns `missingPermissions` in the body; goauth's error shape has no
 		// extra fields, so they are only logged
-		slog.DebugContext(ctx, "orgsvc: role grants permissions the requester lacks", "missingPermissions", strings.Join(missing, ", "))
+		logger.Debug("orgsvc: role grants permissions the requester lacks", "missingPermissions", strings.Join(missing, ", "))
 		return denied
 	}
 	return nil

@@ -102,6 +102,8 @@ func (h *handler) originCheck(formCSRF bool) func(huma.Context, func(huma.Contex
 func OriginCheck(conf config.AuthConfig, origins *origin.Checker, formCSRF bool) func(huma.Context, func(huma.Context)) {
 	return func(ctx huma.Context, next func(huma.Context)) {
 		if err := OriginError(ctx, conf, origins, formCSRF); err != nil {
+			// origin failures happen before the endpoint: better-auth hands them to onAPIError.onError
+			autherr.Report(ctx.Context(), err)
 			writeError(ctx, err)
 			return
 		}

@@ -169,7 +169,7 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 		inviterMemberVal = *inviterMember
 	}
 	if s.Config.SendInvitationEmail != nil {
-		_ = s.Config.SendInvitationEmail(ctx, orgconfig.SendInvitationInput{
+		invite := orgconfig.SendInvitationInput{
 			ID:           created.ID,
 			Role:         string(created.Role),
 			Email:        created.Email,
@@ -177,7 +177,9 @@ func (s *OrgService) InviteMember(ctx context.Context, inviterID string, input d
 			Invitation:   *created,
 			Inviter:      inviterMemberVal,
 			InviterUser:  inviterUser,
-		})
+		}
+		// config: Advanced.BackgroundTasks.Handler runs the sender without blocking the response
+		_ = s.Cfg.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error { return s.Config.SendInvitationEmail(ctx, invite) })
 	} else if s.Config.SendOrgInvitation != nil {
 		inviterName := ""
 		orgName := ""

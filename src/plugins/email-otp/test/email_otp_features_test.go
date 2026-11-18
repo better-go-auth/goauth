@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
@@ -25,6 +26,7 @@ import (
 	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/plugins/email-otp/services"
+	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage/memory"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/danielgtaylor/huma/v2/adapters/humago"
@@ -63,6 +65,13 @@ func (m *multiOTPSender) Last() emailotpconfig.SendVerificationOTPData {
 }
 
 func setupIsolatedEmailOTPHarness(t *testing.T, cfg emailotpconfig.EmailOTPConfig, opts ...emailotp.Option) *otpTestHarness {
+	t.Helper()
+	return setupEmailOTPHarness(t, cfg, false, opts...)
+}
+
+// setupEmailOTPHarness builds the harness; rateLimited installs goauth's global rate limiter (enabled, in
+// memory) in front of the routes, with the plugin's rules, like SetupGoAuth does.
+func setupEmailOTPHarness(t *testing.T, cfg emailotpconfig.EmailOTPConfig, rateLimited bool, opts ...emailotp.Option) *otpTestHarness {
 	t.Helper()
 	// Step 1: Open isolated in-memory SQLite DB per test
 	dsn := "file:email_otp_" + uuid.NewString() + "?mode=memory&cache=shared"
@@ -108,6 +117,8 @@ func setupIsolatedEmailOTPHarness(t *testing.T, cfg emailotpconfig.EmailOTPConfi
 
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Email OTP API", "1.0.0"))
+	limiter := ratelimit.New(ratelimit.Options{Enabled: rateLimited, Storage: ratelimit.NewMemoryStorage()})
+	api.UseMiddleware(humaadapter.RequestContext(), humaadapter.RateLimit(authCfg, limiter))
 	ictx := &plugins.InitContext{
 		Ctx:              context.Background(),
 		Api:              api,
@@ -122,6 +133,7 @@ func setupIsolatedEmailOTPHarness(t *testing.T, cfg emailotpconfig.EmailOTPConfi
 	if err := otpPlugin.Init(ictx); err != nil {
 		t.Fatalf("otpPlugin.Init failed: %v", err)
 	}
+	limiter.AddPluginRules(otpPlugin.RateLimitRules()...)
 
 	return &otpTestHarness{
 		db:         db,
@@ -367,12 +379,12 @@ func TestEmailOTP_RateLimit_And_HTTPHandlers(t *testing.T) {
 	ctx := context.Background()
 
 	// Step 1: Configure RateLimit (Max: 2 per 60s window) and ChangeEmail enabled with VerifyCurrentEmail
-	h := setupIsolatedEmailOTPHarness(t, emailotpconfig.EmailOTPConfig{
+	h := setupEmailOTPHarness(t, emailotpconfig.EmailOTPConfig{
 		ChangeEmail: emailotpconfig.EmailOTPChangeEmailConfig{
 			Enabled:            true,
 			VerifyCurrentEmail: true,
 		},
-	}, emailotp.WithRateLimit(60*time.Second, 2))
+	}, true, emailotp.WithRateLimit(60*time.Second, 2))
 
 	// Step 2: Trigger rate limit on /email-otp/send-verification-otp (2 allowed, 3rd returns 429)
 	for i := 1; i <= 2; i++ {

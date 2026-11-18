@@ -174,8 +174,9 @@ func (s *PhoneNumberService) SendOTP(ctx context.Context, phoneNumber string) er
 	if err := s.storeCode(ctx, phoneNumber, code+":0"); err != nil {
 		return err
 	}
-	// Step 4: deliver it
-	return s.cfg.SendOTP(phoneconfig.OTPData{PhoneNumber: phoneNumber, Code: code}, s.request(ctx))
+	// Step 4: deliver it (config: Advanced.BackgroundTasks.Handler runs the sender without blocking)
+	data := phoneconfig.OTPData{PhoneNumber: phoneNumber, Code: code}
+	return s.kit.Conf.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error { return s.cfg.SendOTP(data, s.request(ctx)) })
 }
 
 // ─── Sign in with phone number + password ───────────────────────────────────
@@ -211,7 +212,8 @@ func (s *PhoneNumberService) SignIn(ctx context.Context, phoneNumber, password s
 			return nil, err
 		}
 		if s.cfg.SendOTP != nil {
-			if err := s.cfg.SendOTP(phoneconfig.OTPData{PhoneNumber: phoneNumber, Code: code}, s.request(ctx)); err != nil {
+			data := phoneconfig.OTPData{PhoneNumber: phoneNumber, Code: code}
+			if err := s.kit.Conf.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error { return s.cfg.SendOTP(data, s.request(ctx)) }); err != nil {
 				return nil, err
 			}
 		}
@@ -452,7 +454,10 @@ func (s *PhoneNumberService) RequestPasswordReset(ctx context.Context, phoneNumb
 	if user == nil || s.cfg.SendPasswordResetOTP == nil {
 		return nil
 	}
-	return s.cfg.SendPasswordResetOTP(phoneconfig.OTPData{PhoneNumber: phoneNumber, Code: code}, s.request(ctx))
+	data := phoneconfig.OTPData{PhoneNumber: phoneNumber, Code: code}
+	return s.kit.Conf.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
+		return s.cfg.SendPasswordResetOTP(data, s.request(ctx))
+	})
 }
 
 // ResetPassword mirrors POST /phone-number/reset-password.

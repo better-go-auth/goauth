@@ -26,7 +26,10 @@ type Plugin struct {
 	handler *humamagiclink.MagicLinkHandler
 }
 
-var _ plugins.Plugin = (*Plugin)(nil)
+var (
+	_ plugins.Plugin            = (*Plugin)(nil)
+	_ plugins.RateLimitProvider = (*Plugin)(nil)
+)
 
 // Option configures the plugin on top of the config struct.
 type Option func(*Plugin)
@@ -113,12 +116,15 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.service = services.NewMagicLinkService(p.config, kit)
 	p.handler = humamagiclink.NewMagicLinkHandler(p.service, kit)
 
-	// Step 4: mount the routes with the plugin's rate limit rule
-	humamagiclink.SetupMagicLinkRoutes(ictx.Api, kit, p.handler, ratelimit.Rule{
-		Window: p.config.RateLimit.Window,
-		Max:    p.config.RateLimit.Max,
-	})
+	// Step 4: mount the routes (the plugin's rate limit rule is declared through RateLimitRules)
+	humamagiclink.SetupMagicLinkRoutes(ictx.Api, kit, p.handler)
 	return nil
+}
+
+// RateLimitRules is better-auth's magic-link rule: /sign-in/magic-link and /magic-link/verify get
+// RateLimit.Window / Max (default 5 requests per 60 s) while the global limiter is enabled.
+func (p *Plugin) RateLimitRules() []ratelimit.PathRule {
+	return humamagiclink.RateLimitRules(ratelimit.Rule{Window: p.config.RateLimit.Window, Max: p.config.RateLimit.Max})
 }
 
 // Migrator returns nil: magic links use the core verification and user tables.

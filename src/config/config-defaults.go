@@ -3,7 +3,7 @@ package config
 import (
 	"errors"
 	"fmt"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"net/url"
 	"os"
 	"sync"
@@ -137,11 +137,11 @@ func (opts *AuthConfig) Validate() error {
 			return errors.New("goauth: you are using the default secret; set a random BETTER_AUTH_SECRET in production")
 		}
 		devSecretWarning.Do(func() {
-			slog.Warn("goauth: Secret is a public development default; never use it in production")
+			logger.Warn("goauth: Secret is a public development default; never use it in production")
 		})
 	}
 	if len(opts.Secret) < MinSecretLength {
-		slog.Warn("goauth: Secret is shorter than recommended", "min", MinSecretLength, "len", len(opts.Secret))
+		logger.Warn("goauth: Secret is shorter than recommended", "min", MinSecretLength, "len", len(opts.Secret))
 	}
 
 	// 4. Validate the ID format

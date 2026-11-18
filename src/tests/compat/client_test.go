@@ -479,6 +479,7 @@ func TestOfficialBetterAuthClient_EmailOTP(t *testing.T) {
 		WithPlugin(rlPlugin),
 		WithConfig(func(c *config.AuthConfig) {
 			compatMode(c)
+			c.RateLimit.Enabled = new(true)
 			c.TrustedOrigins = append(c.TrustedOrigins, "http://127.0.0.1:*", "http://localhost:*")
 		}),
 	)

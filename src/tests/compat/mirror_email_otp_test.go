@@ -141,6 +141,7 @@ func TestGoMirror_EmailOTP(t *testing.T) {
 		}, emailotp.WithRateLimit(60*time.Second, 2))),
 		WithConfig(func(c *config.AuthConfig) {
 			compatMode(c)
+			c.RateLimit.Enabled = new(true)
 			c.TrustedOrigins = append(c.TrustedOrigins, "http://127.0.0.1:*", "http://localhost:*")
 		}),
 	)

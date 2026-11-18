@@ -6,9 +6,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"net/http"
-	"time"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"github.com/better-go-auth/goauth/src/schema"
 )
 
@@ -70,6 +70,12 @@ type AuthConfig struct {
 	Verification      VerificationOptions
 	RateLimit         RateLimitOptions
 	Security          SecurityConfig
+	// Hooks are better-auth's endpoint `hooks.before` / `hooks.after` (see hooks.go).
+	Hooks HooksOptions
+	// OnAPIError is better-auth's `onAPIError` (errorURL, onError, throw; see api_error.go).
+	OnAPIError OnAPIErrorOptions
+	// Logger is better-auth's `logger` option (level, disabled, custom log function).
+	Logger logger.Options
 
 	GoAuth GoAuthConfig
 }
@@ -84,14 +90,6 @@ type VerificationOptions struct {
 	Fields map[string]string
 	// AdditionalFields adds verification fields (better-auth's verification.additionalFields).
 	AdditionalFields map[string]schema.Field
-}
-
-// RateLimitOptions mirrors better-auth's `rateLimit` options.
-type RateLimitOptions struct {
-	Enabled bool
-	Window  time.Duration
-	Max     int
-	Storage string
 }
 
 // GoAuthConfig holds top-level options better-auth doesn't have.

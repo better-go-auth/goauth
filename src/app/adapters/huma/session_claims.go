@@ -2,7 +2,7 @@ package humaadapter
 
 import (
 	"context"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
@@ -60,7 +60,7 @@ func (r *SessionClaims) ClaimsFromSession(ctx context.Context, bearer, cookieHea
 		if u, err := r.repos.FindUserByID(ctx, sw.User.ID); err == nil && u != nil {
 			claims.Role = string(u.Role)
 		} else if err != nil {
-			slog.Debug("session_claims: FindUserByID failed, using cached role", "err", err)
+			logger.Debug("session_claims: FindUserByID failed, using cached role", "err", err)
 		}
 	}
 	//
@@ -70,7 +70,7 @@ func (r *SessionClaims) ClaimsFromSession(ctx context.Context, bearer, cookieHea
 		if s, err := r.repos.FindSessionByID(ctx, sw.Session.ID); err == nil && s != nil && s.ActiveOrganizationRole != nil {
 			claims.ActiveOrgRole = *s.ActiveOrganizationRole
 		} else if err != nil {
-			slog.Debug("session_claims: FindSessionByID failed, org role may be stale", "err", err)
+			logger.Debug("session_claims: FindSessionByID failed, org role may be stale", "err", err)
 		}
 	}
 	return claims, nil

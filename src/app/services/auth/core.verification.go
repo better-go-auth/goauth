@@ -84,7 +84,9 @@ func (s *Service) dispatchVerificationEmail(ctx context.Context, user *models.Us
 	if send == nil {
 		return nil
 	}
-	return send(config.EmailVerificationData{User: *user, URL: s.verifyURL(tok, callbackURL), Token: tok}, request(ctx))
+	// config: Advanced.BackgroundTasks.Handler runs the sender without blocking the response
+	data := config.EmailVerificationData{User: *user, URL: s.verifyURL(tok, callbackURL), Token: tok}
+	return s.cfg.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error { return send(data, request(ctx)) })
 }
 
 // sendVerificationEmail is better-auth's sendVerificationEmailFn: build a token + link (unless overridden) and pass them
@@ -375,10 +377,11 @@ func (s *Service) ChangeEmail(ctx context.Context, current *dtos.SessionWithUser
 		if err != nil {
 			return nil, err
 		}
-		// config: User.ChangeEmail.SendChangeEmailConfirmation sends it
-		return nil, ce.SendChangeEmailConfirmation(config.ChangeEmailConfirmationData{
-			User: *user, NewEmail: newEmail, URL: s.verifyURL(tok, callbackURL), Token: tok,
-		}, request(ctx))
+		// config: User.ChangeEmail.SendChangeEmailConfirmation sends it (through Advanced.BackgroundTasks)
+		data := config.ChangeEmailConfirmationData{User: *user, NewEmail: newEmail, URL: s.verifyURL(tok, callbackURL), Token: tok}
+		return nil, s.cfg.RunInBackgroundOrAwait(ctx, func(ctx context.Context) error {
+			return ce.SendChangeEmailConfirmation(data, request(ctx))
+		})
 	}
 	// flow 3: verification link to the new address; the email changes when it is clicked
 	tok, err := s.emailVerificationToken(user.Email, newEmail, changeEmailVerification)

@@ -7,7 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"math/big"
 	"net/http"
 	"net/url"
@@ -225,7 +225,7 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, body dtos.Verif
 	}
 	res, err := verifyRegistration(raw, data.ExpectedChallenge, origins, s.rpID())
 	if err != nil {
-		slog.Error("passkey: failed to verify registration", "error", err)
+		logger.Error("passkey: failed to verify registration", "error", err)
 		if isErr(err, errAttestationStatement) {
 			return nil, ErrRegistrationRejected
 		}
@@ -283,7 +283,7 @@ func (s *PasskeyService) VerifyRegistration(ctx context.Context, body dtos.Verif
 		AAGUID:       &res.AAGUID,
 	}
 	if err := s.repo.Create(ctx, pk); err != nil {
-		slog.Error("passkey: failed to store passkey", "error", err)
+		logger.Error("passkey: failed to store passkey", "error", err)
 		return nil, ErrRegistrationFailed
 	}
 	return pk, nil
@@ -325,7 +325,7 @@ func (s *PasskeyService) VerifyAuthentication(ctx context.Context, body dtos.Ver
 	}
 	res, err := verifyAuthentication(raw, data.ExpectedChallenge, origins, s.rpID(), publicKey, uint32(max(pk.Counter, 0)))
 	if err != nil {
-		slog.Error("passkey: failed to verify authentication", "error", err)
+		logger.Error("passkey: failed to verify authentication", "error", err)
 		if isErr(err, errSignature) {
 			return nil, nil, ErrAuthenticationUnverified
 		}

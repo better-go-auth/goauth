@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
-	"log/slog"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"net/http"
 	"regexp"
 	"strings"
@@ -133,7 +133,7 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 	created, err := s.adminRepo.CreateUserWithAccount(ctx, user, hash)
 	if err != nil {
 		// better-auth's admin create-user answers 500 FAILED_TO_CREATE_USER when the insert fails
-		slog.ErrorContext(ctx, "adminsvc: create user failed", "err", err)
+		logger.Error("adminsvc: create user failed", "err", err)
 		return nil, autherr.ErrFailedToCreateUser.WithStatus(http.StatusInternalServerError)
 	}
 

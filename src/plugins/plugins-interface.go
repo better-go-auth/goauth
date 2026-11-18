@@ -16,6 +16,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	"github.com/better-go-auth/goauth/src/providers/cookies"
+	"github.com/better-go-auth/goauth/src/providers/ratelimit"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/schema"
 	"github.com/danielgtaylor/huma/v2"
@@ -45,6 +46,9 @@ type InitContext struct {
 	DB               *gorm.DB
 	CookieManager    *cookies.Manager
 	GenerateID       func() string
+	// RateLimiter is goauth's one rate limiter (AuthConfig.RateLimit). Plugins add rules with
+	// RateLimitProvider (or pluginkit.Route.RateLimit); nil outside SetupGoAuth.
+	RateLimiter *ratelimit.Limiter
 
 	// Adapter is the storage-agnostic adapter over the schema registry (core + config + plugin schemas).
 	// It is nil until SetupGoAuth builds the registry and adapter (missing-tasks 2.5); plugins moving off

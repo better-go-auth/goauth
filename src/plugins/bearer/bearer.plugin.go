@@ -8,8 +8,8 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
+	"github.com/better-go-auth/goauth/src/common/logger"
 	"io"
-	"log/slog"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -105,7 +105,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	}
 
 	if !p.config.RequiresSignature() {
-		slog.Warn("bearer: RequireSignature is disabled — unsigned bearer tokens will be accepted; enable it to require HMAC-signed tokens")
+		logger.Warn("bearer: RequireSignature is disabled — unsigned bearer tokens will be accepted; enable it to require HMAC-signed tokens")
 	}
 
 	// Register global Huma middleware for request & response interception

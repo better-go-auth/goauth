@@ -10,8 +10,14 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/token"
 )
 
+// SignInInterceptorPaths are the credential sign-in endpoints whose responses the OnAfterSignIn
+// interceptors see (better-auth's two-factor after-hook matcher). A plugin with its own credential sign-in
+// route can append its path during Init.
+var SignInInterceptorPaths = []string{"/sign-in/email", "/sign-in/username", "/sign-in/phone-number"}
+
 // SignInEvent describes a completed credential sign-in (/sign-in/email, /sign-in/phone-number, ...)
-// right after its session was created and before the response is written.
+// right after its session was created and before the response is sent. goauth's endpoint-hook middleware
+// fires it for successful responses of SignInInterceptorPaths that set a new session cookie.
 type SignInEvent struct {
 	// Path is the sign-in endpoint path relative to BasePath (e.g. "/sign-in/email").
 	Path string
@@ -234,6 +240,8 @@ type HookRegistry interface {
 	TriggerActiveOrgChanged(ctx context.Context, userID, newOrgID string) error
 	// TriggerAfterSignIn runs the sign-in interceptors in order; the first non-nil challenge wins.
 	TriggerAfterSignIn(ctx context.Context, ev SignInEvent) (*SignInChallenge, error)
+	// HasAfterSignInHooks reports whether any sign-in interceptor is registered.
+	HasAfterSignInHooks() bool
 	// TriggerUserInput runs the user input hooks in order; the first error aborts.
 	TriggerUserInput(ctx context.Context, ev *UserInputEvent) error
 	// TriggerNewSession runs the new-session hooks in order; the first error aborts.
@@ -485,6 +493,12 @@ func (h *DefaultHookRegistry) OnAfterSignIn(fn SignInInterceptor) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.afterSignIn = append(h.afterSignIn, fn)
+}
+
+func (h *DefaultHookRegistry) HasAfterSignInHooks() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.afterSignIn) > 0
 }
 
 func (h *DefaultHookRegistry) TriggerAfterSignIn(ctx context.Context, ev SignInEvent) (*SignInChallenge, error) {

@@ -308,10 +308,14 @@ func errorRedirect(errorURL, code, description string, cookies []http.Cookie) *R
 	return &Redirect{Location: errorURL + sep + q.Encode(), Cookies: cookies}
 }
 
-// defaultErrorURL is onAPIError.errorURL or "<baseURL>/error".
+// defaultErrorURL is the plugin's ErrorURL, else onAPIError.errorURL (AuthConfig.OnAPIError.ErrorURL), else
+// "<baseURL>/error".
 func (s *Service) defaultErrorURL() string {
 	if s.cfg.ErrorURL != "" {
 		return s.cfg.ErrorURL
+	}
+	if u := s.kit.Conf.OnAPIError.ErrorURL; u != "" {
+		return u
 	}
 	return s.kit.BaseURL() + "/error"
 }
