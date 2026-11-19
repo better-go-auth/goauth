@@ -215,6 +215,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.sessionSvc = services.NewSessionService(sConf, repos, sessMgr, secStorage, ictx.Hooks)
 	p.sessionSvc.Secret = ictx.Config.Secret
 	p.authSvc = services.NewAuthService(&sConf, coreAuthSvc, p.vSvc, p.sessionSvc, repos, txMgr, p.passwords, ictx.Hooks)
+	p.authSvc.Internal = ictx.Internal
 	// /signup enforces the same password length bounds as core sign-up
 	p.authSvc.MinPasswordLength = ictx.Config.EmailAndPassword.MinPasswordLength
 	p.authSvc.MaxPasswordLength = ictx.Config.EmailAndPassword.MaxPasswordLength

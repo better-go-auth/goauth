@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/better-go-auth/goauth/src/schema"
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
@@ -19,6 +20,7 @@ import (
 type UserRepo struct {
 	db         *gorm.DB
 	generateID func() string
+	reg        *schema.Registry
 }
 
 // NewUserRepo creates a new GORM-backed UserRepo.
@@ -27,7 +29,7 @@ func NewUserRepo(db *gorm.DB, opts ...RepoOption) repo_interfaces.IUserRepo {
 	for _, o := range opts {
 		o(cfg)
 	}
-	return &UserRepo{db: db, generateID: cfg.GenerateID}
+	return &UserRepo{db: db, generateID: cfg.GenerateID, reg: cfg.Registry}
 }
 
 func (r *UserRepo) newID() string {
@@ -128,7 +130,7 @@ func (r *UserRepo) UpdateUser(ctx context.Context, id string, data map[string]in
 	result := gormutil.GetDB(ctx, r.db).
 		Model(&user).
 		Where(userByID(id), "ID").
-		Updates(data)
+		Updates(updateKeys(r.reg, schema.ModelUser, data))
 	if result.Error != nil {
 		return nil, fmt.Errorf("gorm/user: update: %w", result.Error)
 	}

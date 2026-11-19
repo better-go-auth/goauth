@@ -29,6 +29,9 @@ type AuthService struct {
 	// hooks & txn
 	TxMgr interfaces.ITransactionManager
 	Hooks plugins.HookRegistry
+	// Internal is goauth's internalAdapter: /signup creates the user and account through it (database hooks,
+	// BeforeUserCreate / AfterUserCreate); nil uses the repositories directly
+	Internal authint.IInternalAdapter
 	// Passwords hashes/verifies passwords; nil means legacy bcrypt.
 	Passwords *authcrypto.Passwords
 	// MinPasswordLength / MaxPasswordLength bound /signup passwords; the plugin copies them from the core

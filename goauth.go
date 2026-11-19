@@ -12,12 +12,16 @@ import (
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	"github.com/better-go-auth/goauth/src/app/repository/adapterrepo"
 	"github.com/better-go-auth/goauth/src/app/repository/gormauth"
+	"github.com/better-go-auth/goauth/src/app/repository/hookedrepo"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/repository/verifycleanup"
 	"github.com/better-go-auth/goauth/src/app/repository/verifyidentifier"
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
+	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/internaladapter"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	"github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/common/dbhooks"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
@@ -61,7 +65,12 @@ type GoAuth struct {
 	logger             *logger.Logger
 	schema             *schema.Registry
 	adapter            adapter.Adapter
+	internal           *internaladapter.Adapter
 }
+
+// Internal returns goauth's internalAdapter (better-auth's ctx.context.internalAdapter): create, update and
+// delete users, sessions, accounts and verifications with database hooks and additionalFields applied.
+func (g *GoAuth) Internal() svcint.IInternalAdapter { return g.internal }
 
 // RateLimiter returns the global rate limiter (AuthConfig.RateLimit).
 func (g *GoAuth) RateLimiter() *ratelimit.Limiter { return g.rateLimiter }
@@ -216,7 +225,11 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 			}
 		}
 	case opts.GORMRepositories:
-		repos = gormauth.NewAuthRepos(opts.Conn, gormauth.WithGenerateID(generateID))
+		// the hand-written repositories store the Go structs only: additionalFields would be silently lost
+		if err := checkGORMRepositories(opts); err != nil {
+			return nil, err
+		}
+		repos = gormauth.NewAuthRepos(opts.Conn, gormauth.WithGenerateID(generateID), gormauth.WithRegistry(reg))
 	default:
 		ar, err := adapterrepo.New(store, reg)
 		if err != nil {
@@ -224,6 +237,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		}
 		repos = ar
 	}
+	// config: DatabaseHooks — every write of the repositories runs better-auth's database hooks (plugin hooks,
+	// the HookRegistry's Before/AfterUserCreate and AuthConfig.DatabaseHooks; the set is filled below)
+	dbHooks := dbhooks.NewSet()
+	repos = hookedrepo.Wrap(repos, dbHooks)
 	// config: Verification.StoreIdentifier stores verification identifiers hashed (better-auth's storeIdentifier)
 	repos = verifyidentifier.Wrap(repos, opts.Verification)
 	// delete expired verifications whenever one is read, like better-auth (opt out with Verification.DisableCleanup)
@@ -252,6 +269,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	if txManager == nil && opts.Conn != nil {
 		txManager = gormutil.NewGormTxManager(opts.Conn)
 	}
+	// database after hooks wait until the outermost transaction committed (better-auth's runWithTransaction)
+	txManager = dbhooks.WrapTx(txManager)
 
 	//=======================  Middlewares ==============================================|
 	//                                                                                   |
@@ -269,16 +288,24 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 
 	// Initialize lifecycle hooks
 	hooks := plugin.NewHookRegistry()
+	// the typed user-create hooks (BeforeUserCreate / AfterUserCreate) run as the first database hooks
+	dbHooks.Add("goauth:hooks", internaladapter.TypedHooks(hooks))
 
 	// one session store for cookie, bearer and legacy JWT clients
 	cookieMgr := cookies.New(opts.AuthConfig)
-	sessOpts := []sessionsvc.ManagerOption{sessionsvc.WithGenerateID(generateID)}
+	sessOpts := []sessionsvc.ManagerOption{sessionsvc.WithGenerateID(generateID), sessionsvc.WithDatabaseHooks(dbHooks), sessionsvc.WithRegistry(reg)}
 	sessionMgr := sessionsvc.NewManager(opts.Session, repos, repos, opts.SecondaryStorage, hooks, sessOpts...)
 	mdlWare.WithSessions(humaadapter.NewSessionClaims(sessionMgr, cookieMgr, repos))
 
+	// better-auth's internalAdapter: the one write path for core endpoints and plugins
+	internal := internaladapter.New(internaladapter.Deps{
+		Repos: repos, Sessions: sessionMgr, Schema: reg, Tx: txManager, Hooks: hooks,
+		SoftDelete: opts.User.GoAuth.SoftDelete, GenerateID: generateID,
+	})
+
 	resolver := humaadapter.NewResolver(sessionMgr, cookieMgr)
 	//=============   Register the better-auth compatable routes
-	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager, Hooks: hooks})
+	authService := authsvc.New(authsvc.Deps{Config: opts.AuthConfig, Repos: repos, Sessions: sessionMgr, Tx: txManager, Hooks: hooks, Internal: internal})
 	// Validate the plugin list before anything is initialized: unique IDs and installed dependencies
 	// config: SocialProviders installs the social plugin (better-auth's core socialProviders); generic-oauth
 	// providers are registered as social providers too
@@ -288,15 +315,9 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	if err := validatePlugins(opts.Plugins); err != nil {
 		return nil, err
 	}
-	// Record the user/session fields of the installed plugins: like better-auth, the user and session JSON
-	// always carries them (false / null when unset), and update-user knows which keys exist
-	var schemaFields []dtos.SchemaFields
-	for _, p := range opts.Plugins {
-		if sp, ok := p.(plugin.SchemaFieldsProvider); ok && p != nil {
-			schemaFields = append(schemaFields, sp.SchemaFields())
-		}
-	}
-	dtos.SetInstalledSchemaFields(schemaFields...)
+	// API output follows the registry: like better-auth, the user and session JSON carries every returned
+	// field (additionalFields and the fields of installed plugins included, false / null when unset)
+	dtos.SetOutputSchema(reg, pluginIDs(opts.Plugins))
 
 	// Initialize plugins
 	pluginMap := make(map[string]plugin.Plugin)
@@ -319,6 +340,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		RateLimiter:      limiter,
 		Adapter:          store,
 		Schema:           reg,
+		Internal:         internal,
 	}
 
 	// Phase 1: Initialize plugins (transport/middleware plugins first so global middlewares wrap all plugin routes)
@@ -385,7 +407,13 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		if rh, ok := p.(plugin.RequestHooksProvider); ok {
 			requestHooks.Add(rh.RequestHooks()...)
 		}
+		// better-auth's plugin init returning options.databaseHooks
+		if dp, ok := p.(plugin.DatabaseHooksProvider); ok {
+			dbHooks.Add("plugin:"+p.ID(), dp.DatabaseHooks())
+		}
 	}
+	// config: DatabaseHooks run after the plugins' database hooks (better-auth's order)
+	dbHooks.Add("user", opts.DatabaseHooks)
 
 	// Phase 2: Run migrations for all plugins (now fully configured with DB). Plugins storing GORM structs
 	// migrate them here in auto mode only (verify / off leave the schema to the operator); plugins declaring
@@ -442,7 +470,19 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		logger:             log,
 		schema:             reg,
 		adapter:            store,
+		internal:           internal,
 	}, nil
+}
+
+// pluginIDs returns the IDs of the installed plugins (an empty, non-nil slice without plugins).
+func pluginIDs(list []plugin.Plugin) []string {
+	ids := []string{}
+	for _, p := range list {
+		if p != nil {
+			ids = append(ids, p.ID())
+		}
+	}
+	return ids
 }
 
 // validatePlugins fails when two plugins share an ID or a plugin's Dependencies() are not installed.

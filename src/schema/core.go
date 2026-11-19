@@ -81,15 +81,16 @@ func coreModels() []coreModel {
 		namedField{"isAnonymous", Field{Type: Boolean, Input: f, Default: false}},
 	)...)
 	// Step 3: goauth's own user columns (profile fields clients may set, bookkeeping fields they can't)
+	// (OmitEmpty: they only appear in API output once set, keeping better-auth's user shape)
 	user.fields = append(user.fields, owned(OwnerGoAuth,
-		namedField{"firstName", Field{Type: String}},
-		namedField{"lastName", Field{Type: String}},
-		namedField{"displayName", Field{Type: String}},
-		namedField{"bio", Field{Type: String}},
-		namedField{"dateOfBirth", Field{Type: Date}},
-		namedField{"gender", Field{Type: String}},
-		namedField{"locale", Field{Type: String, Default: "en"}},
-		namedField{"timezone", Field{Type: String}},
+		namedField{"firstName", Field{Type: String, OmitEmpty: true}},
+		namedField{"lastName", Field{Type: String, OmitEmpty: true}},
+		namedField{"displayName", Field{Type: String, OmitEmpty: true}},
+		namedField{"bio", Field{Type: String, OmitEmpty: true}},
+		namedField{"dateOfBirth", Field{Type: Date, OmitEmpty: true}},
+		namedField{"gender", Field{Type: String, OmitEmpty: true}},
+		namedField{"locale", Field{Type: String, Default: "en", OmitEmpty: true}},
+		namedField{"timezone", Field{Type: String, OmitEmpty: true}},
 		namedField{"lastLoginIP", Field{Type: String, Input: f, Returned: f}},
 		namedField{"lastLoginAt", Field{Type: Date, Input: f, Returned: f}},
 		namedField{"lastSeen", Field{Type: Date, Input: f, Returned: f}},
@@ -116,16 +117,16 @@ func coreModels() []coreModel {
 	session.fields = append(session.fields, owned(PluginOrg,
 		namedField{"activeOrganizationId", Field{Type: String, Input: f}},
 		namedField{"activeTeamId", Field{Type: String, Input: f}},
-		// goauth-only organization fields (not in better-auth's organization schema)
-		namedField{"activeOrganizationType", Field{Type: String, Input: f}},
-		namedField{"activeOrganizationRole", Field{Type: String, Input: f}},
+		// goauth-only organization fields (not in better-auth's organization schema): output only when set
+		namedField{"activeOrganizationType", Field{Type: String, Input: f, OmitEmpty: true}},
+		namedField{"activeOrganizationRole", Field{Type: String, Input: f, OmitEmpty: true}},
 	)...)
 	// Step 6: goauth's device fields (settable through /update-session) and bookkeeping
 	session.fields = append(session.fields, owned(OwnerGoAuth,
-		namedField{"deviceToken", Field{Type: String}},
-		namedField{"deviceId", Field{Type: String}},
-		namedField{"deviceName", Field{Type: String}},
-		namedField{"deviceType", Field{Type: String}},
+		namedField{"deviceToken", Field{Type: String, OmitEmpty: true}},
+		namedField{"deviceId", Field{Type: String, OmitEmpty: true}},
+		namedField{"deviceName", Field{Type: String, OmitEmpty: true}},
+		namedField{"deviceType", Field{Type: String, OmitEmpty: true}},
 		namedField{"lastUsedAt", Field{Type: Date, Input: f, Returned: f}},
 	)...)
 
@@ -189,6 +190,27 @@ func Core() map[string]Model {
 			m.Fields[nf.name] = nf.field
 		}
 		out[cm.name] = m
+	}
+	return out
+}
+
+// PluginFields returns the fields plugin owner (a plugin ID such as PluginAdmin) adds to the core models, as
+// better-auth's plugin `schema` declares them. Plugins return it (possibly adjusted to their options) from
+// plugins.SchemaProvider, so the registry knows their columns only while they are installed.
+func PluginFields(owner string) PluginSchema {
+	out := PluginSchema{}
+	for _, cm := range coreModels() {
+		for _, nf := range cm.fields {
+			if nf.field.Owner != owner {
+				continue
+			}
+			m, ok := out[cm.name]
+			if !ok {
+				m = Model{Fields: map[string]Field{}}
+			}
+			m.Fields[nf.name] = nf.field
+			out[cm.name] = m
+		}
 	}
 	return out
 }

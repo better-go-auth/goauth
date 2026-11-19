@@ -28,6 +28,9 @@ type SessionCreateOptions struct {
 	ID                     string
 	ActiveOrganizationRole *string
 	DeviceToken            string
+	// Extra sets session additionalFields / plugin fields on the new session (better-auth's createSession
+	// override), keyed by field name. Defaults of the session schema fill the fields left out.
+	Extra map[string]any
 }
 
 // ISessionService defines normal Better-Auth session operations (implemented by session.Manager).

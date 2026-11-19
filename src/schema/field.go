@@ -111,6 +111,10 @@ type Field struct {
 	TransformOut func(v any) any
 	// OnUpdate returns the value written on every update that doesn't set the field (e.g. updatedAt).
 	OnUpdate func() any
+	// OmitEmpty is a goauth extension for API output: the field is only written when it holds a value other
+	// than nil, the zero value or its Default. goauth's own columns (user.firstName, session.deviceId, ...)
+	// use it so that better-auth's JSON shape stays unchanged for records that never set them.
+	OmitEmpty bool
 	// Owner is OwnerCore, OwnerGoAuth, OwnerConfig or a plugin ID. Build sets it for configuration and
 	// plugin fields; it is informational for callers.
 	Owner string

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/userdelete"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
@@ -42,7 +41,42 @@ type AdminService struct {
 	sessionMgr       serv_interfaces.ISessionManager
 	// legacy_sessionServ serv_interfaces.LegacySessionService
 	hooks plugins.HookRegistry
+	// internal is goauth's internalAdapter: user creates, updates and deletes run the database hooks
+	internal serv_interfaces.IInternalAdapter
 }
+
+// SetInternal sets goauth's internal adapter (better-auth's ctx.context.internalAdapter), through which the
+// admin endpoints create, update and delete users.
+func (s *AdminService) SetInternal(internal serv_interfaces.IInternalAdapter) {
+	s.internal = internal
+}
+
+// reload returns user with its additional fields read through the internal adapter (user itself without it).
+func (s *AdminService) reload(ctx context.Context, user *models.User) *models.User {
+	if s.internal == nil || user == nil {
+		return user
+	}
+	if full, err := s.internal.FindUserByID(ctx, user.ID); err == nil && full != nil {
+		user.Extra = full.Extra
+	}
+	return user
+}
+
+// withExtras copies the additional fields (Extra) of users from the internal adapter, which reads them with
+// the schema registry (the admin repository reads the Go struct only).
+func (s *AdminService) withExtras(ctx context.Context, users ...models.User) {
+	if s.internal == nil {
+		return
+	}
+	for i := range users {
+		if full, err := s.internal.FindUserByID(ctx, users[i].ID); err == nil && full != nil {
+			users[i].Extra = full.Extra
+		}
+	}
+}
+
+// errNoInternal is returned by user writes when the service was built without an internal adapter.
+var errNoInternal = fmt.Errorf("adminsvc: the internal adapter is not set (initialize the admin plugin through goauth.SetupGoAuth)")
 
 var _ IAdminService = (*AdminService)(nil)
 
@@ -94,6 +128,7 @@ func (s *AdminService) ListUsers(ctx context.Context, input admindtos.AdminListU
 	if err != nil {
 		return nil, fmt.Errorf("adminsvc: list users: %w", err)
 	}
+	s.withExtras(ctx, users...)
 	return &admindtos.AdminListUsersResponse{
 		Users: dtos.UsersToResponse(users),
 		Total: total,
@@ -129,19 +164,52 @@ func (s *AdminService) CreateUser(ctx context.Context, input admindtos.AdminCrea
 		return nil, fmt.Errorf("adminsvc: hash password: %w", err)
 	}
 
+	if s.internal == nil {
+		return nil, errNoInternal
+	}
 	now := time.Now().UTC()
 	user := &models.User{
 		UserDto: models.UserDto{
-			FirstName:     input.Name,
+			Name:          input.Name,
 			Email:         email,
 			EmailVerified: true,
-			Role:          role,
 		},
 		Base: models.Base{ID: models.NewID(), UpdatedAt: now},
 	}
+	// better-auth spreads body.data into the new user (additionalFields, plugin fields such as banned);
+	// keys that are not user fields are ignored, values must fit their field
+	data := make(map[string]any, len(input.Data))
+	for k, v := range input.Data {
+		if k != "role" && k != "email" && k != "name" && k != "id" {
+			data[k] = v
+		}
+	}
+	if err := s.internal.SetUserFields(user, data); err != nil {
+		return nil, err
+	}
+	user.Role = role
 
-	created, err := s.adminRepo.CreateUserWithAccount(ctx, user, hash)
+	// the user and its credential account in one transaction, with the database hooks (better-auth's
+	// internalAdapter.createUser + linkAccount)
+	var created *models.User
+	err = s.internal.Transaction(ctx, func(ctx context.Context) error {
+		var err error
+		if created, err = s.internal.CreateUser(ctx, user); err != nil {
+			return err
+		}
+		_, err = s.internal.LinkAccount(ctx, &models.Account{
+			UserID: created.ID, AccountID: created.ID, ProviderID: models.ProvCredential, Password: &hash,
+		})
+		if s.internal.IsCancelled(err) {
+			return nil
+		}
+		return err
+	})
 	if err != nil {
+		// a database hook's own error reaches the client
+		if ae := autherr.AsAuthError(err); ae != nil && !s.internal.IsCancelled(err) {
+			return nil, ae
+		}
 		// better-auth's admin create-user answers 500 FAILED_TO_CREATE_USER when the insert fails
 		logger.Error("adminsvc: create user failed", "err", err)
 		return nil, autherr.ErrFailedToCreateUser.WithStatus(http.StatusInternalServerError)
@@ -173,7 +241,7 @@ func (s *AdminService) SetUserRole(ctx context.Context, input admindtos.AdminSet
 		refresher.RefreshUser(ctx, user)
 	}
 
-	u := dtos.UserFromModel(user)
+	u := dtos.UserFromModel(s.reload(ctx, user))
 	return &u, nil
 }
 
@@ -211,27 +279,16 @@ func (s *AdminService) RemoveUser(ctx context.Context, input admindtos.AdminRemo
 		return autherr.New(autherr.BadRequest, "userId is required", http.StatusBadRequest)
 	}
 
-	// shared deletion sequence: sessions, plugin rows (UserDeleted hooks), accounts and the user row;
+	if s.internal == nil {
+		return errNoInternal
+	}
+	// the internal adapter's deletion sequence (better-auth's deleteUserSessions + deleteUser): sessions,
+	// plugin rows (UserDeleted hooks), accounts and the user row, with the database delete hooks;
 	// config User.GoAuth.SoftDelete keeps a tombstone instead
-	return userdelete.Run(ctx, userdelete.Deps{
-		Soft: s.authConfig.User.GoAuth.SoftDelete,
-		RevokeSessions: func(ctx context.Context, userID string) error {
-			if s.sessionMgr == nil {
-				return nil
-			}
-			if err := s.sessionMgr.DeleteUserSessions(ctx, userID); err != nil {
-				return fmt.Errorf("adminsvc: revoke user sessions: %w", err)
-			}
-			return nil
-		},
-		RemoveRows: func(ctx context.Context, userID string, soft bool) error {
-			if err := s.adminRepo.RemoveUser(ctx, userID, soft); err != nil {
-				return fmt.Errorf("adminsvc: remove user: %w", err)
-			}
-			return nil
-		},
-		Hooks: s.hooks,
-	}, input.UserID)
+	if err := s.internal.DeleteUser(ctx, input.UserID); err != nil {
+		return fmt.Errorf("adminsvc: remove user: %w", err)
+	}
+	return nil
 }
 
 // BanUser bans a user and terminates all active sessions.
@@ -265,7 +322,7 @@ func (s *AdminService) BanUser(ctx context.Context, input admindtos.AdminBanUser
 		_ = s.adminRepo.RevokeUserSessions(ctx, input.UserID)
 	}
 
-	u := dtos.UserFromModel(user)
+	u := dtos.UserFromModel(s.reload(ctx, user))
 	return &u, nil
 }
 
@@ -279,7 +336,7 @@ func (s *AdminService) UnbanUser(ctx context.Context, input admindtos.AdminUnban
 	if err != nil {
 		return nil, err
 	}
-	u := dtos.UserFromModel(user)
+	u := dtos.UserFromModel(s.reload(ctx, user))
 	return &u, nil
 }
 
@@ -292,7 +349,7 @@ func (s *AdminService) GetUser(ctx context.Context, userID string) (*dtos.UserRe
 	if err != nil {
 		return nil, err
 	}
-	u := dtos.UserFromModel(user)
+	u := dtos.UserFromModel(s.reload(ctx, user))
 	return &u, nil
 }
 
@@ -309,9 +366,20 @@ func (s *AdminService) UpdateUser(ctx context.Context, input admindtos.AdminUpda
 		return nil, autherr.New(autherr.BadRequest, "password cannot be updated via update-user", http.StatusBadRequest)
 	}
 
-	updated, err := s.adminRepo.UpdateUser(ctx, input.UserID, input.Data)
-	if err != nil {
+	if s.internal == nil {
+		return nil, errNoInternal
+	}
+	if _, err := s.adminRepo.GetUserByID(ctx, input.UserID); err != nil {
 		return nil, err
+	}
+	// better-auth's internalAdapter.updateUser(userId, data): the database hooks run (e.g. the username
+	// plugin validates and normalizes a new username) and cached sessions get the new user
+	updated, err := s.internal.UpdateUser(ctx, input.UserID, input.Data)
+	if err != nil {
+		if ae := autherr.AsAuthError(err); ae != nil {
+			return nil, ae
+		}
+		return nil, fmt.Errorf("adminsvc: update user: %w", err)
 	}
 	u := dtos.UserFromModel(updated)
 	return &u, nil

@@ -99,7 +99,8 @@ type GetSessionResult struct {
 type UpdateUserInput struct {
 	Name  *string
 	Image *string
-	// Fields holds additional user fields keyed by Go field name (e.g. "DisplayName").
+	// Fields holds the other body fields keyed by field name (e.g. "displayName"); Go field names of
+	// models.User ("DisplayName") are accepted too.
 	Fields map[string]any
 	// Body is the raw JSON body, passed to plugins.UserInputEvent hooks (e.g. the username plugin).
 	Body map[string]any

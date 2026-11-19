@@ -7,6 +7,7 @@ import (
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/models/dtos"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 // GetSession mirrors better-auth's get-session: it loads the session and applies the sliding refresh.
@@ -69,34 +70,36 @@ func (s *Service) RevokeSession(ctx context.Context, current *dtos.SessionWithUs
 	return s.sessionMgr.Delete(ctx, token)
 }
 
-// UpdateSession mirrors better-auth's POST /update-session for the fields in Session.GoAuth.UpdatableFields
-// (default: the device fields deviceToken, deviceId, deviceName, deviceType).
-// Unknown keys are ignored like better-auth does; protected session fields get FIELD_NOT_ALLOWED;
-// a body with nothing writable gets "No fields to update".
+// UpdateSession mirrors better-auth's POST /update-session: the body is parsed against the session schema's
+// input fields (better-auth's parseSessionInput(body, "update")): Session.AdditionalFields, plugin fields and
+// goauth's device fields. input:false fields (activeOrganizationId, impersonatedBy, ...) are rejected with
+// FIELD_NOT_ALLOWED when set; other keys (id, token, ...) are ignored; a body with nothing writable gets
+// "No fields to update". Session.GoAuth.UpdatableFields still limits which of goauth's own device fields
+// (deviceToken, deviceId, deviceName, deviceType) clients may set.
 func (s *Service) UpdateSession(ctx context.Context, current *dtos.SessionWithUser, fields map[string]any) (*dtos.SessionWithUser, error) {
 	if current == nil {
 		return nil, autherr.ErrUnauthorized
 	}
+	// Step 1: better-auth's parseSessionInput(body, "update")
+	parsed, err := s.internal.ParseSessionInput(fields, schema.ActionUpdate)
+	if err != nil {
+		return nil, err
+	}
+	// Step 2: goauth's own device fields are only writable when listed in Session.GoAuth.UpdatableFields
 	data := map[string]any{}
-	for name, v := range fields {
-		goName, ok := s.sessionFields[name]
-		if !ok {
-			if protectedSessionFields[name] {
-				return nil, autherr.ErrFieldNotAllowed.WithMessage("Field " + name + " is not allowed to be set")
+	for name, v := range parsed {
+		if s.goauthSessionField(name) {
+			if _, ok := s.sessionFields[name]; !ok {
+				continue
 			}
-			continue
 		}
-		switch v.(type) {
-		case string, nil:
-			data[goName] = v
-		default:
-			return nil, autherr.ErrValidationError.WithMessage(name + " must be a string or null")
-		}
+		data[name] = v
 	}
 	if len(data) == 0 {
 		return nil, ErrNoFieldsToUpdate
 	}
-	sw, err := s.sessionMgr.Update(ctx, current, data)
+	// Step 3: the update runs the session database hooks and rewrites the cached copy
+	sw, err := s.internal.UpdateSession(ctx, current, data)
 	if err != nil {
 		return nil, err
 	}
@@ -105,6 +108,19 @@ func (s *Service) UpdateSession(ctx context.Context, current *dtos.SessionWithUs
 		return nil, autherr.ErrFailedToGetSession.WithStatus(http.StatusUnauthorized)
 	}
 	return sw, nil
+}
+
+// goauthSessionField reports whether name is one of goauth's own session columns.
+func (s *Service) goauthSessionField(name string) bool {
+	if s.reg == nil {
+		return false
+	}
+	m, ok := s.reg.Model(schema.ModelSession)
+	if !ok {
+		return false
+	}
+	f, ok := m.Field(name)
+	return ok && f.Owner == schema.OwnerGoAuth
 }
 
 // RevokeSessions mirrors better-auth's POST /revoke-sessions (every session of the user, including the current one).

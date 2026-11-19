@@ -197,3 +197,52 @@ A plugin declares its schema like better-auth's plugin `schema`:
 3. Return `nil` from `Migrator()`: the registry migrator creates the tables in `auto` mode, `verify` checks
    them, and `goauth.GenerateSQL` / the CLI include them. Names follow `ColumnCase`, ids follow the id
    strategy, and the plugin works with `database` / `serial` ids.
+
+Fields a plugin adds to the core models exist only while the plugin is installed: admin (`role`, `banned`,
+`banReason`, `banExpires`, `session.impersonatedBy`), phone-number, two-factor, username, anonymous and
+organization (`session.activeOrganizationId`, `activeTeamId`, ...) declare theirs with `SchemaProvider`
+(`schema.PluginFields(id)` returns better-auth's definitions). Without the plugin goauth neither creates
+the columns nor reads or writes them (GORM skips the matching `models.User` / `models.Session` struct
+fields); existing columns are never dropped, so a database keeps working when a plugin is removed and added
+again. `GoAuthOptions.GORMRepositories` keeps every plugin column (its repositories store the Go structs).
+
+## Additional fields
+
+`User.AdditionalFields`, `Session.AdditionalFields`, `Account.AdditionalFields` and
+`Verification.AdditionalFields` are better-auth's `additionalFields` (`schema.Field`: type, `Required`,
+`Default` value or `func() any`, `Input`, `Returned`, `Validate`, `TransformIn`, enum values, ...). They are
+real columns (created by the migrator) and work end to end:
+
+| Where | Behaviour (better-auth's `parseInputData` / `parseUserOutput`) |
+|---|---|
+| `/sign-up/email`, `/sign-in/email-otp` (new user), `/phone-number/verify` (sign-up on verification) | the rest of the body is parsed for create: defaults (also for `input:false`), `MISSING_FIELD "<key> is required"`, `FIELD_NOT_ALLOWED "<key> is not allowed to be set"` for truthy `input:false` values, `VALIDATION_ERROR` for type, enum and validator errors; unknown keys are ignored |
+| `/update-user`, `/update-session` | the same rules for update: no defaults, no required check; `User.GoAuth.RejectUnknownUpdateFields` rejects keys that are not user fields |
+| `/admin/create-user` `data`, `/admin/update-user` `data` | spread into the user like better-auth (no input rules; values must fit their field, unknown keys ignored) |
+| every response with a user or session (`/get-session`, sign-in/up, `/list-sessions`, admin users, plugin responses) | every returned field in schema order, `null` when unset, `returned:false` hidden |
+| cookie cache (`session_data`, all strategies) and secondary storage | carry the fields in better-auth's JSON (a TypeScript server reads them, and goauth reads a TypeScript server's) |
+
+In Go the values live in `models.User.Extra` (and `Session` / `Account` / `Verification`), or
+`dtos.UserResponse.Extra` / `dtos.SessionData.Extra`: `schema.Get[string](user, "plan")`,
+`user.SetExtra("plan", "pro")`.
+
+## Database hooks and the internal adapter
+
+`AuthConfig.DatabaseHooks` is better-auth's `databaseHooks`: `User` / `Session` / `Account` / `Verification`
+× `Create` / `Update` / `Delete` × `Before` / `After` (package `dbhooks`). They run for every write, whoever
+makes it (core endpoints, plugins, admin):
+
+- `Create.Before(ctx, *T)` and `Delete.Before(ctx, *T)` see the record, `Update.Before(ctx, map)` the changes by
+  field name (`dbhooks.Target(ctx)` is the updated row's id). A before hook changes the data in place,
+  returns `dbhooks.ErrCancel` to cancel (better-auth's `return false`: sign-up answers 400
+  `FAILED_TO_CREATE_USER`, sign-in 401 `FAILED_TO_CREATE_SESSION`, a cancelled update or delete is silent)
+  or any other error (an `*autherr.AuthError` reaches the client as is).
+- `After(ctx, *T)` sees the stored record; inside a transaction it runs once the transaction committed.
+- Order: the `HookRegistry` typed hooks (`OnBeforeUserCreate`, `OnAfterUserCreate`), then plugin hooks
+  (`plugins.DatabaseHooksProvider`, in plugin order), then `AuthConfig.DatabaseHooks`.
+- goauth's bookkeeping writes (`lastLoginAt`, `lastLoginIP`, `session.lastUsedAt`) don't run update hooks.
+
+Plugins write through `InitContext.Internal` (`GoAuth.Internal()`), goauth's `internalAdapter`:
+`CreateUser`, `UpdateUser` (refreshes sessions cached in secondary storage), `DeleteUser` (sessions, plugin
+rows, accounts, user), `CreateSession`, `UpdateSession`, `LinkAccount`, `UpdatePassword`, verification
+helpers, `ParseUserInput` / `ParseSessionInput` and `SetUserFields`. Writes through `InitContext.IAuthRepos`
+run the hooks too.

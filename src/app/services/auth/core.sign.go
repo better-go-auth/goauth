@@ -2,10 +2,14 @@ package auth
 
 import (
 	"context"
+	"net/http"
 	"net/mail"
+	"reflect"
 	"strings"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/app/repository/adapterrepo"
+	"github.com/better-go-auth/goauth/src/app/repository/hookedrepo"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
@@ -15,6 +19,7 @@ import (
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 // validEmail accepts only a bare address ("a@b.co"), rejecting display-name forms like "Bob <a@b.co>".
@@ -58,6 +63,16 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	if err := s.checkPasswordLength(in.Password); err != nil {
 		return nil, err
 	}
+	// config: User.AdditionalFields and plugin fields: the rest of the body parsed against the user schema
+	// (better-auth's parseUserInput(rest, "create"): defaults, required fields, input:false, validators)
+	additional, err := s.internal.ParseUserInput(signUpRest(in.AdditionalFields), schema.ActionCreate)
+	if err != nil {
+		return nil, err
+	}
+	// fields a plugin hook already set (e.g. the normalized username) win over the parsed body
+	if err := s.internal.SetUserFields(u, unsetFields(u, additional)); err != nil {
+		return nil, err
+	}
 	// config: when users must verify their email (RequireEmailVerification=true) or
 	// are not signed in aftersign-up (AutoSignIn=false),
 	// the response never contains a session. In that case a duplicate email
@@ -69,7 +84,7 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	var res *svcint.SignUpResult
 	var created *models.User
 	// user + account are created together: either both rows exist or neither
-	err := s.inTx(ctx, func(ctx context.Context) error {
+	err = s.inTx(ctx, func(ctx context.Context) error {
 		existing, err := acceptNotFound(s.repos.FindUserByEmail(ctx, email))
 		if err != nil {
 			return err
@@ -91,12 +106,15 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 					return emlpwdCfg.OnExistingUserSignUp(data, request(ctx))
 				})
 			}
-			// fake user with a fresh ID, shaped exactly like a real sign-up response; nothing is stored
+			// fake user with a fresh ID, shaped exactly like a real sign-up response (additional fields
+			// included, better-auth's buildSyntheticUserOutput); nothing is stored
 			now := time.Now().UTC()
-			res = &svcint.SignUpResult{User: dtos.UserResponse{
+			fake := dtos.UserResponse{
 				ID: idgen.GenerateID(), Name: in.Name, Email: email, Image: in.Image,
 				CreatedAt: dtos.Time(now), UpdatedAt: dtos.Time(now),
-			}}
+			}
+			fake.Extra = dtos.UserFromModel(u).Extra
+			res = &svcint.SignUpResult{User: fake}
 			return nil
 		}
 
@@ -105,25 +123,20 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		if err != nil {
 			return err
 		}
-		// plugins may adjust or veto the new user (better-auth's databaseHooks.user.create.before)
-		if s.Hooks != nil {
-			if err := s.Hooks.TriggerBeforeUserCreate(ctx, u); err != nil {
-				return err
-			}
-		}
-		if created, err = s.repos.CreateUser(ctx, u); err != nil {
-			return autherr.ErrFailedToCreateUser
+		// the internal adapter runs the database hooks: plugins and config DatabaseHooks may adjust or veto
+		// the new user (better-auth's databaseHooks.user.create.before; a cancel is 400 FAILED_TO_CREATE_USER)
+		if created, err = s.internal.CreateUser(ctx, u); err != nil {
+			return createUserError(err, autherr.ErrFailedToCreateUser)
 		}
 		// better-auth keeps passwords on a "credential" account whose accountId is the user id, not on the user row
-		_, err = s.repos.CreateAccount(ctx, &models.Account{
-			Base:       models.Base{ID: models.NewID()},
+		_, err = s.internal.LinkAccount(ctx, &models.Account{
 			UserID:     created.ID,
 			ProviderID: models.ProvCredential,
 			AccountID:  created.ID,
 			Password:   &hash,
 		})
-		if err != nil {
-			return autherr.ErrFailedToCreateUser
+		if err != nil && !s.internal.IsCancelled(err) {
+			return createUserError(err, autherr.ErrFailedToCreateUser)
 		}
 		return nil
 	})
@@ -133,12 +146,6 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 	// duplicate email handled generically: return the fake user, no email, no session
 	if res != nil {
 		return res, nil
-	}
-
-	if s.Hooks != nil && created != nil {
-		if err := s.Hooks.TriggerAfterUserCreate(ctx, created); err != nil {
-			return nil, err
-		}
 	}
 
 	// config: EmailVerification.SendOnSignUp decides whether to email a verification link;
@@ -164,12 +171,50 @@ func (s *Service) SignUpEmail(ctx context.Context, in dtos.SignUpEmailInput, met
 		return res, nil
 	}
 	// sign the user in: new session in the DB and/or secondary storage, depending on the session config
-	sw, err := s.sessionMgr.Create(ctx, created, meta, sessionsvc.CreateOptions{DontRemember: dontRemember})
+	sw, err := s.internal.CreateSession(ctx, created, meta, sessionsvc.CreateOptions{DontRemember: dontRemember})
 	if err != nil {
+		// a cancelled session is better-auth's 400; a hook's own error reaches the client; else 500
+		switch {
+		case s.internal.IsCancelled(err):
+			return nil, autherr.ErrFailedToCreateSession.WithStatus(http.StatusBadRequest)
+		case hookedrepo.IsHookError(err) || autherr.AsAuthError(err) != nil:
+			return nil, err
+		}
 		return nil, autherr.ErrFailedToCreateSession
 	}
 	res.Token, res.Session, res.DontRemember = &sw.Session.Token, sw, dontRemember
 	return res, nil
+}
+
+// signUpRest is the sign-up body without the endpoint's own keys (better-auth's `...rest`).
+func signUpRest(body map[string]any) map[string]any {
+	rest := make(map[string]any, len(body))
+	for k, v := range body {
+		switch k {
+		case "name", "email", "password", "image", "callbackURL", "rememberMe":
+			continue
+		}
+		rest[k] = v
+	}
+	return rest
+}
+
+// unsetFields returns the parsed values whose field is still unset on u (a plugin's input hook may already
+// have set it, e.g. the username plugin's normalized username).
+func unsetFields(u *models.User, parsed map[string]any) map[string]any {
+	out := make(map[string]any, len(parsed))
+	rv := reflect.ValueOf(u).Elem()
+	for k, v := range parsed {
+		if goName, ok := adapterrepo.GoFieldName(schema.ModelUser, k); ok {
+			if f := rv.FieldByName(goName); f.IsValid() && !f.IsZero() {
+				continue
+			}
+		} else if _, set := u.Extra[k]; set {
+			continue
+		}
+		out[k] = v
+	}
+	return out
 }
 
 // SignInEmail mirrors better-auth's POST /sign-in/email.
@@ -229,8 +274,12 @@ func (s *Service) SignInEmail(ctx context.Context, in dtos.SignInEmailInput, met
 
 	// rememberMe=false (explicitly) gives a 1-day session that is never extended
 	dontRemember := in.RememberMe != nil && !*in.RememberMe
-	sw, err := s.sessionMgr.Create(ctx, user, meta, sessionsvc.CreateOptions{DontRemember: dontRemember})
+	sw, err := s.internal.CreateSession(ctx, user, meta, sessionsvc.CreateOptions{DontRemember: dontRemember})
 	if err != nil {
+		// a database hook that cancelled the session: better-auth's 401 FAILED_TO_CREATE_SESSION
+		if s.internal.IsCancelled(err) {
+			return nil, autherr.ErrFailedToCreateSession.WithStatus(http.StatusUnauthorized)
+		}
 		// a BeforeSessionCreate hook may reject the session with its own code (e.g. the admin plugin's BANNED_USER)
 		if ae := autherr.AsAuthError(err); ae != nil {
 			return nil, ae

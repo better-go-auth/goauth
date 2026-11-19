@@ -4,16 +4,20 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/better-go-auth/goauth/src/adapter"
 	"github.com/better-go-auth/goauth/src/adapter/gormadapter"
+	"github.com/better-go-auth/goauth/src/app/repository/adapterrepo"
 	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/models"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/schema"
 	"github.com/better-go-auth/goauth/src/schema/render"
 	"gorm.io/gorm"
+	gormschema "gorm.io/gorm/schema"
 )
 
 // Schema returns the schema registry SetupGoAuth builds for opts: the core models with the configuration's
@@ -28,7 +32,12 @@ func Schema(opts GoAuthOptions) (*schema.Registry, error) {
 	// Step 1: defaults, on a copy (SchemaOptions only reads naming, ids and rate-limit storage)
 	opts.SetDefaults()
 	so := opts.SchemaOptions()
-	// Step 2: plugin schemas, in plugin order (later plugins win, like better-auth)
+	// Step 2: plugin schemas, in plugin order (later plugins win, like better-auth). The plugin columns of the
+	// core models (role, phoneNumber, twoFactorEnabled, ...) exist only for installed plugins; the
+	// hand-written GORM repositories (GORMRepositories) store models.User as a whole and keep them all
+	if !opts.GORMRepositories {
+		so.InstalledPlugins = pluginIDs(opts.Plugins)
+	}
 	for _, p := range opts.Plugins {
 		if p == nil {
 			continue
@@ -133,7 +142,93 @@ func syncNaming(reg *schema.Registry, opts GoAuthOptions, conn *gorm.DB) error {
 			"want %q); GORM caches parsed models per connection, so pass SetupGoAuth a connection that hasn't "+
 			"used goauth's models yet (run goauth's migrations through SetupGoAuth, not before it)", stmt.Schema.Table, reg.Table(schema.ModelUser))
 	}
+	// Step 4: plugin columns of plugins that aren't installed are neither created nor written by GORM
+	return gateGORMFields(conn, reg)
+}
+
+// gormFieldState is a GORM field's original migration/write settings, restored when the field's plugin is
+// installed again on the same connection.
+type gormFieldState struct {
+	ignoreMigration, creatable, updatable bool
+	index, uniqueIndex                    string
+}
+
+var (
+	gormFieldStatesMu sync.Mutex
+	gormFieldStates   = map[*gormschema.Field]gormFieldState{}
+)
+
+// gateGORMFields makes GORM skip the Go fields of models.User and models.Session whose registry field is
+// missing (the plugin owning the column is not installed): AutoMigrate (the core bootstrap and plugin GORM
+// migrators that pull the core models in through relations) doesn't create the column or its index, and
+// GORM inserts / updates don't write it. Existing columns are never dropped. The parsed models are cached
+// per connection, so the change only affects conn.
+func gateGORMFields(conn *gorm.DB, reg *schema.Registry) error {
+	gormFieldStatesMu.Lock()
+	defer gormFieldStatesMu.Unlock()
+	for model, sample := range map[string]any{schema.ModelUser: &models.User{}, schema.ModelSession: &models.Session{}} {
+		// Step 1: the cached GORM schema of the model
+		stmt := &gorm.Statement{DB: conn}
+		if err := stmt.Parse(sample); err != nil {
+			return fmt.Errorf("goauth: parse %s: %w", model, err)
+		}
+		rm, _ := reg.Model(model)
+		// Step 2: every persisted Go field follows its registry field
+		ignored := map[string]bool{}
+		for _, f := range stmt.Schema.Fields {
+			name, ok := adapterrepo.FieldName(model, f.Name)
+			if !ok || rm == nil {
+				continue
+			}
+			installed := rm.Has(name)
+			setGORMField(f, installed)
+			if !installed {
+				ignored[f.Name] = true
+			}
+		}
+		// Step 3: relations through an ignored foreign key (session.impersonatedBy → user) lose their constraint
+		for _, rel := range stmt.Schema.Relationships.Relations {
+			skip := false
+			for _, ref := range rel.References {
+				if ref.ForeignKey != nil && ignored[ref.ForeignKey.Name] {
+					skip = true
+				}
+			}
+			if skip {
+				setGORMField(rel.Field, false)
+			} else if st, ok := gormFieldStates[rel.Field]; ok {
+				rel.Field.IgnoreMigration = st.ignoreMigration
+			}
+		}
+	}
 	return nil
+}
+
+// setGORMField enables (the field's original settings) or disables (no migration, no writes, no index) a
+// parsed GORM field.
+func setGORMField(f *gormschema.Field, enabled bool) {
+	st, saved := gormFieldStates[f]
+	if !saved {
+		st = gormFieldState{ignoreMigration: f.IgnoreMigration, creatable: f.Creatable, updatable: f.Updatable,
+			index: f.TagSettings["INDEX"], uniqueIndex: f.TagSettings["UNIQUEINDEX"]}
+		gormFieldStates[f] = st
+	}
+	if enabled {
+		f.IgnoreMigration, f.Creatable, f.Updatable = st.ignoreMigration, st.creatable, st.updatable
+		restoreTag(f, "INDEX", st.index)
+		restoreTag(f, "UNIQUEINDEX", st.uniqueIndex)
+		return
+	}
+	f.IgnoreMigration, f.Creatable, f.Updatable = true, false, false
+	delete(f.TagSettings, "INDEX")
+	delete(f.TagSettings, "UNIQUEINDEX")
+}
+
+// restoreTag puts back a tag setting that setGORMField removed.
+func restoreTag(f *gormschema.Field, key, value string) {
+	if value != "" {
+		f.TagSettings[key] = value
+	}
 }
 
 // checkDatabaseIDs refuses plugins that store their own tables through GORM structs with goauth-generated
@@ -155,4 +250,27 @@ func checkDatabaseIDs(reg *schema.Registry, list []plugin.Plugin) error {
 	}
 	return fmt.Errorf("goauth: Advanced.Database.IDFormat %q needs every table on the schema registry, but plugins %s "+
 		"still store GORM structs with goauth-generated string ids; use another IDFormat with them", reg.IDStrategy(), strings.Join(bad, ", "))
+}
+
+// checkGORMRepositories refuses configuration additionalFields with GoAuthOptions.GORMRepositories: the
+// hand-written GORM repositories insert and read the Go structs only, so the values would be lost. Plugin
+// SchemaProvider fields on the core models (e.g. last-login-method's lastLoginMethod) are written by updates
+// (registry field names are mapped to their columns) but not inserted or read; use the default adapter
+// repositories for full support.
+func checkGORMRepositories(opts GoAuthOptions) error {
+	var names []string
+	for name, fields := range map[string]map[string]schema.Field{
+		schema.ModelUser: opts.User.AdditionalFields, schema.ModelSession: opts.Session.AdditionalFields,
+		schema.ModelAccount: opts.Account.AdditionalFields, schema.ModelVerification: opts.Verification.AdditionalFields,
+	} {
+		if len(fields) > 0 {
+			names = append(names, name)
+		}
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	sort.Strings(names)
+	return fmt.Errorf("goauth: GORMRepositories doesn't store additionalFields (configured for %s); use the default "+
+		"adapter repositories", strings.Join(names, ", "))
 }

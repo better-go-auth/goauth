@@ -3,7 +3,6 @@ package humaadapter
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
@@ -107,7 +106,7 @@ type updateUserInput struct {
 	Body map[string]any
 }
 
-// UpdateUser maps the JSON body (camelCase) to the service input; additional fields use their Go field names.
+// UpdateUser maps the JSON body to the service input; additional fields keep their field names (camelCase).
 func (h *handler) UpdateUser(ctx context.Context, in *updateUserInput) (*statusOutput, error) {
 	upd := svcint.UpdateUserInput{Body: in.Body}
 	for k, v := range in.Body {
@@ -134,7 +133,7 @@ func (h *handler) UpdateUser(ctx context.Context, in *updateUserInput) (*statusO
 			if upd.Fields == nil {
 				upd.Fields = map[string]any{}
 			}
-			upd.Fields[strings.ToUpper(k[:1])+k[1:]] = v
+			upd.Fields[k] = v
 		}
 	}
 	sw, err := h.Auth.UpdateUser(ctx, current(ctx), upd)

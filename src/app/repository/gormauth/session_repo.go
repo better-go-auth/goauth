@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/better-go-auth/goauth/src/schema"
 	"time"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
@@ -19,6 +20,7 @@ import (
 type SessionRepo struct {
 	db         *gorm.DB
 	generateID func() string
+	reg        *schema.Registry
 }
 
 var _ repo_interfaces.ISessionRepo = (*SessionRepo)(nil)
@@ -29,7 +31,7 @@ func NewSessionRepo(db *gorm.DB, opts ...RepoOption) repo_interfaces.ISessionRep
 	for _, o := range opts {
 		o(cfg)
 	}
-	return &SessionRepo{db: db, generateID: cfg.GenerateID}
+	return &SessionRepo{db: db, generateID: cfg.GenerateID, reg: cfg.Registry}
 }
 
 func (r *SessionRepo) newID() string {
@@ -98,7 +100,7 @@ func (r *SessionRepo) FindSession(ctx context.Context, token string) (*models.Se
 
 func (r *SessionRepo) UpdateSession(ctx context.Context, id string, data map[string]interface{}) (*models.Session, error) {
 	db := gormutil.GetDB(ctx, r.db)
-	result := db.Model(&models.Session{}).Where(sessionByID(id), "ID").Updates(data)
+	result := db.Model(&models.Session{}).Where(sessionByID(id), "ID").Updates(updateKeys(r.reg, schema.ModelSession, data))
 	if result.Error != nil {
 		return nil, fmt.Errorf("gorm/session: update: %w", result.Error)
 	}

@@ -7,68 +7,35 @@ import (
 	"strings"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/app/repository/adapterrepo"
+	"github.com/better-go-auth/goauth/src/app/repository/hookedrepo"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	"github.com/better-go-auth/goauth/src/app/services/userdelete"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
+	"github.com/better-go-auth/goauth/src/schema"
 )
-
-// updatableUserFields are the goauth profile fields update-user accepts besides name and image
-// (better-auth's user.additionalFields). Role, ban and verification fields are deliberately absent.
-var updatableUserFields = map[string]bool{
-	"FirstName": true, "LastName": true, "Username": true, "DisplayName": true, "Bio": true,
-	"DateOfBirth": true, "Gender": true, "Locale": true, "Timezone": true,
-}
-
-// protectedUserField is a better-auth schema field with `input: false` (never set by update-user).
-type protectedUserField struct {
-	// json is the better-auth field name.
-	json string
-	// plugin fields only exist while their plugin is installed (dtos.UserFieldInstalled); core fields always.
-	plugin bool
-	// hasDefault: better-auth silently skips input:false fields that have a defaultValue; the others fail
-	// with "<field> is not allowed to be set" when the value is truthy.
-	hasDefault bool
-}
-
-// protectedUserFields maps Go field names to better-auth's input:false user fields.
-var protectedUserFields = map[string]protectedUserField{
-	"EmailVerified":       {json: "emailVerified", hasDefault: true},
-	"CreatedAt":           {json: "createdAt", hasDefault: true},
-	"UpdatedAt":           {json: "updatedAt", hasDefault: true},
-	"Role":                {json: dtos.FieldRole, plugin: true},
-	"Banned":              {json: dtos.FieldBanned, plugin: true, hasDefault: true},
-	"BanReason":           {json: dtos.FieldBanReason, plugin: true},
-	"BanExpires":          {json: dtos.FieldBanExpires, plugin: true},
-	"PhoneNumberVerified": {json: dtos.FieldPhoneNumberVerified, plugin: true},
-	"TwoFactorEnabled":    {json: dtos.FieldTwoFactorEnabled, plugin: true, hasDefault: true},
-	"IsAnonymous":         {json: dtos.FieldIsAnonymous, plugin: true, hasDefault: true},
-}
-
-// fieldNotAllowedError is better-auth's parseInputData error for an input:false field. better-call derives
-// the code from the message (upper case, spaces to "_").
-func fieldNotAllowedError(field string) error {
-	msg := field + " is not allowed to be set"
-	code := strings.ToUpper(strings.ReplaceAll(msg, " ", "_"))
-	return autherr.Err(http.StatusBadRequest, code, msg)
-}
 
 // UpdateUser mirrors better-auth's POST /update-user and returns the session with the new user snapshot.
 //
-// Only name, image and the allowlisted profile fields can be changed. Email has its own flow (ChangeEmail),
-// and role/ban/verification fields are never writable here.
+// name and image are the endpoint's own fields; every other body key is parsed against the user schema
+// (better-auth's parseUserInput(rest, "update")): goauth's profile fields, User.AdditionalFields and the
+// fields of installed plugins. input:false fields (role, banned, emailVerified is a core field and ignored)
+// are rejected with 400 FIELD_NOT_ALLOWED "<field> is not allowed to be set" when set to a truthy value;
+// keys that are not user fields are ignored unless User.GoAuth.RejectUnknownUpdateFields is set. Email has its
+// own flow (ChangeEmail).
 func (s *Service) UpdateUser(ctx context.Context, current *dtos.SessionWithUser, in svcint.UpdateUserInput) (*dtos.SessionWithUser, error) {
 	if current == nil {
 		return nil, autherr.ErrUnauthorized
 	}
 	// email changes must go through ChangeEmail (verification)
 
-	// plugins validate and map their own body fields first (e.g. the username plugin's
-	// username / displayUsername); the fields they set are trusted and skip the allowlist below
+	// Step 1: plugins validate and map their own body fields first (better-auth's plugin before hooks on
+	// /update-user, e.g. the username plugin's username / displayUsername, phone-number's
+	// PHONE_NUMBER_CANNOT_BE_UPDATED); the fields they set are trusted and skip the schema parsing below
 	pluginFields := map[string]any{}
 	if s.Hooks != nil {
 		ev := &plugins.UserInputEvent{
@@ -78,57 +45,82 @@ func (s *Service) UpdateUser(ctx context.Context, current *dtos.SessionWithUser,
 			return nil, err
 		}
 	}
-	// the update map is keyed by Go field names, which both repositories understand
+	// the change set is keyed by field name ("displayName"); plugins may use Go field names ("Username")
 	data := map[string]any{}
 	for k, v := range pluginFields {
-		data[k] = v
+		data[userFieldName(k)] = v
 	}
+	// Step 2: the rest of the body (field names; Go field names from older callers are translated)
+	rest := map[string]any{}
 	for k, v := range in.Fields {
+		name := userFieldName(k)
 		// a plugin already handled this field
-		if _, owned := pluginFields[k]; owned {
+		if _, owned := data[name]; owned {
 			continue
 		}
-		// fields outside the allowlist are never written (blocks e.g. {"role": "admin"})
-		if !updatableUserFields[k] {
-			// better-auth's input:false fields: skipped when they have a default, rejected when set
-			if pf, ok := protectedUserFields[k]; ok && (!pf.plugin || dtos.UserFieldInstalled(pf.json)) {
-				if !pf.hasDefault && plugins.IsTruthy(v) {
-					return nil, fieldNotAllowedError(pf.json)
-				}
-				continue
-			}
-			// config: User.GoAuth.RejectUnknownUpdateFields keeps goauth's old strict behaviour
-			if s.cfg.User.GoAuth.RejectUnknownUpdateFields {
+		rest[name] = v
+	}
+	// config: User.GoAuth.RejectUnknownUpdateFields keeps goauth's old strict behaviour for keys that are not
+	// user fields at all (better-auth ignores them)
+	if s.cfg.User.GoAuth.RejectUnknownUpdateFields {
+		for k := range rest {
+			if !s.userField(k) {
 				return nil, autherr.ErrFieldNotAllowed.WithMessage("Field " + k + " is not allowed to be set")
 			}
-			// better-auth ignores keys that are not in the user schema
-			continue
 		}
+	}
+	// Step 3: better-auth's parseUserInput(rest, "update"): input:false, types, validators, transforms
+	parsed, err := s.internal.ParseUserInput(rest, schema.ActionUpdate)
+	if err != nil {
+		return nil, err
+	}
+	for k, v := range parsed {
 		// username is unique and nullable: "" means "no username" and is stored as NULL
-		if str, ok := v.(string); ok && k == "Username" && str == "" {
+		if str, ok := v.(string); ok && k == "username" && str == "" {
 			v = nil
 		}
 		data[k] = v
 	}
 	if in.Name != nil {
-		data["Name"] = *in.Name
+		data["name"] = *in.Name
 	}
 	if in.Image != nil {
-		data["Image"] = in.Image
+		data["image"] = in.Image
 	}
 	if len(data) == 0 {
 		return nil, ErrNoFieldsToUpdate
 	}
-	updated, err := s.repos.UpdateUser(ctx, current.User.ID, data)
+	// Step 4: the update runs the database hooks (a hook's error reaches the client; a cancel keeps the user)
+	// and refreshes the user copy of sessions cached in secondary storage
+	updated, err := s.internal.UpdateUser(ctx, current.User.ID, data)
 	if err != nil {
+		if hookedrepo.IsHookError(err) {
+			return nil, err
+		}
 		return nil, autherr.ErrFailedToUpdateUser
 	}
-	// sessions cached in secondary storage hold a copy of the user; update it everywhere
-	s.sessionMgr.RefreshUser(ctx, updated)
 	// the adapter rewrites the session cookie with the new user
 	sw := *current
 	sw.User = dtos.UserFromModel(updated)
 	return &sw, nil
+}
+
+// userFieldName returns the field name of an update key: Go field names of models.User ("DisplayName") are
+// translated, field names pass through.
+func userFieldName(k string) string {
+	if name, ok := adapterrepo.FieldName(schema.ModelUser, k); ok {
+		return name
+	}
+	return k
+}
+
+// userField reports whether name is a field of the user schema.
+func (s *Service) userField(name string) bool {
+	if s.reg == nil {
+		return false
+	}
+	m, ok := s.reg.Model(schema.ModelUser)
+	return ok && m.Has(name)
 }
 
 // deleteAccountIdentifier is better-auth's verification identifier for delete-account confirmation tokens.
@@ -244,15 +236,9 @@ func (s *Service) deleteUserNow(ctx context.Context, userID string) error {
 			return err
 		}
 	}
-	// sessions, plugin rows (UserDeleted hooks), accounts and the user; hard delete like better-auth
-	// unless config User.GoAuth.SoftDelete keeps a tombstone
-	err = userdelete.Run(ctx, userdelete.Deps{
-		Soft:           s.cfg.User.GoAuth.SoftDelete,
-		RevokeSessions: s.sessionMgr.DeleteUserSessions,
-		RemoveRows:     s.removeUserRows,
-		Hooks:          s.Hooks,
-	}, user.ID)
-	if err != nil {
+	// sessions, plugin rows (UserDeleted hooks), accounts and the user, with the database delete hooks; hard
+	// delete like better-auth unless config User.GoAuth.SoftDelete keeps a tombstone
+	if err := s.internal.DeleteUser(ctx, user.ID); err != nil {
 		return err
 	}
 	// config: User.DeleteUser.AfterDelete for cleanup in the app (files, audit log, ...)
@@ -278,8 +264,7 @@ func (s *Service) SetPassword(ctx context.Context, userID, newPassword string) e
 	if err != nil {
 		return err
 	}
-	_, err = s.repos.CreateAccount(ctx, &models.Account{
-		Base:       models.Base{ID: models.NewID()},
+	_, err = s.internal.LinkAccount(ctx, &models.Account{
 		UserID:     userID,
 		ProviderID: models.ProvCredential,
 		AccountID:  userID,
@@ -340,17 +325,4 @@ func (s *Service) UnlinkAccount(ctx context.Context, current *dtos.SessionWithUs
 		return autherr.ErrAccountNotFound
 	}
 	return s.repos.DeleteAccount(ctx, match.ID)
-}
-
-// removeUserRows deletes the user's accounts and the user row in one transaction (soft: tombstone).
-func (s *Service) removeUserRows(ctx context.Context, userID string, soft bool) error {
-	return s.inTx(ctx, func(ctx context.Context) error {
-		if err := s.repos.DeleteAccounts(ctx, userID); err != nil {
-			return err
-		}
-		if soft {
-			return s.repos.SoftDeleteUser(ctx, userID)
-		}
-		return s.repos.DeleteUser(ctx, userID)
-	})
 }

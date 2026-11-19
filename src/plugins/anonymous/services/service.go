@@ -112,6 +112,16 @@ func (s *Service) SignIn(ctx context.Context) (*dtos.SessionWithUser, error) {
 // deleteUser removes an anonymous user with the shared deletion sequence (sessions, plugin rows through the
 // UserDeleted hooks, accounts and the user row; a tombstone when config User.GoAuth.SoftDelete is on).
 func (s *Service) deleteUser(ctx context.Context, userID string) error {
+	// the internal adapter's deletion sequence (with the database delete hooks) when available
+	if s.kit.Internal != nil {
+		if err := s.kit.Internal.DeleteUser(ctx, userID); err != nil {
+			if ae := autherr.AsAuthError(err); ae != nil {
+				return ae
+			}
+			return ErrFailedToDeleteAnonymousUser
+		}
+		return nil
+	}
 	return userdelete.Run(ctx, userdelete.Deps{
 		Soft: s.kit.Conf.User.GoAuth.SoftDelete,
 		// Step 1: sign the user out everywhere (DB and secondary storage)

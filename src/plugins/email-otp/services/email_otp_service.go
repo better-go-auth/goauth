@@ -9,6 +9,8 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"fmt"
+	"github.com/better-go-auth/goauth/src/app/repository/hookedrepo"
+	"github.com/better-go-auth/goauth/src/schema"
 	"io"
 	"net/http"
 	"net/mail"
@@ -56,6 +58,14 @@ type EmailOTPService struct {
 	passwords  *authcrypto.Passwords
 	txMgr      interfaces.ITransactionManager
 	hooks      plugins.HookRegistry
+	// internal is goauth's internalAdapter (database hooks, additionalFields); nil outside SetupGoAuth
+	internal authint.IInternalAdapter
+}
+
+// SetInternal sets goauth's internal adapter: new users and sessions are created through it (database hooks,
+// additionalFields), like better-auth's ctx.context.internalAdapter.
+func (s *EmailOTPService) SetInternal(internal authint.IInternalAdapter) {
+	s.internal = internal
 }
 
 func NewEmailOTPService(
@@ -610,6 +620,13 @@ func (s *EmailOTPService) SignIn(ctx context.Context, email, otp string, meta au
 
 // SignInWithProfile signs the user in using an OTP code with optional initial profile name/image.
 func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, name, image string, meta authint.SessionMeta) (*modeldtos.SessionWithUser, error) {
+	return s.SignInWithFields(ctx, email, otp, name, image, nil, meta)
+}
+
+// SignInWithFields is SignInWithProfile with the rest of the request body: on first sign-up it is parsed
+// against the user schema (better-auth's parseUserInput(rest, "create"): User.AdditionalFields and plugin
+// fields) and stored on the new user.
+func (s *EmailOTPService) SignInWithFields(ctx context.Context, email, otp, name, image string, rest map[string]any, meta authint.SessionMeta) (*modeldtos.SessionWithUser, error) {
 	// Step 1: Validate input email and OTP
 	if !validEmail(email) || otp == "" {
 		return nil, ErrInvalidOTP
@@ -650,17 +667,12 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 					EmailVerified: true,
 				},
 			}
-			// plugins may adjust or veto the user, like core sign-up
-			if s.hooks != nil {
-				if err := s.hooks.TriggerBeforeUserCreate(txCtx, newUser); err != nil {
-					return err
-				}
-			}
-			// better-auth's OTP sign-up creates only the user: no credential account without a password
-			created, err := s.repos.CreateUser(txCtx, newUser)
+			// better-auth's OTP sign-up creates only the user: no credential account without a password.
+			// The internal adapter runs the database hooks (plugins may adjust or veto the user) and the
+			// rest of the body becomes additional fields
+			created, err := s.createUser(txCtx, newUser, rest)
 			if err != nil {
-				// a failed insert is a server error in better-auth (500), not core sign-up's 422
-				return autherr.ErrFailedToCreateUser.WithStatus(http.StatusInternalServerError)
+				return err
 			}
 			createdUser = created
 			user = created
@@ -689,8 +701,8 @@ func (s *EmailOTPService) SignInWithProfile(ctx context.Context, email, otp, nam
 		return nil, err
 	}
 
-	// Step 5: run after-create hooks once the new user is committed
-	if createdUser != nil && s.hooks != nil {
+	// Step 5: after-create hooks once the new user is committed (the internal adapter queues them itself)
+	if createdUser != nil && s.hooks != nil && s.internal == nil {
 		if err := s.hooks.TriggerAfterUserCreate(ctx, createdUser); err != nil {
 			return nil, err
 		}
@@ -799,4 +811,40 @@ func (s *EmailOTPService) refreshSessionUser(ctx context.Context, user *models.U
 // Config returns the plugin's configuration.
 func (s *EmailOTPService) Config() emailotpconfig.EmailOTPConfig {
 	return s.config
+}
+
+// createUser inserts the OTP sign-up user: through the internal adapter with the parsed additional fields
+// (database hooks run there), or with the typed BeforeUserCreate hook outside SetupGoAuth.
+func (s *EmailOTPService) createUser(ctx context.Context, user *models.User, rest map[string]any) (*models.User, error) {
+	// Step 1: without the internal adapter: the typed hook and the repository
+	if s.internal == nil {
+		if s.hooks != nil {
+			if err := s.hooks.TriggerBeforeUserCreate(ctx, user); err != nil {
+				return nil, err
+			}
+		}
+		created, err := s.repos.CreateUser(ctx, user)
+		if err != nil {
+			// a failed insert is a server error in better-auth (500), not core sign-up's 422
+			return nil, autherr.ErrFailedToCreateUser.WithStatus(http.StatusInternalServerError)
+		}
+		return created, nil
+	}
+	// Step 2: better-auth's parseUserInput(rest, "create") for additionalFields
+	additional, err := s.internal.ParseUserInput(rest, schema.ActionCreate)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.internal.SetUserFields(user, additional); err != nil {
+		return nil, err
+	}
+	// Step 3: insert with the database hooks; a hook's own error reaches the client
+	created, err := s.internal.CreateUser(ctx, user)
+	if err != nil {
+		if hookedrepo.IsHookError(err) && !s.internal.IsCancelled(err) {
+			return nil, err
+		}
+		return nil, autherr.ErrFailedToCreateUser.WithStatus(http.StatusInternalServerError)
+	}
+	return created, nil
 }

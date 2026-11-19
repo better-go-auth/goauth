@@ -164,36 +164,6 @@ func resolveUserField(field string) (string, bool) {
 
 func userByID(id string) *models.User { return &models.User{Base: models.Base{ID: id}} }
 
-// CreateUserWithAccount inserts a new user and credential account in a transaction.
-func (r *AdminRepo) CreateUserWithAccount(ctx context.Context, user *models.User, passwordHash string) (*models.User, error) {
-	db := getDB(ctx, r.db)
-
-	err := db.Transaction(func(tx *gorm.DB) error {
-		if user.ID == "" {
-			user.ID = models.NewID()
-		}
-		if err := tx.Create(user).Error; err != nil {
-			return fmt.Errorf("create user: %w", err)
-		}
-
-		account := &models.Account{
-			Base:       models.Base{ID: models.NewID()},
-			UserID:     user.ID,
-			AccountID:  user.ID,
-			ProviderID: "credential",
-			Password:   &passwordHash,
-		}
-		if err := tx.Create(account).Error; err != nil {
-			return fmt.Errorf("create credential account: %w", err)
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, fmt.Errorf("gorm/admin: create user with account: %w", err)
-	}
-	return user, nil
-}
-
 // SetUserPassword updates the password hash for a user's credential account.
 func (r *AdminRepo) SetUserPassword(ctx context.Context, userID, passwordHash string) error {
 	db := getDB(ctx, r.db)
@@ -293,41 +263,6 @@ func (r *AdminRepo) UnbanUser(ctx context.Context, userID string) (*models.User,
 	return &user, nil
 }
 
-// RemoveUser deletes a user, their linked accounts, and their active sessions (soft: tombstones the user).
-func (r *AdminRepo) RemoveUser(ctx context.Context, userID string, soft bool) error {
-	db := getDB(ctx, r.db)
-	now := time.Now().UTC()
-	tombstoneEmail := models.AnonymizeEmail(userID, now)
-	return db.Transaction(func(tx *gorm.DB) error {
-		// Delete sessions
-		if err := tx.Where(&models.Session{UserID: userID}, "UserID").Delete(&models.Session{}).Error; err != nil {
-			return fmt.Errorf("delete sessions: %w", err)
-		}
-		// Delete accounts
-		if err := tx.Where(&models.Account{UserID: userID}, "UserID").Delete(&models.Account{}).Error; err != nil {
-			return fmt.Errorf("delete accounts: %w", err)
-		}
-		// Default: remove the user row like better-auth (sessions and accounts are already gone above)
-		if !soft {
-			if err := tx.Where(userByID(userID), "ID").Delete(&models.User{}).Error; err != nil {
-				return fmt.Errorf("delete user: %w", err)
-			}
-			return nil
-		}
-		// Soft delete: anonymize the email, release the unique phone number and username and keep a tombstone
-		// (same tombstone as the core IUserRepo.SoftDeleteUser, so they can be registered again)
-		if err := tx.Model(&models.User{}).Where(userByID(userID), "ID").Updates(map[string]interface{}{
-			"DeletedAt":   now,
-			"Email":       tombstoneEmail,
-			"PhoneNumber": nil,
-			"Username":    nil,
-		}).Error; err != nil {
-			return fmt.Errorf("delete user: %w", err)
-		}
-		return nil
-	})
-}
-
 // GetUserByID retrieves a user by ID.
 func (r *AdminRepo) GetUserByID(ctx context.Context, id string) (*models.User, error) {
 	db := getDB(ctx, r.db)
@@ -354,18 +289,4 @@ func (r *AdminRepo) GetUserByEmail(ctx context.Context, email string) (*models.U
 		return nil, fmt.Errorf("gorm/admin: get user by email: %w", err)
 	}
 	return &user, nil
-}
-
-// UpdateUser updates specific user fields by ID.
-func (r *AdminRepo) UpdateUser(ctx context.Context, userID string, updates map[string]interface{}) (*models.User, error) {
-	db := getDB(ctx, r.db)
-	user := userByID(userID)
-	res := db.Model(&models.User{}).Where(user, "ID").Updates(updates)
-	if res.Error != nil {
-		return nil, fmt.Errorf("gorm/admin: update user: %w", res.Error)
-	}
-	if res.RowsAffected == 0 {
-		return nil, autherr.ErrUserNotFound
-	}
-	return r.GetUserByID(ctx, userID)
 }

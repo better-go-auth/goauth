@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/better-go-auth/goauth/src/models/dtos"
 	"gorm.io/gorm"
 
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
@@ -233,14 +232,4 @@ func (p *OrgPlugin) HTTPRequirePermission(resource, action string) func(http.Han
 // HTTPRequireOperation returns a standard net/http middleware checking operation ID.
 func (p *OrgPlugin) HTTPRequireOperation(operationID string) func(http.Handler) http.Handler {
 	return p.Middleware().HTTPRequireOperation(operationID)
-}
-
-// SchemaFields implements plugins.SchemaFieldsProvider: activeOrganizationId on the session, plus
-// activeTeamId when teams are enabled (better-auth's organization schema).
-func (p *OrgPlugin) SchemaFields() dtos.SchemaFields {
-	session := []string{dtos.FieldActiveOrganizationID}
-	if p.Config.Teams != nil && p.Config.Teams.Enabled {
-		session = append(session, dtos.FieldActiveTeamID)
-	}
-	return dtos.SchemaFields{Session: session}
 }

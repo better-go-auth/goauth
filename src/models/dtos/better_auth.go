@@ -6,6 +6,7 @@ import (
 
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/providers/idgen"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 // Time marshals as better-auth's ISO-8601 timestamp with millisecond precision ("2006-01-02T15:04:05.000Z").
@@ -57,6 +58,16 @@ type UserResponse struct {
 	DisplayUsername *string `json:"displayUsername,omitempty"`
 	// Anonymous plugin field: only present (true) for anonymous users.
 	IsAnonymous bool `json:"isAnonymous,omitempty"`
+
+	// Extra holds the other fields of the user schema (config additionalFields, plugin SchemaProvider fields)
+	// keyed by field name. MarshalJSON flattens them into the object; read them with schema.Get.
+	Extra map[string]any `json:"-"`
+}
+
+// GetExtra returns the value of an additional field (schema.ExtraGetter).
+func (u UserResponse) GetExtra(key string) (any, bool) {
+	v, ok := u.Extra[key]
+	return v, ok
 }
 
 // SessionData is better-auth's core session shape plus the admin/organization plugin fields.
@@ -81,6 +92,28 @@ type SessionData struct {
 	DeviceID    *string `json:"deviceId,omitempty"`
 	DeviceName  *string `json:"deviceName,omitempty"`
 	DeviceType  *string `json:"deviceType,omitempty"`
+
+	// Extra holds the other fields of the session schema (config additionalFields, plugin SchemaProvider
+	// fields) keyed by field name. MarshalJSON flattens them into the object; read them with schema.Get.
+	Extra map[string]any `json:"-"`
+}
+
+// GetExtra returns the value of an additional field (schema.ExtraGetter).
+func (s SessionData) GetExtra(key string) (any, bool) {
+	v, ok := s.Extra[key]
+	return v, ok
+}
+
+// copyExtra returns a shallow copy of m (nil when empty), so responses don't alias the model's map.
+func copyExtra(m map[string]any) map[string]any {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 // SessionWithUser is the body of GET /get-session.
@@ -130,6 +163,20 @@ func UserFromModel(u *models.User) UserResponse {
 	}
 	// anonymous plugin
 	out.IsAnonymous = u.IsAnonymous
+	// additionalFields and plugin SchemaProvider fields
+	out.Extra = copyExtra(u.Extra)
+	// goauth's own profile columns travel in Extra (the output shows them once set, see schema.Field.OmitEmpty)
+	for k, v := range map[string]any{
+		"firstName": u.FirstName, "lastName": u.LastName, "displayName": u.DisplayName, "bio": u.Bio,
+		"dateOfBirth": u.DateOfBirth, "gender": u.Gender, "locale": u.Locale, "timezone": u.Timezone,
+	} {
+		if !(schema.Field{}).EmptyOutput(v) {
+			if out.Extra == nil {
+				out.Extra = map[string]any{}
+			}
+			out.Extra[k] = v
+		}
+	}
 	return out
 }
 
@@ -159,6 +206,8 @@ func SessionFromModel(s *models.Session) SessionData {
 	if s.DeviceToken != "" {
 		out.DeviceToken = &s.DeviceToken
 	}
+	// additionalFields and plugin SchemaProvider fields
+	out.Extra = copyExtra(s.Extra)
 	return out
 }
 

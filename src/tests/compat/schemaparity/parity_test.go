@@ -395,13 +395,14 @@ func TestCamelSchemaMatchesBetterAuth(t *testing.T) {
 // registry's tables with better-auth's: this path has no GORM involved and no known gaps.
 func TestRenderedCamelSchemaMatchesBetterAuth(t *testing.T) {
 	ba := betterAuthSchema(t)
-	// Step 1: goauth's SQL, executed on a fresh database
-	sql, err := goauth.GenerateSQL(goauth.GoAuthOptions{AuthConfig: config.AuthConfig{
+	// Step 1: goauth's SQL with the same plugins as the TypeScript schema (plugin columns of the core tables
+	// exist only for installed plugins), executed on a fresh database
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:rendered_%s?mode=memory&cache=shared", uuid.NewString())), &gorm.Config{Logger: logger.Discard})
+	require.NoError(t, err)
+	sql, err := goauth.GenerateSQL(goauth.GoAuthOptions{Plugins: plugins(t, db), AuthConfig: config.AuthConfig{
 		GoAuth:    config.GoAuthConfig{ColumnCase: schema.Camel},
 		RateLimit: config.RateLimitOptions{Storage: ratelimit.StorageDatabase},
 	}}, render.SQLite)
-	require.NoError(t, err)
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:rendered_%s?mode=memory&cache=shared", uuid.NewString())), &gorm.Config{Logger: logger.Discard})
 	require.NoError(t, err)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
@@ -420,4 +421,26 @@ func TestRenderedCamelSchemaMatchesBetterAuth(t *testing.T) {
 		t.Log("difference:", n)
 	}
 	require.Empty(t, hard)
+}
+
+// TestPluginColumnsFollowInstalledPlugins: without plugins goauth's generated schema has none of the plugin
+// columns better-auth's plugins add to user and session (B10 / missing-tasks 2.8); with them it has all.
+func TestPluginColumnsFollowInstalledPlugins(t *testing.T) {
+	// Step 1: no plugins: core columns only
+	sql, err := goauth.GenerateSQL(goauth.GoAuthOptions{AuthConfig: config.AuthConfig{GoAuth: config.GoAuthConfig{ColumnCase: schema.Camel}}}, render.SQLite)
+	require.NoError(t, err)
+	for _, col := range []string{"role", "banned", "phoneNumber", "twoFactorEnabled", "username", "isAnonymous", "impersonatedBy", "activeOrganizationId"} {
+		require.NotContains(t, sql, `"`+col+`"`, col)
+	}
+	// Step 2: one plugin brings exactly its columns
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:cols_%s?mode=memory&cache=shared", uuid.NewString())), &gorm.Config{Logger: logger.Discard})
+	require.NoError(t, err)
+	adminPlugin, err := admin.NewWithGorm(db)
+	require.NoError(t, err)
+	sql, err = goauth.GenerateSQL(goauth.GoAuthOptions{Plugins: []plugin.Plugin{adminPlugin}, AuthConfig: config.AuthConfig{GoAuth: config.GoAuthConfig{ColumnCase: schema.Camel}}}, render.SQLite)
+	require.NoError(t, err)
+	for _, col := range []string{"role", "banned", "banReason", "banExpires", "impersonatedBy"} {
+		require.Contains(t, sql, `"`+col+`"`, col)
+	}
+	require.NotContains(t, sql, `"phoneNumber"`)
 }

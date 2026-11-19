@@ -2,6 +2,8 @@ package auth_test
 
 import (
 	"context"
+	"github.com/better-go-auth/goauth/src/app/services/internaladapter"
+	"github.com/better-go-auth/goauth/src/schema"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,6 +34,7 @@ type env struct {
 	sessions *sessionsvc.Manager
 	mails    []config.EmailVerificationData
 	resets   []config.ResetPasswordData
+	cfg      config.AuthConfig
 }
 
 func newEnv(t *testing.T, mutate func(*config.AuthConfig), store sec_storage.SecondaryStorage) *env {
@@ -55,6 +58,7 @@ func newEnv(t *testing.T, mutate func(*config.AuthConfig), store sec_storage.Sec
 	cfg.SetDefaults()
 	e.sessions = sessionsvc.NewManager(cfg.Session, e.repos, e.repos, store, nil)
 	e.svc = authsvc.New(authsvc.Deps{Config: cfg, Repos: e.repos, Sessions: e.sessions})
+	e.cfg = cfg
 	return e
 }
 
@@ -400,16 +404,25 @@ func TestUpdateUserRefreshesCachedSessions(t *testing.T) {
 	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Role": "admin"}}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
 		t.Fatalf("unknown role key must be ignored: %v", err)
 	}
-	// with the admin plugin installed role is input:false: better-auth's "role is not allowed to be set"
-	dtos.SetInstalledSchemaFields(dtos.SchemaFields{User: []string{dtos.FieldRole, dtos.FieldBanned}})
-	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Role": "admin"}}); errCode(err) != "ROLE_IS_NOT_ALLOWED_TO_BE_SET" {
+	// with the admin plugin installed role is input:false: better-auth's FIELD_NOT_ALLOWED
+	// "role is not allowed to be set" (parseInputData spreads BASE_ERROR_CODES.FIELD_NOT_ALLOWED)
+	so := e.cfg.SchemaOptions()
+	so.InstalledPlugins = []string{"admin"}
+	adminSvc := authsvc.New(authsvc.Deps{Config: e.cfg, Repos: e.repos, Sessions: e.sessions,
+		Internal: internaladapter.New(internaladapter.Deps{Repos: e.repos, Sessions: e.sessions, Schema: schema.MustBuild(so)})})
+	_, err := adminSvc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"role": "admin"}})
+	if ae := autherr.AsAuthError(err); ae == nil || ae.Code != "FIELD_NOT_ALLOWED" || ae.Message != "role is not allowed to be set" {
 		t.Fatalf("role must not be updatable with the admin plugin: %v", err)
 	}
-	// input:false fields with a default (banned) are skipped silently
-	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"Banned": true}}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
-		t.Fatalf("banned must be skipped: %v", err)
+	// input:false fields with a default (banned) are rejected on update too (better-auth applies the default
+	// only on create)
+	if _, err := adminSvc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"banned": true}}); errCode(err) != "FIELD_NOT_ALLOWED" {
+		t.Fatalf("banned must be rejected: %v", err)
 	}
-	dtos.SetInstalledSchemaFields()
+	// a falsy value of an input:false field is dropped
+	if _, err := adminSvc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{Fields: map[string]any{"banned": false}}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
+		t.Fatalf("banned=false must be dropped: %v", err)
+	}
 	if _, err := e.svc.UpdateUser(ctx, res.Session, svcint.UpdateUserInput{}); errCode(err) != "NO_FIELDS_TO_UPDATE" {
 		t.Fatalf("got %v", err)
 	}
@@ -577,9 +590,10 @@ func TestUpdateSessionDeviceFields(t *testing.T) {
 			}
 
 			for want, body := range map[string]map[string]any{
-				"FIELD_NOT_ALLOWED":   {"activeOrganizationId": "org-1"},
+				// lastUsedAt is goauth's input:false bookkeeping column (activeOrganizationId needs the org plugin)
+				"FIELD_NOT_ALLOWED":   {"lastUsedAt": "2026-01-01T00:00:00Z"},
 				"VALIDATION_ERROR":    {"deviceName": 42},
-				"NO_FIELDS_TO_UPDATE": {"unknown": "x"},
+				"NO_FIELDS_TO_UPDATE": {"unknown": "x", "activeOrganizationId": "org-1", "token": "t"},
 			} {
 				if _, err := e.svc.UpdateSession(ctx, res.Session, body); errCode(err) != want {
 					t.Fatalf("%v: want %s, got %v", body, want, err)

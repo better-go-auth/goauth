@@ -105,7 +105,11 @@ func caseSensitiveTokens(db *gorm.DB) error {
 		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelSession)}, gormutil.Col(db, &models.Session{}, "Token")).Error; err != nil {
 		return err
 	}
-	// Step 2: usernames (nullable); lookups are exact, the username plugin normalizes before querying
+	// Step 2: usernames (nullable); lookups are exact, the username plugin normalizes before querying.
+	// Without the username plugin the column doesn't exist
+	if !db.Migrator().HasColumn(&models.User{}, "Username") {
+		return nil
+	}
 	return db.Exec("ALTER TABLE ? MODIFY ? VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL",
 		clause.Table{Name: models.ResolveTableName(db.NamingStrategy, models.ModelUser)}, gormutil.Col(db, &models.User{}, "Username")).Error
 }

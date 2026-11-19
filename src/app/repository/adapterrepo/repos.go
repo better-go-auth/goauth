@@ -528,6 +528,14 @@ func (r *Repos) UpdateAccount(ctx context.Context, id string, data map[string]in
 	return update[models.Account](ctx, r, r.account, []adapter.Where{eq("id", id)}, data)
 }
 
+// FindAccountByID fetches one account by id.
+func (r *Repos) FindAccountByID(ctx context.Context, id string) (*models.Account, error) {
+	if id == "" {
+		return nil, notFound(schema.ModelAccount)
+	}
+	return findOne[models.Account](ctx, r, r.account, []adapter.Where{eq("id", id)})
+}
+
 // DeleteAccounts removes every account of a user.
 func (r *Repos) DeleteAccounts(ctx context.Context, userID string) error {
 	if userID == "" {

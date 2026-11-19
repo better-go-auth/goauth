@@ -6,9 +6,9 @@ import (
 
 	"github.com/better-go-auth/goauth/src/adapter"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
-	"github.com/better-go-auth/goauth/src/models/dtos"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
+	"github.com/better-go-auth/goauth/src/common/dbhooks"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	// "github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/common/middleware"
@@ -59,6 +59,10 @@ type InitContext struct {
 	// Schema is the schema registry SetupGoAuth built (core models, configuration additionalFields and
 	// renames, every SchemaProvider): table and column names, field definitions, input/output rules.
 	Schema *schema.Registry
+	// Internal is goauth's internalAdapter (better-auth's ctx.context.internalAdapter): create, update and
+	// delete users, sessions, accounts and verifications with database hooks, additionalFields and secondary
+	// storage applied. Plugins use it instead of writing through IAuthRepos directly.
+	Internal svcint.IInternalAdapter
 
 	// Extras is intentionally disabled. We do not use this field; all
 	// dependencies are provided via the typed fields above (DB,
@@ -95,11 +99,12 @@ type DependencyProvider interface {
 	Dependencies() []string
 }
 
-// SchemaFieldsProvider is an optional interface for plugins that add fields to better-auth's user or
-// session schema (e.g. admin: role, banned, ...). Like better-auth, the user/session JSON always contains
-// the fields of installed plugins (false / null when unset), and update-user knows which keys exist.
-type SchemaFieldsProvider interface {
-	SchemaFields() dtos.SchemaFields
+// DatabaseHooksProvider is an optional interface for plugins with better-auth database hooks (a plugin's
+// `init` returning `options.databaseHooks`): before/after hooks on creates, updates and deletes of users,
+// sessions, accounts and verifications, whoever writes them. SetupGoAuth collects them after the plugin's
+// Init, in plugin order, and runs them before AuthConfig.DatabaseHooks (better-auth's order).
+type DatabaseHooksProvider interface {
+	DatabaseHooks() dbhooks.Hooks
 }
 
 // SchemaProvider is an optional interface for plugins that declare database schema like better-auth's

@@ -2,6 +2,7 @@ package humaemailotp
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
@@ -127,7 +128,12 @@ func (h *EmailOTPHandler) VerifyEmail(ctx context.Context, in *verifyEmailInput)
 // ─── SignIn ────────────────────────────────────────────────────────────────────
 
 type signInInput struct {
-	Body dtos.SignInEmailOTPInput
+	// RawBody keeps the whole body: on first sign-up its other fields are additional user fields
+	RawBody []byte
+	Body    struct {
+		dtos.SignInEmailOTPInput
+		_ struct{} `json:"-" additionalProperties:"true"`
+	}
 }
 
 type signInOutput struct {
@@ -138,7 +144,15 @@ type signInOutput struct {
 func (h *EmailOTPHandler) SignIn(ctx context.Context, in *signInInput) (*signInOutput, error) {
 	// Step 1: rate limiting (/sign-in/email-otp) is done by goauth's global limiter, see Plugin.RateLimitRules
 	// Step 2: Authenticate or auto-register user with OTP
-	sw, err := h.Service.SignInWithProfile(ctx, in.Body.Email, in.Body.OTP, in.Body.Name, in.Body.Image, h.meta(ctx))
+	// better-auth's `const { email, otp, name, image, ...rest } = ctx.body`
+	rest := map[string]any{}
+	if len(in.RawBody) > 0 {
+		_ = json.Unmarshal(in.RawBody, &rest)
+	}
+	for _, k := range []string{"email", "otp", "name", "image"} {
+		delete(rest, k)
+	}
+	sw, err := h.Service.SignInWithFields(ctx, in.Body.Email, in.Body.OTP, in.Body.Name, in.Body.Image, rest, h.meta(ctx))
 	if err != nil {
 		return nil, err
 	}

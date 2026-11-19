@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
@@ -519,6 +520,17 @@ func (r *Repos) deleteAccountsWhere(match func(*models.Account) bool) error {
 	return nil
 }
 
+// FindAccountByID fetches one account by id.
+func (r *Repos) FindAccountByID(_ context.Context, id string) (*models.Account, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if a, ok := r.accounts[id]; ok {
+		c := *a
+		return &c, nil
+	}
+	return nil, notFound("account")
+}
+
 func (r *Repos) FindAccounts(_ context.Context, userID string) ([]models.Account, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -651,10 +663,31 @@ func (r *Repos) DeleteVerificationIfValue(_ context.Context, id, value string) (
 // (e.g. a string into a *string field, nil to the zero value).
 func applyUpdates(dst any, data map[string]interface{}) error {
 	rv := reflect.ValueOf(dst).Elem()
+	copied := false
 	for name, val := range data {
 		f := rv.FieldByName(name)
 		if !f.IsValid() || !f.CanSet() {
-			return fmt.Errorf("memory: unknown field %q on %s", name, rv.Type().Name())
+			// runtime fields (additionalFields, plugin schema fields) are kept in Extra by field name
+			extra := rv.FieldByName("Extra")
+			if !extra.IsValid() || name == "" || unicode.IsUpper(rune(name[0])) {
+				return fmt.Errorf("memory: unknown field %q on %s", name, rv.Type().Name())
+			}
+			m, _ := extra.Interface().(map[string]any)
+			if !copied {
+				// the struct is a shallow copy of the stored record: never write into its map
+				next := make(map[string]any, len(m)+1)
+				for k, v := range m {
+					next[k] = v
+				}
+				m, copied = next, true
+			}
+			if val == nil {
+				delete(m, name)
+			} else {
+				m[name] = val
+			}
+			extra.Set(reflect.ValueOf(m))
+			continue
 		}
 		if val == nil {
 			f.Set(reflect.Zero(f.Type()))

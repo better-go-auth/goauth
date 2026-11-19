@@ -123,8 +123,10 @@ type Session struct {
 type SessionGoAuth struct {
 	// SingleSession revokes a user's other sessions on every login.
 	SingleSession bool
-	// UpdatableFields are the session fields (JSON names) clients may set with POST /update-session.
-	// nil means DefaultUpdatableSessionFields; an empty slice allows none.
+	// UpdatableFields are goauth's own device fields (JSON names: deviceToken, deviceId, deviceName,
+	// deviceType) clients may set with POST /update-session. nil means DefaultUpdatableSessionFields; an empty
+	// slice allows none. Session.AdditionalFields and plugin fields follow the schema instead (their `Input`
+	// attribute), like better-auth's parseSessionInput.
 	UpdatableFields []string
 }
 

@@ -179,7 +179,8 @@ may only `read`/`list`/`get`, and `Roles` may use `"*"` wildcards. These rules a
 
 ### System admins and organization approval
 
-The system user role (`user.role`, set by the admin plugin) is separate from organization roles. It
+The system user role (`user.role`, set by the admin plugin; the column only exists when the admin plugin is
+installed) is separate from organization roles. It
 is used only for the `/admin/organization/*` endpoints (`create`, `get`, `list`, `approve`, `block`,
 `unblock`). These endpoints require the user role to include `admin`, whatever the admin plugin's
 access control says. With `OrgNeedsApproval: true`, a new organization is `pending`. It cannot become

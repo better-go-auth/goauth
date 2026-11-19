@@ -3,6 +3,7 @@ package schema
 import (
 	"errors"
 	"fmt"
+	"reflect"
 
 	"github.com/better-go-auth/goauth/src/common/autherr"
 )
@@ -164,6 +165,13 @@ func (r *Registry) BuildOutput(model string, data map[string]any) map[string]any
 	}
 	out := map[string]any{}
 	for _, f := range m.OutputFields() {
+		// OmitEmpty fields (goauth's own columns) only appear when they hold a non-default value
+		if f.OmitEmpty {
+			if v := data[f.Name]; !f.EmptyOutput(v) {
+				out[f.Name] = v
+			}
+			continue
+		}
 		if v, present := data[f.Name]; present && v != nil {
 			out[f.Name] = v
 			continue
@@ -179,4 +187,32 @@ func (r *Registry) BuildOutput(model string, data map[string]any) map[string]any
 		}
 	}
 	return out
+}
+
+// EmptyOutput reports whether v counts as "not set" for an OmitEmpty field: nil, a nil pointer, the zero
+// value of its type, or the field's Default.
+func (f Field) EmptyOutput(v any) bool {
+	// Step 1: nil and zero values (nil pointers, "", false, 0, zero times, empty slices)
+	if v == nil {
+		return true
+	}
+	rv := reflect.ValueOf(v)
+	for rv.Kind() == reflect.Pointer {
+		if rv.IsNil() {
+			return true
+		}
+		rv = rv.Elem()
+	}
+	if rv.IsZero() || ((rv.Kind() == reflect.Slice || rv.Kind() == reflect.Map) && rv.Len() == 0) {
+		return true
+	}
+	// Step 2: the default value (e.g. locale "en")
+	if f.HasDefault() {
+		d, err := Normalize(f.Type, f.DefaultValue())
+		n, err2 := Normalize(f.Type, rv.Interface())
+		if err == nil && err2 == nil && reflect.DeepEqual(d, n) {
+			return true
+		}
+	}
+	return false
 }

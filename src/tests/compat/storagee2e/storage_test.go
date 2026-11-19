@@ -33,7 +33,9 @@ func TestCamelEndToEnd(t *testing.T) {
 			body := signUpInAndGetSession(t, s, "camel@example.com")
 
 			// Step 1: camelCase columns, no snake_case leftovers
-			require.Subset(t, columnsOf(t, db, prefix+"user"), []string{"emailVerified", "createdAt", "updatedAt", "twoFactorEnabled"})
+			require.Subset(t, columnsOf(t, db, prefix+"user"), []string{"emailVerified", "createdAt", "updatedAt"})
+			// no plugin installed: no plugin columns (missing-tasks 2.8)
+			require.NotContains(t, columnsOf(t, db, prefix+"user"), "twoFactorEnabled")
 			require.NotContains(t, columnsOf(t, db, prefix+"user"), "email_verified")
 			require.Subset(t, columnsOf(t, db, prefix+"session"), []string{"userId", "expiresAt", "ipAddress", "userAgent"})
 			require.Subset(t, columnsOf(t, db, prefix+"account"), []string{"accountId", "providerId", "userId", "accessTokenExpiresAt"})

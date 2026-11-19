@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"github.com/better-go-auth/goauth/src/plugins/admin"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -427,12 +428,15 @@ func setupSystemAdminUser(t *testing.T, env *helpers.TestEnv, email string) (str
 // TestOrgHandlers_Issues2To6 tests Issues 2–6 across SQLite, PostgreSQL, and MySQL.
 func TestOrgHandlers_Issues2To6(t *testing.T) {
 	helpers.RunForEachDB(t, func(t *testing.T, db *gorm.DB, dbType helpers.DatabaseType) {
+		// the system admin's user.role column comes from the admin plugin
+		adminPlugin, err := admin.NewWithGorm(db)
+		require.NoError(t, err)
 		env, orgPlugin := setupTeamsEnvWithDB(t, db, orgconfig.OrgConfig{
 			OrgNeedsApproval: true,
 			Teams: &orgconfig.TeamsConfig{
 				Enabled: true,
 			},
-		})
+		}, adminPlugin)
 
 		adminID, adminAuth := setupSystemAdminUser(t, env, "sysadmin-issues@example.com")
 		ownerID, ownerAuth := setupOrgHTTPUser(t, env, "owner-issues@example.com", "", "")
@@ -607,7 +611,7 @@ func TestOrgHandlers_Issues2To6(t *testing.T) {
 		rec = doOrgHTTP(t, env.Mux, http.MethodGet, "/api/auth/organization/team/list?organizationId="+orgResp.ID, nil, adminAuth)
 		require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
 
-		_, err := orgPlugin.Service().GetTeam(context.Background(), teamResp.ID, adminID)
+		_, err = orgPlugin.Service().GetTeam(context.Background(), teamResp.ID, adminID)
 		require.Error(t, err)
 
 		for _, endpoint := range []string{

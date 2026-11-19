@@ -10,14 +10,18 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/better-go-auth/goauth/src/app/repository/hookedrepo"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	"github.com/better-go-auth/goauth/src/app/services/internaladapter"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/common/dbhooks"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 // Errors better-auth throws inline (not part of BASE_ERROR_CODES).
@@ -38,6 +42,9 @@ type Deps struct {
 	Passwords *authcrypto.Passwords          // hashes and verifies passwords; built from Config when nil
 	Tx        interfaces.ITransactionManager // groups multi-row writes; nil runs them without a transaction
 	Hooks     plugins.HookRegistry           // auth lifecycle hooks
+	// Internal is better-auth's internalAdapter (database hooks, additionalFields); built from the other
+	// dependencies (and Config's schema and DatabaseHooks) when nil
+	Internal svcint.IInternalAdapter
 }
 
 // Service implements IAuthService, ISessionService and IUserService.
@@ -50,6 +57,9 @@ type Service struct {
 	// sessionFields maps client-writable session JSON names to Go field names (Session.GoAuth.UpdatableFields)
 	sessionFields map[string]string
 	Hooks         plugins.HookRegistry
+	internal      svcint.IInternalAdapter
+	// reg is the schema registry input is parsed with (nil without a valid configuration)
+	reg *schema.Registry
 }
 
 var (
@@ -72,7 +82,25 @@ func New(d Deps) *Service {
 	}
 	// invalid names are reported by ValidateConfig at setup; here they just disable update-session
 	fields, _ := updatableSessionFields(d.Config)
-	return &Service{cfg: d.Config, repos: d.Repos, sessionMgr: d.Sessions, passwords: d.Passwords, tx: d.Tx, sessionFields: fields, Hooks: d.Hooks}
+	// without an internal adapter (services built outside SetupGoAuth) build one: the configuration's schema,
+	// and the typed user-create hooks plus Config.DatabaseHooks around the repositories
+	if d.Internal == nil {
+		// no plugins are installed in a service built on its own: plugin columns are not part of its schema
+		so := d.Config.SchemaOptions()
+		so.InstalledPlugins = []string{}
+		reg, _ := schema.Build(so)
+		set := dbhooks.NewSet()
+		set.Add("goauth:hooks", internaladapter.TypedHooks(d.Hooks))
+		set.Add("user", d.Config.DatabaseHooks)
+		d.Repos = hookedrepo.Wrap(d.Repos, set)
+		d.Tx = dbhooks.WrapTx(d.Tx)
+		d.Internal = internaladapter.New(internaladapter.Deps{
+			Repos: d.Repos, Sessions: d.Sessions, Schema: reg, Tx: d.Tx, Hooks: d.Hooks,
+			SoftDelete: d.Config.User.GoAuth.SoftDelete,
+		})
+	}
+	return &Service{cfg: d.Config, repos: d.Repos, sessionMgr: d.Sessions, passwords: d.Passwords, tx: d.Tx,
+		sessionFields: fields, Hooks: d.Hooks, internal: d.Internal, reg: d.Internal.Schema()}
 }
 
 // inTx runs fn inside a database transaction when a transaction manager was injected.
@@ -127,3 +155,19 @@ func acceptNotFound[T any](v *T, err error) (*T, error) {
 	}
 	return v, nil
 }
+
+// createUserError maps an internal-adapter CreateUser error the way better-auth's sign-up does: a database
+// hook that cancelled the insert → 400 FAILED_TO_CREATE_USER, a hook's own error unchanged, anything else
+// (a storage failure) → fallback.
+func createUserError(err error, fallback error) error {
+	switch {
+	case internaladapter.IsCancelled(err):
+		return autherr.ErrFailedToCreateUser.WithStatus(http.StatusBadRequest)
+	case hookedrepo.IsHookError(err):
+		return err
+	}
+	return fallback
+}
+
+// Internal returns the internal adapter the service writes through.
+func (s *Service) Internal() svcint.IInternalAdapter { return s.internal }

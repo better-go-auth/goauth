@@ -253,6 +253,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	)
 	// OTP sign-up runs the user lifecycle hooks like core sign-up
 	p.service.SetHooks(ictx.Hooks)
+	p.service.SetInternal(ictx.Internal)
 
 	// Step 4: Register lifecycle hook and global verification override sender when enabled
 	p.hookService = &emailOTPHookService{plugin: p}

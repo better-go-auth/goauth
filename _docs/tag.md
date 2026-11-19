@@ -7,5 +7,5 @@
 
 > git tag      // to list tags
 
-> git tag v0.0.1
-> git push origin v1.0
+git tag v0.0.1
+git push origin v1.0

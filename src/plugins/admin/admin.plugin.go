@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/config"
-	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	plugins "github.com/better-go-auth/goauth/src/plugins"
@@ -180,6 +179,7 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		svc.SetAuthConfig(ictx.Config)
 
 		svc.SetSessionService(ictx.SessionManager)
+		svc.SetInternal(ictx.Internal)
 
 		if ictx.Hooks != nil {
 			ictx.Hooks.Register(p.hookService)
@@ -226,12 +226,4 @@ func (p *Plugin) Handler() *humaadmin.AdminHandler {
 // Config returns the plugin's configuration.
 func (p *Plugin) Config() config1.AdminConfig {
 	return p.config
-}
-
-// SchemaFields implements plugins.SchemaFieldsProvider (admin plugin: role, banned, banReason, banExpires on the user; impersonatedBy on the session).
-func (p *Plugin) SchemaFields() dtos.SchemaFields {
-	return dtos.SchemaFields{
-		User:    []string{dtos.FieldRole, dtos.FieldBanned, dtos.FieldBanReason, dtos.FieldBanExpires},
-		Session: []string{dtos.FieldImpersonatedBy},
-	}
 }

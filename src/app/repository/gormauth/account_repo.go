@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	loc_errors "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/schema"
 
 	"gorm.io/gorm"
 
@@ -18,6 +19,7 @@ import (
 type AccountRepo struct {
 	db         *gorm.DB
 	generateID func() string
+	reg        *schema.Registry
 }
 
 // NewAccountRepo creates a new GORM-backed AccountRepo.
@@ -26,7 +28,7 @@ func NewAccountRepo(db *gorm.DB, opts ...RepoOption) repo_interfaces.IOAuthAccou
 	for _, o := range opts {
 		o(cfg)
 	}
-	return &AccountRepo{db: db, generateID: cfg.GenerateID}
+	return &AccountRepo{db: db, generateID: cfg.GenerateID, reg: cfg.Registry}
 }
 
 func (r *AccountRepo) newID() string {
@@ -80,13 +82,25 @@ func (r *AccountRepo) UpdateAccount(ctx context.Context, id string, data map[str
 	result := gormutil.GetDB(ctx, r.db).
 		Model(&models.Account{}).
 		Where(accountByID(id), "ID").
-		Updates(data)
+		Updates(updateKeys(r.reg, schema.ModelAccount, data))
 	if result.Error != nil {
 		return nil, fmt.Errorf("gorm/account: update: %w", result.Error)
 	}
 	var account models.Account
 	if err := gormutil.GetDB(ctx, r.db).Where(accountByID(id), "ID").Take(&account).Error; err != nil {
 		return nil, err
+	}
+	return &account, nil
+}
+
+// FindAccountByID fetches one account by id.
+func (r *AccountRepo) FindAccountByID(ctx context.Context, id string) (*models.Account, error) {
+	var account models.Account
+	if err := gormutil.GetDB(ctx, r.db).Where(accountByID(id), "ID").Take(&account).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, loc_errors.NotFoundErr("gorm/account: not found")
+		}
+		return nil, fmt.Errorf("gorm/account: get by id: %w", err)
 	}
 	return &account, nil
 }

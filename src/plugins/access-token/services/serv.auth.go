@@ -104,19 +104,32 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input accesstoken
 		u.Name, u.Email, u.Image, u.Role = input.FirstName, input.Email, image, enums.User
 		u.FirstName, u.LastName = input.FirstName, input.LastName
 		// u.AccountStatus = enums.AccountPendingVerification
-		if created, err = aus.UserRepo.CreateUser(txCtx, u); err != nil {
-			return autherr.ErrFailedToCreateUser
-		}
 		// better-auth keeps passwords on a "credential" account whose accountId is the user id, not on the user row
-		_, err = aus.AccountRepo.CreateAccount(txCtx, &models.Account{
+		account := &models.Account{
 			Base:       models.Base{ID: models.NewID()},
-			UserID:     created.ID,
 			ProviderID: models.ProvCredential,
-			AccountID:  created.ID,
 			Password:   &hash,
-		})
-		if err != nil {
-			return autherr.ErrFailedToCreateUser
+		}
+		if aus.Internal != nil {
+			// the internal adapter runs the database hooks (BeforeUserCreate / AfterUserCreate included)
+			if created, err = aus.Internal.CreateUser(txCtx, u); err != nil {
+				if ae := autherr.AsAuthError(err); ae != nil && !aus.Internal.IsCancelled(err) {
+					return ae
+				}
+				return autherr.ErrFailedToCreateUser
+			}
+			account.UserID, account.AccountID = created.ID, created.ID
+			if _, err = aus.Internal.LinkAccount(txCtx, account); err != nil && !aus.Internal.IsCancelled(err) {
+				return autherr.ErrFailedToCreateUser
+			}
+		} else {
+			if created, err = aus.UserRepo.CreateUser(txCtx, u); err != nil {
+				return autherr.ErrFailedToCreateUser
+			}
+			account.UserID, account.AccountID = created.ID, created.ID
+			if _, err = aus.AccountRepo.CreateAccount(txCtx, account); err != nil {
+				return autherr.ErrFailedToCreateUser
+			}
 		}
 
 		_, err = aus.VSvc.SendVerification(txCtx, input.Email, models.PurposeEmailVerification, &accTokInterfaces.VerOpt{UserId: created.ID})
@@ -124,7 +137,7 @@ func (aus *AuthService) RegisterWithEmail(ctx context.Context, input accesstoken
 			// todo: maybe we skip this error
 			return err
 		}
-		if aus.Hooks != nil {
+		if aus.Hooks != nil && aus.Internal == nil {
 			if err := aus.Hooks.TriggerAfterUserCreate(txCtx, created); err != nil {
 				return fmt.Errorf("authsvc: after user create hook: %w", err)
 			}

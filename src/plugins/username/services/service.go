@@ -4,6 +4,7 @@ package services
 
 import (
 	"context"
+	"github.com/better-go-auth/goauth/src/common/dbhooks"
 	"net/http"
 	"unicode/utf16"
 
@@ -347,4 +348,50 @@ func (s *Service) IsUsernameAvailable(ctx context.Context, username string) (boo
 		return false, err
 	}
 	return existing == nil, nil
+}
+
+// BeforeUserUpdate is better-auth's databaseHooks.user.update.before of the username plugin: a username set by
+// any endpoint other than /update-user (e.g. /admin/update-user) is validated (format and availability; the
+// updated user may keep their own username) and normalized; displayUsername is normalized.
+func (s *Service) BeforeUserUpdate(ctx context.Context, data map[string]any) error {
+	// Step 1: the username: validate (unless /update-user already did) and normalize
+	if raw, ok := data["username"]; ok {
+		username, isString := stringValue(raw)
+		switch {
+		case isString && username == "":
+			// goauth stores "no username" as NULL so the unique index never sees ""
+			data["username"] = nil
+		case isString:
+			if !s.skipCreateValidation(ctx) {
+				var display *string
+				if d, ok := stringValue(data["displayUsername"]); ok {
+					display = &d
+				}
+				if err := s.validateUsername(ctx, username, display, dbhooks.Target(ctx)); err != nil {
+					return err
+				}
+			}
+			data["username"] = s.cfg.Normalize(username)
+		}
+	}
+	// Step 2: the display username is normalized
+	if raw, ok := data["displayUsername"]; ok {
+		if display, isString := stringValue(raw); isString && display != "" {
+			data["displayUsername"] = s.cfg.NormalizeDisplay(display)
+		}
+	}
+	return nil
+}
+
+// stringValue returns the string in v (a string or a non-nil *string).
+func stringValue(v any) (string, bool) {
+	switch x := v.(type) {
+	case string:
+		return x, true
+	case *string:
+		if x != nil {
+			return *x, true
+		}
+	}
+	return "", false
 }

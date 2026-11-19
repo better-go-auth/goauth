@@ -5,6 +5,7 @@ package services
 import (
 	"context"
 	"crypto/rand"
+	"github.com/better-go-auth/goauth/src/schema"
 	"math/big"
 	"net/http"
 	"strconv"
@@ -398,9 +399,20 @@ func (s *PhoneNumberService) signUpUser(ctx context.Context, in VerifyInput) (*m
 	if opts.GetTempName != nil {
 		name = opts.GetTempName(in.PhoneNumber)
 	}
-	// Step 3: create the user with a verified phone number (hooks run like core sign-up)
-	phone := in.PhoneNumber
+	// Step 3: the rest of the body is parsed against the user schema (better-auth's
+	// parseUserInput(rest, "create"): User.AdditionalFields and plugin fields)
 	u := &models.User{}
+	if s.kit.Internal != nil {
+		additional, err := s.kit.Internal.ParseUserInput(in.Extra, schema.ActionCreate)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.kit.Internal.SetUserFields(u, additional); err != nil {
+			return nil, err
+		}
+	}
+	// Step 4: create the user with a verified phone number (database hooks run like core sign-up)
+	phone := in.PhoneNumber
 	u.Name, u.Email, u.Role = name, strings.ToLower(email), enums.User
 	u.PhoneNumber, u.PhoneNumberVerified = &phone, true
 	created, err := s.kit.CreateUser(ctx, u)

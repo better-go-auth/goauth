@@ -37,7 +37,8 @@ Nothing depends on these, and each one is a small, low-risk change.
 Every later parity item (database hooks, additional fields, camelCase, MongoDB) goes through these. Order inside
 the stage follows doc 04 §7.
 
-- [ ] **2.1 `internalAdapter` equivalent** (`src/app/services/internal`): one CreateUser / UpdateUser /
+- [x] **2.1 `internalAdapter` equivalent** (`src/app/services/internaladapter`; Go's `internal` directory rule
+  would hide it from plugins): one CreateUser / UpdateUser /
   DeleteUser / CreateSession / LinkAccount / verification API used by core *and* plugins, replacing direct
   `repos.CreateUser` calls (core sign-up, email-otp, admin, org) and the duplicated delete in admin.
   *(01 §2.1)*
@@ -53,12 +54,12 @@ the stage follows doc 04 §7.
     on SQLite, Postgres and MySQL.
   - [x] Switch `SetupGoAuth`'s default repositories to `adapterrepo(gormadapter)` and run the compat suites
     (`GoAuthOptions.GORMRepositories` keeps `gormauth`).
-- [ ] **2.6 `additionalFields` end to end:** sign-up, update-user, update-session, plugin sign-ups, admin
+- [x] **2.6 `additionalFields` end to end:** sign-up, update-user, update-session, plugin sign-ups, admin
   create-user; official client test with `inferAdditionalFields`. Fixes blocker B2. *(02 step 6)* – after 2.3, 2.5
 - [x] **2.7 Migrations:** SQL renderer, additive migrator, `Migrations.Mode = auto | verify | off`,
   `goauth schema` and `goauth migrate generate` (Atlas declarative/versioned/external-schema, goose,
   golang-migrate). Also replaces `PrepareLegacyColumns`. *(04 §7 step 5, phase2 open item)* – after 2.5
-- [ ] **2.8 Plugins declare their schema** (`SchemaProvider`): move phone-number, two-factor, admin, username
+- [x] **2.8 Plugins declare their schema** (`SchemaProvider`): move phone-number, two-factor, admin, username
   and anonymous columns out of `models.User`, so apps without a plugin don't get its columns. Output shows
   fields of installed plugins as `false`/`null` instead of omitting them (blocker B10). *(02 step 7, 01 §2.7)*
   – after 2.6
@@ -77,7 +78,7 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
   3.1; `database` = `ratelimit.DatabaseStorage` on the `rateLimit` model, done with 2.7)*
 - [x] **3.3 Endpoint `hooks.before/after`** (`AuthConfig.Hooks` and plugin hooks) on one Huma middleware;
   rebuild `OnAfterSignIn` and the 1.7 mechanism on it. *(01 §2.3)* – after 1.7
-- [ ] **3.4 `databaseHooks`** (`user/session/account/verification` × `create/update/delete` × `before/after`,
+- [x] **3.4 `databaseHooks`** (`user/session/account/verification` × `create/update/delete` × `before/after`,
   where `before` can change or cancel), with the existing typed hooks as wrappers. Also fixes "username not
   validated on admin update-user". *(01 §2.2)* – after 2.1
 - [x] **3.5 Secret rotation:** `AuthConfig.Secrets []{Version, Value}` with `$ba$<v>$` envelopes for cookies and
@@ -87,7 +88,7 @@ These make a `betterAuth({...})` config port 1:1 and remove the remaining compat
   registered as social providers automatically. Blocker B4.
 - [x] **3.8 Remaining organization routes:** `/organization/get-active-member`, `/get-active-member-role`,
   `/list-user-teams`. Blocker B8.
-- [ ] **3.9 Update-user unknown keys:** ignore unknown fields in compat mode; plugins can mark fields as
+- [x] **3.9 Update-user unknown keys:** ignore unknown fields in compat mode; plugins can mark fields as
   "cannot be updated" with their own error (`PHONE_NUMBER_CANNOT_BE_UPDATED`). Blocker B9. – after 2.3
 - [ ] **3.10 Smaller core options** (S each): `trustedOrigins` as a function of the request, dynamic `baseURL`
   with `allowedHosts`, `advanced.cookies` / `defaultCookieAttributes`, `generateId: false | "uuid" | "serial"`,

@@ -12,9 +12,11 @@ import (
 	"sync"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/app/repository/adapterrepo"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	"github.com/better-go-auth/goauth/src/app/services/interfaces"
 
+	"github.com/better-go-auth/goauth/src/common/dbhooks"
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/dtos"
@@ -22,6 +24,7 @@ import (
 	"github.com/better-go-auth/goauth/src/providers/idgen"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
 	"github.com/better-go-auth/goauth/src/providers/token"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 // dontRememberLifetime is better-auth's fixed lifetime for rememberMe=false sessions.
@@ -43,6 +46,11 @@ type Manager struct {
 	now          func() time.Time
 	generateID   func() string
 	activeMu     sync.Mutex
+	// dbHooks are better-auth's database hooks; the repositories run them for database writes, the manager
+	// for sessions that only live in secondary storage
+	dbHooks *dbhooks.Set
+	// reg is the schema registry: session additionalFields defaults on create
+	reg *schema.Registry
 }
 
 var _ interfaces.ISessionManager = (*Manager)(nil)
@@ -55,6 +63,14 @@ func WithClock(fn func() time.Time) ManagerOption { return func(m *Manager) { m.
 
 // WithGenerateID overrides the ID generator used for new sessions (default idgen.GenerateID).
 func WithGenerateID(fn func() string) ManagerOption { return func(m *Manager) { m.generateID = fn } }
+
+// WithDatabaseHooks runs better-auth's session database hooks for sessions stored only in secondary storage
+// (database writes run them in the repositories, see hookedrepo).
+func WithDatabaseHooks(set *dbhooks.Set) ManagerOption { return func(m *Manager) { m.dbHooks = set } }
+
+// WithRegistry gives new sessions the defaults of the session schema's additional fields (better-auth's
+// getSessionDefaultFields).
+func WithRegistry(reg *schema.Registry) ManagerOption { return func(m *Manager) { m.reg = reg } }
 
 // WithManagerOptions applies options to an existing Manager (for tests wiring after NewManager).
 func (mgr *Manager) WithOptions(opts ...ManagerOption) {
@@ -122,6 +138,8 @@ func (mgr *Manager) Create(ctx context.Context, user *models.User, meta Meta, op
 		ActiveOrganizationType: opt.ActiveOrganizationType,
 		DeviceToken:            opt.DeviceToken,
 	}
+	// 4b. session additionalFields: the caller's values, then the schema defaults (getSessionDefaultFields)
+	mgr.applySessionExtras(s, opt.Extra)
 
 	// 5. trigger BeforeSessionCreate hook if registered (allows plugins like admin ban-check to reject)
 	if mgr.hooks != nil {
@@ -131,11 +149,15 @@ func (mgr *Manager) Create(ctx context.Context, user *models.User, meta Meta, op
 		}
 	}
 
-	// 6. persist session row to the database if DB storage is enabled
+	// 6. persist session row to the database if DB storage is enabled (the repositories run the session
+	// database hooks); sessions only kept in secondary storage run them here, like better-auth's
+	// createWithHooks with a custom create function
 	if mgr.storeInDB() {
 		if _, err := mgr.sessionsRepo.CreateSession(ctx, s); err != nil {
 			return nil, fmt.Errorf("sessions: create: %w", err)
 		}
+	} else if err := dbhooks.RunCreateBefore(ctx, mgr.dbHooks, dbhooks.Session, s); err != nil {
+		return nil, fmt.Errorf("sessions: create: %w", err)
 	}
 
 	// 7. construct session DTO with embedded user snapshot
@@ -151,6 +173,13 @@ func (mgr *Manager) Create(ctx context.Context, user *models.User, meta Meta, op
 
 	// 9. remember the session on the request (after-request hooks such as anonymous account linking)
 	recordNewSession(ctx, swu)
+
+	// 9b. create.after hooks of sessions that only live in secondary storage
+	if !mgr.storeInDB() {
+		if err := dbhooks.RunCreateAfter(ctx, mgr.dbHooks, dbhooks.Session, s); err != nil {
+			return nil, err
+		}
+	}
 
 	// 10. return the created session
 	return swu, nil
@@ -393,7 +422,7 @@ func (mgr *Manager) DeleteUserSessions(ctx context.Context, userID string) error
 func (mgr *Manager) Update(ctx context.Context, swu *dtos.SessionWithUser, data map[string]any) (*dtos.SessionWithUser, error) {
 	now := mgr.now().UTC()
 	fields := make(map[string]any, len(data)+1)
-	maps.Copy(fields, data)
+	maps.Copy(fields, repoSessionKeys(data))
 	fields["UpdatedAt"] = now
 
 	out := *swu
@@ -410,10 +439,21 @@ func (mgr *Manager) Update(ctx context.Context, swu *dtos.SessionWithUser, data 
 		if cached, _ := mgr.fromStore(ctx, swu.Session.Token); cached == nil {
 			return nil, nil
 		}
-		if err := setSessionFields(&out.Session, data); err != nil {
+		// better-auth's updateWithHooks with a custom update function: the hooks see the changes by field name
+		changes := sessionChanges(data)
+		if err := dbhooks.RunUpdateBefore(ctx, mgr.dbHooks, dbhooks.Session, changes); err != nil {
+			if dbhooks.IsCancel(err) {
+				return swu, nil
+			}
+			return nil, err
+		}
+		if err := setSessionChanges(&out.Session, changes); err != nil {
 			return nil, err
 		}
 		out.Session.UpdatedAt = dtos.Time(now)
+		defer func() {
+			_ = dbhooks.RunUpdateAfter(ctx, mgr.dbHooks, dbhooks.Session, sessionModel(&out))
+		}()
 	}
 
 	if mgr.secStore != nil {
@@ -548,4 +588,111 @@ func (mgr *Manager) List(ctx context.Context, userID string) ([]dtos.SessionData
 		}
 	}
 	return out, nil
+}
+
+// applySessionExtras sets the caller's additional session fields, then the defaults of the session
+// schema's input fields that are still unset (better-auth's getSessionDefaultFields).
+func (mgr *Manager) applySessionExtras(s *models.Session, extra map[string]any) {
+	// Step 1: values given by the caller (registry field names)
+	for k, v := range extra {
+		if v != nil {
+			s.SetExtra(k, v)
+		}
+	}
+	if mgr.reg == nil {
+		return
+	}
+	m, ok := mgr.reg.Model(schema.ModelSession)
+	if !ok {
+		return
+	}
+	// Step 2: defaults of runtime fields (static Go fields have their own zero values / column defaults)
+	for _, f := range m.InputFields() {
+		if !f.HasDefault() {
+			continue
+		}
+		if _, static := adapterrepo.GoFieldName(schema.ModelSession, f.Name); static {
+			continue
+		}
+		if _, set := s.Extra[f.Name]; set {
+			continue
+		}
+		if v, err := schema.Normalize(f.Type, f.DefaultValue()); err == nil {
+			s.SetExtra(f.Name, v)
+		}
+	}
+}
+
+// sessionChanges converts a session update keyed by Go field names (or field names) to field names.
+func sessionChanges(data map[string]any) map[string]any {
+	out := make(map[string]any, len(data))
+	for k, v := range data {
+		if name, ok := adapterrepo.FieldName(schema.ModelSession, k); ok {
+			k = name
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// repoSessionKeys converts a session update keyed by field names to the keys every repository understands
+// (Go field names for the struct's fields, field names for runtime fields).
+func repoSessionKeys(data map[string]any) map[string]any {
+	out := make(map[string]any, len(data))
+	for k, v := range data {
+		if goName, ok := adapterrepo.GoFieldName(schema.ModelSession, k); ok {
+			k = goName
+		}
+		out[k] = v
+	}
+	return out
+}
+
+// setSessionChanges applies field-name changes to a cached session: struct fields by Go name, the others
+// into Extra (nil removes them).
+func setSessionChanges(s *dtos.SessionData, changes map[string]any) error {
+	static := map[string]any{}
+	for k, v := range changes {
+		if goName, ok := adapterrepo.GoFieldName(schema.ModelSession, k); ok {
+			static[goName] = v
+			continue
+		}
+		if s.Extra == nil {
+			s.Extra = map[string]any{}
+		}
+		if v == nil {
+			delete(s.Extra, k)
+		} else {
+			s.Extra[k] = v
+		}
+	}
+	return setSessionFields(s, static)
+}
+
+// sessionModel converts a cached session back to the model database hooks receive.
+func sessionModel(sw *dtos.SessionWithUser) *models.Session {
+	d := sw.Session
+	s := &models.Session{
+		Base:                   models.Base{ID: d.ID, CreatedAt: time.Time(d.CreatedAt), UpdatedAt: time.Time(d.UpdatedAt)},
+		Token:                  d.Token,
+		UserID:                 d.UserID,
+		ExpiresAt:              time.Time(d.ExpiresAt),
+		IPAddress:              d.IPAddress,
+		UserAgent:              d.UserAgent,
+		ImpersonatedBy:         d.ImpersonatedBy,
+		ActiveOrganizationID:   d.ActiveOrganizationID,
+		ActiveOrganizationType: d.ActiveOrganizationType,
+		ActiveOrganizationRole: d.ActiveOrganizationRole,
+		ActiveTeamID:           d.ActiveTeamID,
+		DeviceID:               d.DeviceID,
+		DeviceName:             d.DeviceName,
+		DeviceType:             d.DeviceType,
+	}
+	if d.DeviceToken != nil {
+		s.DeviceToken = *d.DeviceToken
+	}
+	for k, v := range d.Extra {
+		s.SetExtra(k, v)
+	}
+	return s
 }

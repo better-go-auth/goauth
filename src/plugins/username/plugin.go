@@ -11,7 +11,6 @@ import (
 
 	authsvc "github.com/better-go-auth/goauth/src/app/services/auth"
 	"github.com/better-go-auth/goauth/src/models"
-	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
@@ -129,8 +128,3 @@ func (p *Plugin) Service() *services.Service { return p.service }
 
 // Config returns the effective configuration.
 func (p *Plugin) Config() config.UsernameConfig { return p.config }
-
-// SchemaFields implements plugins.SchemaFieldsProvider (username plugin: username and displayUsername on the user).
-func (p *Plugin) SchemaFields() dtos.SchemaFields {
-	return dtos.SchemaFields{User: []string{dtos.FieldUsername, dtos.FieldDisplayUsername}}
-}

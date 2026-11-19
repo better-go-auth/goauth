@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 
-	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
@@ -160,9 +159,4 @@ func (h *hookService) UserDeleted(ctx context.Context, userID string) error {
 		return nil
 	}
 	return h.plugin.repo.DeleteByUserID(ctx, userID)
-}
-
-// SchemaFields implements plugins.SchemaFieldsProvider (two-factor plugin: twoFactorEnabled on the user).
-func (p *Plugin) SchemaFields() dtos.SchemaFields {
-	return dtos.SchemaFields{User: []string{dtos.FieldTwoFactorEnabled}}
 }

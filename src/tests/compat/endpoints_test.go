@@ -88,7 +88,10 @@ func TestEmailPasswordFlow(t *testing.T) {
 	expectCode(t, s.Post(t, "/api/auth/update-user", map[string]any{"role": "admin"}), http.StatusBadRequest, "NO_FIELDS_TO_UPDATE")
 	expectCode(t, s.Post(t, "/api/auth/update-user", map[string]any{"emailVerified": true}), http.StatusBadRequest, "NO_FIELDS_TO_UPDATE")
 	expectCode(t, s.Post(t, "/api/auth/update-session", map[string]any{"foo": "bar"}), http.StatusBadRequest, "NO_FIELDS_TO_UPDATE")
-	expectCode(t, s.Post(t, "/api/auth/update-session", map[string]any{"activeOrganizationId": "org"}), http.StatusBadRequest, "FIELD_NOT_ALLOWED")
+	// without the organization plugin activeOrganizationId is not a session field (ignored like better-auth);
+	// goauth's input:false bookkeeping column lastUsedAt is rejected
+	expectCode(t, s.Post(t, "/api/auth/update-session", map[string]any{"activeOrganizationId": "org"}), http.StatusBadRequest, "NO_FIELDS_TO_UPDATE")
+	expectCode(t, s.Post(t, "/api/auth/update-session", map[string]any{"lastUsedAt": "2026-01-01T00:00:00Z"}), http.StatusBadRequest, "FIELD_NOT_ALLOWED")
 	r = s.Post(t, "/api/auth/update-session", map[string]any{"deviceName": "Pixel 9", "deviceToken": "fcm:abc"})
 	expectStatus(t, r, http.StatusOK)
 	AssertJSONShape(t, r.Body, "update_session")

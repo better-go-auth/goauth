@@ -9,7 +9,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/better-go-auth/goauth/src/models/dtos"
 	"github.com/better-go-auth/goauth/src/models/migration"
 	"github.com/better-go-auth/goauth/src/plugins"
 	humaphone "github.com/better-go-auth/goauth/src/plugins/phone-number/adapters/huma"
@@ -127,10 +126,11 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	p.handler = humaphone.NewHandler(p.service)
 	// Step 3: mount the routes
 	humaphone.RegisterRoutes(ictx.Api, kit, p.handler)
-	// better-auth's before hook on /update-user: the number only changes through OTP verification
+	// better-auth's before hook on /update-user: the number only changes through OTP verification; only
+	// null (clearing it) is accepted (`"phoneNumber" in body && body.phoneNumber !== null` throws)
 	if ictx.Hooks != nil {
 		ictx.Hooks.OnUserInput(func(_ context.Context, ev *plugins.UserInputEvent) error {
-			if ev.Path == plugins.UserInputUpdateUser && plugins.IsTruthy(ev.Body["phoneNumber"]) {
+			if v, sent := ev.Body["phoneNumber"]; ev.Path == plugins.UserInputUpdateUser && sent && v != nil {
 				return services.ErrPhoneNumberCannotBeUpdated
 			}
 			return nil
@@ -155,8 +155,3 @@ func (p *Plugin) Service() *services.PhoneNumberService { return p.service }
 
 // Config returns the effective configuration.
 func (p *Plugin) Config() config.PhoneNumberConfig { return p.config }
-
-// SchemaFields implements plugins.SchemaFieldsProvider (phone-number plugin: phoneNumber and phoneNumberVerified on the user).
-func (p *Plugin) SchemaFields() dtos.SchemaFields {
-	return dtos.SchemaFields{User: []string{dtos.FieldPhoneNumber, dtos.FieldPhoneNumberVerified}}
-}

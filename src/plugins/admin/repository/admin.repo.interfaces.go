@@ -15,8 +15,6 @@ import (
 type IAdminRepo interface {
 	// ListUsers searches, filters, and paginates users according to admin criteria.
 	ListUsers(ctx context.Context, input dtos.AdminListUsersInput) ([]models.User, int64, error)
-	// CreateUserWithAccount inserts a new user and their credential account in a transaction.
-	CreateUserWithAccount(ctx context.Context, user *models.User, passwordHash string) (*models.User, error)
 	// SetUserPassword updates the password hash in the user's credential account.
 	SetUserPassword(ctx context.Context, userID, passwordHash string) error
 	// SetUserRole changes a user's role and returns the updated user.
@@ -25,9 +23,6 @@ type IAdminRepo interface {
 	BanUser(ctx context.Context, userID string, reason *string, expiresAt *time.Time) (*models.User, error)
 	// UnbanUser clears a user's ban status.
 	UnbanUser(ctx context.Context, userID string) (*models.User, error)
-	// RemoveUser deletes a user, their linked accounts, and their active sessions. With soft the user row
-	// is kept as a tombstone (config User.GoAuth.SoftDelete); otherwise it is removed like better-auth.
-	RemoveUser(ctx context.Context, userID string, soft bool) error
 	// ListUserSessions returns all active, non-expired sessions for a user.
 	ListUserSessions(ctx context.Context, userID string) ([]models.Session, error)
 	// RevokeUserSession deletes a single session by its ID or token.
@@ -44,8 +39,6 @@ type IAdminRepo interface {
 	GetUserByID(ctx context.Context, id string) (*models.User, error)
 	// GetUserByEmail retrieves a user by email.
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
-	// UpdateUser updates user fields by ID.
-	UpdateUser(ctx context.Context, userID string, updates map[string]interface{}) (*models.User, error)
 }
 
 // AdminRepositories bundles the repositories and migrator for the Admin plugin.

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/better-go-auth/goauth/src/common/dbhooks"
 	"net/http"
 	"strings"
 
@@ -94,6 +95,11 @@ type AuthConfig struct {
 	Security          SecurityConfig
 	// Hooks are better-auth's endpoint `hooks.before` / `hooks.after` (see hooks.go).
 	Hooks HooksOptions
+	// DatabaseHooks are better-auth's `databaseHooks`: before / after hooks on every create, update and delete
+	// of users, sessions, accounts and verifications, whichever endpoint or plugin writes them. A before hook
+	// changes the data in place, cancels with dbhooks.ErrCancel or fails with an error. They run after the
+	// plugins' database hooks (see package dbhooks).
+	DatabaseHooks dbhooks.Hooks
 	// OnAPIError is better-auth's `onAPIError` (errorURL, onError, throw; see api_error.go).
 	OnAPIError OnAPIErrorOptions
 	// Logger is better-auth's `logger` option (level, disabled, custom log function).

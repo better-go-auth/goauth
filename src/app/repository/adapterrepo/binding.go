@@ -246,3 +246,44 @@ var bindingSamples = map[string]any{
 func fieldOf(ptr any, name string) reflect.Value {
 	return reflect.ValueOf(ptr).Elem().FieldByName(name)
 }
+
+// FieldName returns the registry field name of the Go field goName of model's Go struct
+// ("EmailVerified" → "emailVerified"), for the persisted fields of models.User, Session, Account and
+// Verification.
+func FieldName(model, goName string) (string, bool) {
+	for _, pair := range staticFields[model] {
+		if pair[0] == goName {
+			return pair[1], true
+		}
+	}
+	return "", false
+}
+
+// GoFieldName returns the Go field of model's Go struct that stores registry field field
+// ("emailVerified" → "EmailVerified"); false for fields that only live in Extra.
+func GoFieldName(model, field string) (string, bool) {
+	for _, pair := range staticFields[model] {
+		if pair[1] == field {
+			return pair[0], true
+		}
+	}
+	return "", false
+}
+
+// SetGoField assigns value (in its canonical Go type, see schema.Normalize) to the Go field that stores
+// registry field field on ptr (a *models.User, *models.Session, *models.Account or *models.Verification).
+// It reports false when the field has no Go field (it belongs in Extra).
+func SetGoField(ptr any, model, field string, value any) (bool, error) {
+	goName, ok := GoFieldName(model, field)
+	if !ok {
+		return false, nil
+	}
+	f := reflect.ValueOf(ptr).Elem().FieldByName(goName)
+	if !f.IsValid() || !f.CanSet() {
+		return false, nil
+	}
+	if err := setField(f, value); err != nil {
+		return true, fmt.Errorf("adapterrepo: %s.%s: %w", model, field, err)
+	}
+	return true, nil
+}

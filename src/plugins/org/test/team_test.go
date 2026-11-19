@@ -32,7 +32,7 @@ func setupTeamsEnv(t *testing.T, cfg orgconfig.OrgConfig) (*helpers.TestEnv, *or
 	return setupTeamsEnvWithDB(t, nil, cfg)
 }
 
-func setupTeamsEnvWithDB(t *testing.T, db *gorm.DB, cfg orgconfig.OrgConfig) (*helpers.TestEnv, *org.OrgPlugin) {
+func setupTeamsEnvWithDB(t *testing.T, db *gorm.DB, cfg orgconfig.OrgConfig, extra ...plugin.Plugin) (*helpers.TestEnv, *org.OrgPlugin) {
 	t.Helper()
 	if db == nil {
 		db = helpers.SetupTestDB(t, helpers.DBTypeSQLite)
@@ -53,10 +53,10 @@ func setupTeamsEnvWithDB(t *testing.T, db *gorm.DB, cfg orgconfig.OrgConfig) (*h
 			Secret:         "secret-key-32-chars-long-for-test!",
 			TrustedOrigins: []string{"http://127.0.0.1:*", "http://localhost:*"},
 		},
-		Plugins: []plugin.Plugin{
+		Plugins: append([]plugin.Plugin{
 			bearer.New(bearerconfig.DefaultConfig()),
 			orgPlugin,
-		},
+		}, extra...),
 	})
 	require.NoError(t, err)
 

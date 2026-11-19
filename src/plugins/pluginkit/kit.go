@@ -20,10 +20,12 @@ import (
 	"strings"
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
+	"github.com/better-go-auth/goauth/src/app/repository/hookedrepo"
 	"github.com/better-go-auth/goauth/src/app/repository/repo_interfaces"
 	svcint "github.com/better-go-auth/goauth/src/app/services/interfaces"
 	sessionsvc "github.com/better-go-auth/goauth/src/app/services/session"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
+	"github.com/better-go-auth/goauth/src/common/dbhooks"
 	"github.com/better-go-auth/goauth/src/common/interfaces"
 	"github.com/better-go-auth/goauth/src/common/types"
 	"github.com/better-go-auth/goauth/src/config"
@@ -55,6 +57,9 @@ type Kit struct {
 	DB        *gorm.DB
 	// Limiter is goauth's global rate limiter (InitContext.RateLimiter); Route.RateLimit adds rules to it.
 	Limiter *ratelimit.Limiter
+	// Internal is goauth's internalAdapter (InitContext.Internal): user/session/account/verification writes
+	// with database hooks and additionalFields. CreateUser and CreateSession go through it.
+	Internal svcint.IInternalAdapter
 
 	generateID func() string
 }
@@ -99,6 +104,7 @@ func New(ictx *plugins.InitContext) (*Kit, error) {
 		Store:      ictx.SecondaryStorage,
 		DB:         ictx.DB,
 		Limiter:    ictx.RateLimiter,
+		Internal:   ictx.Internal,
 		generateID: ictx.GenerateID,
 	}, nil
 }
@@ -289,7 +295,13 @@ func (k *Kit) ReadSignedCookie(ctx context.Context, base string) (string, bool) 
 // CreateSession starts a session for user. Errors from BeforeSessionCreate hooks (e.g. BANNED_USER) are
 // returned unchanged; anything else becomes FAILED_TO_CREATE_SESSION.
 func (k *Kit) CreateSession(ctx context.Context, user *models.User, dontRemember bool) (*dtos.SessionWithUser, error) {
-	sw, err := k.Sessions.Create(ctx, user, k.Meta(ctx), sessionsvc.CreateOptions{DontRemember: dontRemember})
+	var sw *dtos.SessionWithUser
+	var err error
+	if k.Internal != nil {
+		sw, err = k.Internal.CreateSession(ctx, user, k.Meta(ctx), sessionsvc.CreateOptions{DontRemember: dontRemember})
+	} else {
+		sw, err = k.Sessions.Create(ctx, user, k.Meta(ctx), sessionsvc.CreateOptions{DontRemember: dontRemember})
+	}
 	if err != nil {
 		if ae := autherr.AsAuthError(err); ae != nil {
 			return nil, ae
@@ -366,25 +378,49 @@ func (k *Kit) NewID() string {
 	return models.NewID()
 }
 
-// CreateUser inserts user, running BeforeUserCreate and AfterUserCreate hooks like core sign-up does.
-// Hook errors are returned unchanged; repository errors become FAILED_TO_CREATE_USER.
+// CreateUser inserts user through the internal adapter (better-auth's internalAdapter.createUser), which runs
+// the database hooks: BeforeUserCreate / AfterUserCreate, plugin and AuthConfig.DatabaseHooks. A hook's own
+// error is returned unchanged; a cancelled create and repository errors become FAILED_TO_CREATE_USER.
 func (k *Kit) CreateUser(ctx context.Context, user *models.User) (*models.User, error) {
 	// Step 1: fill the ID and better-auth defaults
 	if user.ID == "" {
 		user.ID = k.NewID()
 	}
-	// Step 2: plugins may adjust or veto the user
+	// Step 2: insert with the database hooks (repositories outside SetupGoAuth run the typed hooks here)
+	var created *models.User
+	var err error
+	if k.Internal != nil {
+		created, err = k.Internal.CreateUser(ctx, user)
+	} else {
+		created, err = k.createUserWithTypedHooks(ctx, user)
+	}
+	if err != nil {
+		if hookedrepo.IsHookError(err) && !dbhooks.IsCancel(err) {
+			return nil, err
+		}
+		if ae := autherr.AsAuthError(err); ae != nil && k.Internal == nil {
+			return nil, ae
+		}
+		return nil, autherr.ErrFailedToCreateUser
+	}
+	return created, nil
+}
+
+// createUserWithTypedHooks is CreateUser for kits built without an internal adapter (tests): the typed
+// BeforeUserCreate / AfterUserCreate hooks around the repository insert.
+func (k *Kit) createUserWithTypedHooks(ctx context.Context, user *models.User) (*models.User, error) {
+	// Step 1: plugins may adjust or veto the user
 	if k.Hooks != nil {
 		if err := k.Hooks.TriggerBeforeUserCreate(ctx, user); err != nil {
 			return nil, err
 		}
 	}
-	// Step 3: insert
+	// Step 2: insert
 	created, err := k.Repos.CreateUser(ctx, user)
 	if err != nil {
-		return nil, autherr.ErrFailedToCreateUser
+		return nil, errors.New("pluginkit: create user: " + err.Error())
 	}
-	// Step 4: after-create hooks (e.g. email-otp sending a verification code)
+	// Step 3: after-create hooks
 	if k.Hooks != nil {
 		if err := k.Hooks.TriggerAfterUserCreate(ctx, created); err != nil {
 			return nil, err
