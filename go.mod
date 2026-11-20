@@ -3,11 +3,13 @@ module github.com/better-go-auth/goauth
 go 1.26.4
 
 require (
+	github.com/coreos/go-oidc/v3 v3.17.0
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/fxamacker/cbor/v2 v2.9.4
 	github.com/gin-gonic/gin v1.12.0
 	github.com/go-chi/chi/v5 v5.3.1
+	github.com/go-jose/go-jose/v4 v4.1.3
 	github.com/go-webauthn/webauthn v0.18.2
 	github.com/gofiber/fiber/v2 v2.52.14
 	github.com/google/uuid v1.6.0
@@ -19,6 +21,7 @@ require (
 	github.com/testcontainers/testcontainers-go/modules/postgres v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/redis v0.44.0
 	golang.org/x/crypto v0.57.0
+	golang.org/x/oauth2 v0.36.0
 	gorm.io/driver/mysql v1.6.0
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/driver/sqlite v1.6.0

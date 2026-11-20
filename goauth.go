@@ -342,6 +342,14 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		Schema:           reg,
 		Internal:         internal,
 	}
+	// better-auth's ctx.context.getPlugin: every plugin of the list, initialized or not yet
+	installed := make(map[string]plugin.Plugin, len(opts.Plugins))
+	for _, p := range opts.Plugins {
+		if p != nil {
+			installed[p.ID()] = p
+		}
+	}
+	initCtx.Plugin = func(id string) plugin.Plugin { return installed[id] }
 
 	// Phase 1: Initialize plugins (transport/middleware plugins first so global middlewares wrap all plugin routes)
 	isTransportPlugin := func(id string) bool {

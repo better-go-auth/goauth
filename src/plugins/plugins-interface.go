@@ -63,6 +63,10 @@ type InitContext struct {
 	// delete users, sessions, accounts and verifications with database hooks, additionalFields and secondary
 	// storage applied. Plugins use it instead of writing through IAuthRepos directly.
 	Internal svcint.IInternalAdapter
+	// Plugin returns the installed plugin with id, or nil (better-auth's ctx.context.getPlugin). Plugins are
+	// initialized one after the other, so call it at request time (or after Init) to see every plugin; nil
+	// outside SetupGoAuth.
+	Plugin func(id string) Plugin
 
 	// Extras is intentionally disabled. We do not use this field; all
 	// dependencies are provided via the typed fields above (DB,

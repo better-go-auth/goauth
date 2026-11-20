@@ -160,6 +160,10 @@ type Route struct {
 	ValidateFirst bool
 	// AcceptForm also accepts application/x-www-form-urlencoded bodies (see FormBody), like better-call.
 	AcceptForm bool
+	// OptionalBody lets a handler with a RawBody input field receive requests without a body (Huma makes a
+	// RawBody body required); the handler then sees an empty RawBody, e.g. to answer better-call's own
+	// validation error for a missing body.
+	OptionalBody bool
 }
 
 // Path returns the full mount path of a route path ("/sign-in/x" → "/api/auth/sign-in/x").
@@ -215,7 +219,7 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 		handler = requireInHandler(k, r.Access, handler)
 		r.Access = OptionalSession
 	}
-	huma.Register(api, huma.Operation{
+	op := huma.Operation{
 		OperationID: r.OperationID,
 		Method:      r.Method,
 		Path:        k.Path(r.Path),
@@ -224,7 +228,18 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 		Hidden:      r.Hidden,
 		Metadata:    map[string]any{types.RawBodyMetaKey: true},
 		Middlewares: k.Middlewares(r),
-	}, handler)
+	}
+	// OptionalBody: Huma marks a RawBody request body required while registering; the registered operation
+	// shares this *RequestBody, so clearing the flag afterwards makes the body optional
+	var rb *huma.RequestBody
+	if r.OptionalBody {
+		rb = &huma.RequestBody{}
+		op.RequestBody = rb
+	}
+	huma.Register(api, op, handler)
+	if rb != nil {
+		rb.Required = false
+	}
 }
 
 // requireInHandler wraps handler with the Session / FreshSession check (401 UNAUTHORIZED, 403

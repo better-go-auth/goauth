@@ -206,6 +206,12 @@ func (p *Plugin) VerifyJWT(ctx context.Context, token, issuer string) (map[strin
 	return p.service.VerifyJWT(ctx, token, issuer)
 }
 
+// Config returns the plugin's configuration (better-auth's jwtPlugin.options), e.g. for the oidc-provider
+// plugin, which takes its issuer from JWT.Issuer.
+func (p *Plugin) Config() jwtconfig.JWTConfig {
+	return p.config
+}
+
 // Routes returns nil as routes are mounted via Huma API in Init.
 func (p *Plugin) Routes() []plugins.RouteDescriptor {
 	return nil
