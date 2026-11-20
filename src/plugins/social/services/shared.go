@@ -44,6 +44,17 @@ func (s *Service) ParseState(ctx context.Context, state string) (*StateData, []h
 	return s.parseState(ctx, state)
 }
 
+// GenerateStateWithCookie is GenerateState with generateGenericState's settings.cookieName (e.g. the sso
+// plugin's SAML "relay_state"); "" keeps "state" / "oauth_state".
+func (s *Service) GenerateStateWithCookie(ctx context.Context, cookieName string, link *StateLink, in StateRequest) (*GeneratedState, error) {
+	return s.generateStateNamed(ctx, cookieName, link, in)
+}
+
+// ParseStateWithCookie is parseGenericState(ctx, state, {cookieName, skipStateCookieCheck}).
+func (s *Service) ParseStateWithCookie(ctx context.Context, cookieName, state string, skipStateCookieCheck bool) (*StateData, []http.Cookie, error) {
+	return s.parseStateNamed(ctx, cookieName, state, skipStateCookieCheck)
+}
+
 // ParseStateSkipCookieCheck is better-auth's parseGenericState(ctx, state, {skipStateCookieCheck: true}): the
 // signed `state` cookie of the database strategy is not required (oauth-proxy callbacks).
 func (s *Service) ParseStateSkipCookieCheck(ctx context.Context, state string) (*StateData, []http.Cookie, error) {

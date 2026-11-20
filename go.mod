@@ -3,7 +3,9 @@ module github.com/better-go-auth/goauth
 go 1.26.4
 
 require (
+	github.com/beevik/etree v1.8.1
 	github.com/coreos/go-oidc/v3 v3.17.0
+	github.com/crewjam/saml v0.6.3
 	github.com/danielgtaylor/huma/v2 v2.39.1
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/fxamacker/cbor/v2 v2.9.4
@@ -15,6 +17,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/lib/pq v1.12.3
 	github.com/oklog/ulid/v2 v2.1.2
+	github.com/russellhaering/goxmldsig v1.6.1
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/testcontainers/testcontainers-go/modules/mysql v0.44.0
@@ -50,6 +53,7 @@ require (
 	github.com/gofiber/schema v1.8.2 // indirect
 	github.com/gofiber/utils/v2 v2.2.0 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
+	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/leodido/go-urn v1.4.0 // indirect

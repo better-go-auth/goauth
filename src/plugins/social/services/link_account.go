@@ -51,6 +51,12 @@ type oauthUserInput struct {
 	CallbackURL      string
 	DisableSignUp    bool
 	OverrideUserInfo bool
+	// IsTrustedProvider lets implicit linking skip the provider email_verified requirement (better-auth's
+	// opts.isTrustedProvider, e.g. an SSO provider whose domain is verified).
+	IsTrustedProvider bool
+	// IgnoreTrustedProviders stops AccountLinking.TrustedProviders from trusting the provider by its id
+	// (better-auth's trustProviderByName: false).
+	IgnoreTrustedProviders bool
 }
 
 // oauthUserResult is handleOAuthUserInfo's result: Error is better-auth's `error` string ("account not linked",
@@ -302,7 +308,7 @@ func (s *Service) handleOAuthUserInfo(ctx context.Context, in oauthUserInput) (*
 	if user != nil {
 		if linked == nil {
 			// Step 2a: existing user, account not linked yet: apply the implicit linking policy
-			trusted := s.isTrustedProvider(account.ProviderID)
+			trusted := in.IsTrustedProvider || (!in.IgnoreTrustedProviders && s.isTrustedProvider(account.ProviderID))
 			if (!trusted && !info.EmailVerified) ||
 				(s.cfg.RequireLocalEmailVerified() && !user.EmailVerified) ||
 				!s.cfg.LinkingEnabled() ||

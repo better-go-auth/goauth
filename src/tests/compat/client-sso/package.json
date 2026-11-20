@@ -1,0 +1,13 @@
+{
+  "name": "compat-client-sso",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "better-auth": "1.6.16",
+    "@better-auth/core": "1.6.16",
+    "@better-auth/sso": "1.6.16",
+    "@better-auth/utils": "0.4.1",
+    "@better-fetch/fetch": "1.2.2",
+    "better-call": "1.3.6"
+  }
+}

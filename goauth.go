@@ -341,6 +341,7 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		Adapter:          store,
 		Schema:           reg,
 		Internal:         internal,
+		Plugins:          opts.Plugins,
 	}
 	// better-auth's ctx.context.getPlugin: every plugin of the list, initialized or not yet
 	installed := make(map[string]plugin.Plugin, len(opts.Plugins))

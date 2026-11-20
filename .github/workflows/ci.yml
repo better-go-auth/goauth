@@ -41,6 +41,11 @@ jobs:
       - name: install better-auth passkey client
         working-directory: src/tests/compat/client-passkey
         run: npm install --no-audit --no-fund --legacy-peer-deps
+      - name: install better-auth sso and scim clients
+        # samlify's install script is not needed by the client tests
+        run: |
+          (cd src/tests/compat/client-sso && npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts)
+          (cd src/tests/compat/client-scim && npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts)
       - name: unit and plugin tests (race detector)
         run: go test -race ./... -count=1 -timeout 900s
 
@@ -98,6 +103,8 @@ jobs:
         run: |
           (cd src/tests/compat/client && rm -f node_modules && npm install --no-audit --no-fund)
           (cd src/tests/compat/client-passkey && npm install --no-audit --no-fund --legacy-peer-deps)
+          (cd src/tests/compat/client-sso && npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts)
+          (cd src/tests/compat/client-scim && npm install --no-audit --no-fund --legacy-peer-deps --ignore-scripts)
       - name: compat tests (postgres + better-auth clients)
         if: matrix.db == 'postgres'
         env:

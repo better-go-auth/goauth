@@ -21,6 +21,10 @@ const opMetaKey = "goauth"
 // host transformers), as better-auth clients expect exact payloads.
 const RawBodyMetaKey = "goauth.rawBody"
 
+// SkipOriginCheckMetaKey marks operations that skip the Origin/Referer CSRF check, better-auth's
+// skipOriginCheck paths (e.g. SAML endpoints receiving cross-site POSTs from an identity provider).
+const SkipOriginCheckMetaKey = "goauth.skipOriginCheck"
+
 // NewError builds goauth's Better Auth style error ({"code","message"}).
 // Request body validation failures (422) are reported as 400 VALIDATION_ERROR, like Better Auth.
 func NewError(status int, msg string, errs ...error) huma.StatusError {

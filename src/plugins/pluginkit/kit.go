@@ -219,6 +219,11 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 		handler = requireInHandler(k, r.Access, handler)
 		r.Access = OptionalSession
 	}
+	meta := map[string]any{types.RawBodyMetaKey: true}
+	if r.SkipOriginCheck {
+		// the global security middleware skips the origin check too (better-auth's skipOriginCheck paths)
+		meta[types.SkipOriginCheckMetaKey] = true
+	}
 	op := huma.Operation{
 		OperationID: r.OperationID,
 		Method:      r.Method,
@@ -226,7 +231,7 @@ func Register[I, O any](k *Kit, api huma.API, r Route, handler func(context.Cont
 		Summary:     r.Summary,
 		Tags:        r.Tags,
 		Hidden:      r.Hidden,
-		Metadata:    map[string]any{types.RawBodyMetaKey: true},
+		Metadata:    meta,
 		Middlewares: k.Middlewares(r),
 	}
 	// OptionalBody: Huma marks a RawBody request body required while registering; the registered operation
