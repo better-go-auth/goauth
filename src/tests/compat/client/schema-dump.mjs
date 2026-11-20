@@ -31,6 +31,15 @@ try {
 	// without client-passkey/node_modules the passkey table is left out (the Go test notices)
 }
 
+// the api-key plugin is a separate package too (installed in ../client-apikey)
+let apiKeyPlugin = null;
+try {
+	const mod = await import("../client-apikey/node_modules/@better-auth/api-key/dist/index.mjs");
+	apiKeyPlugin = mod.apiKey();
+} catch {
+	// without client-apikey/node_modules the apikey table is left out (the Go test notices)
+}
+
 // Step 2: better-auth's options with every plugin goauth implements
 const db = new Database(":memory:");
 const options = {
@@ -54,6 +63,7 @@ const options = {
 		twoFactor(),
 		username(),
 		...(passkeyPlugin ? [passkeyPlugin] : []),
+		...(apiKeyPlugin ? [apiKeyPlugin] : []),
 	],
 	logger: { disabled: true },
 };
@@ -64,7 +74,7 @@ await runMigrations();
 
 // Step 4: dump tables, columns, indexes and foreign keys; "defaults" lists the fields whose value
 // better-auth's adapter always fills (defaultValue), per table
-const out = { tables: {}, defaults: {}, passkey: Boolean(passkeyPlugin) };
+const out = { tables: {}, defaults: {}, passkey: Boolean(passkeyPlugin), apikey: Boolean(apiKeyPlugin) };
 for (const [model, def] of Object.entries(getAuthTables(options))) {
 	const table = def.modelName || model;
 	out.defaults[table] = Object.entries(def.fields)
