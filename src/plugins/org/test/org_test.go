@@ -16,7 +16,6 @@ import (
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
-	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/stretchr/testify/require"
@@ -405,7 +404,7 @@ func TestOrgE2E_FullFlow(t *testing.T) {
 // and that svc.SetRepositories conditionally binds repositories based on configuration.
 func TestOrgPlugin_RepoValidation(t *testing.T) {
 	db := helpers.SetupTestDB(t, helpers.DBTypeSQLite)
-	baseRepos := orgrepo.NewOrgRepos(db)
+	baseRepos := helpers.OrgRepos(t, db)
 
 	t.Run("Teams enabled requires TeamRepo and TeamMemberRepo", func(t *testing.T) {
 		// Step 1: Omit team repo while teams are enabled

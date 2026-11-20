@@ -65,7 +65,7 @@ on the first `/token` or `/jwks` call. Private keys are encrypted with the auth 
 | `DisableSettingJwtHeader` | false | Don't send `set-auth-jwt` on `/get-session` |
 
 Functional options include `jwtplugin.WithIssuer`, `WithAudience`, `WithExpirationTime`, `WithJwksPath`,
-`WithDisableSettingJwtHeader` and `WithBasePath` (default `/api/auth`).
+`WithDisableSettingJwtHeader` and `WithBasePath` (default: the core `AuthConfig.BasePath`).
 
 ## Algorithms
 

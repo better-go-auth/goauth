@@ -3,25 +3,22 @@ package humajwt
 import (
 	"context"
 
-	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
 	autherr "github.com/better-go-auth/goauth/src/common/autherr"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/models"
 	"github.com/better-go-auth/goauth/src/plugins/jwt/services"
+	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	"github.com/danielgtaylor/huma/v2"
 )
 
 // JWTHandler handles HTTP requests for JWKS and JWT operations.
 type JWTHandler struct {
-	service  *services.JWTService
-	resolver *humaadapter.Resolver
+	service *services.JWTService
+	kit     *pluginkit.Kit
 }
 
-// NewJWTHandler creates a new JWTHandler.
-func NewJWTHandler(service *services.JWTService, resolver *humaadapter.Resolver) *JWTHandler {
-	return &JWTHandler{
-		service:  service,
-		resolver: resolver,
-	}
+// NewJWTHandler creates a new JWTHandler; kit provides the session the routes resolve.
+func NewJWTHandler(service *services.JWTService, kit *pluginkit.Kit) *JWTHandler {
+	return &JWTHandler{service: service, kit: kit}
 }
 
 type getJWKSOutput struct {
@@ -39,26 +36,15 @@ func (h *JWTHandler) GetJWKS(ctx context.Context, _ *struct{}) (*getJWKSOutput, 
 	}, nil
 }
 
-type getTokenInput struct {
-	Cookie        string `header:"Cookie"`
-	Authorization string `header:"Authorization"`
-}
-
 type getTokenOutput struct {
 	Body struct {
 		Token string `json:"token"`
 	}
 }
 
-// GetToken handles GET /token (requires active session).
-func (h *JWTHandler) GetToken(ctx context.Context, in *getTokenInput) (*getTokenOutput, error) {
-	session, _ := humaadapter.FromContext(ctx)
-	if session == nil && h.resolver != nil {
-		s, err := h.resolver.Resolve(ctx, in.Cookie)
-		if err == nil && s != nil {
-			session = s
-		}
-	}
+// GetToken handles GET /token (the route requires a session; pluginkit's resolver attaches it).
+func (h *JWTHandler) GetToken(ctx context.Context, _ *struct{}) (*getTokenOutput, error) {
+	session := h.kit.Current(ctx)
 	if session == nil {
 		return nil, autherr.ErrUnauthorized
 	}

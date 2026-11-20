@@ -88,10 +88,14 @@ type UpdatePasskeyBody struct {
 	Name string `json:"name" doc:"The new name which the passkey will be updated to"`
 }
 
-// StatusResponse is {"status": true}.
-type StatusResponse struct {
+// PasskeyStatusResponse is {"status": true}. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type PasskeyStatusResponse struct {
 	Status bool `json:"status"`
 }
+
+// StatusResponse is PasskeyStatusResponse (the name earlier goauth versions used).
+type StatusResponse = PasskeyStatusResponse
 
 // SessionResponse is the verify-authentication response {session, user}.
 type SessionResponse = dtos.SessionWithUser

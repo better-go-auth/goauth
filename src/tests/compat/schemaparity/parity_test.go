@@ -8,7 +8,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"reflect"
 	"sort"
 	"strings"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	plugin "github.com/better-go-auth/goauth/src/plugins"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	"github.com/better-go-auth/goauth/src/plugins/anonymous"
 	anonconfig "github.com/better-go-auth/goauth/src/plugins/anonymous/config"
 	apikey "github.com/better-go-auth/goauth/src/plugins/api-key"
@@ -136,14 +136,14 @@ func betterAuthSchema(t *testing.T) dump {
 }
 
 // plugins returns every goauth plugin that has a better-auth counterpart, configured like schema-dump.mjs.
-func plugins(t *testing.T, db *gorm.DB) []plugin.Plugin {
+func plugins(t *testing.T) []plugin.Plugin {
 	t.Helper()
-	adminPlugin, err := admin.NewWithGorm(db)
+	adminPlugin, err := admin.New(adminrepo.AdminRepositories{})
 	require.NoError(t, err)
-	orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 		Teams:                &orgconfig.TeamsConfig{Enabled: true},
 		DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{Enabled: true},
-	})
+	}})
 	require.NoError(t, err)
 	return []plugin.Plugin{
 		adminPlugin,
@@ -174,14 +174,14 @@ func goauthSchema(t *testing.T) dump {
 	require.NoError(t, err)
 	opts := goauth.GoAuthOptions{
 		Conn:    db,
-		Plugins: plugins(t, db),
+		Plugins: plugins(t),
 		AuthConfig: config.AuthConfig{
 			BaseURL: "http://localhost:3000", Secret: compattest.TestSecret,
 			GoAuth:    config.GoAuthConfig{ColumnCase: schema.Camel},
 			RateLimit: config.RateLimitOptions{Storage: ratelimit.StorageDatabase},
 		},
 	}
-	_, err = goauth.SetupGoAuth(context.Background(), humago.New(http.NewServeMux(), apiConfig()), opts)
+	_, err = goauth.SetupGoAuth(context.Background(), humago.New(http.NewServeMux(), huma.DefaultConfig("parity", "1")), opts)
 	require.NoError(t, err)
 	// Step 2: tables, columns (with defaults), indexes, foreign keys
 	return readSchema(t, db)
@@ -238,25 +238,6 @@ func readSchema(t *testing.T, db *gorm.DB) dump {
 		d.Tables[name] = tb
 	}
 	return d
-}
-
-// apiConfig is Huma's default configuration with schema names qualified by package: several plugins
-// declare response types of the same name (SuccessResponse, StatusResponse), which Huma's default namer
-// rejects when those plugins are installed together.
-func apiConfig() huma.Config {
-	cfg := huma.DefaultConfig("parity", "1")
-	cfg.Components.Schemas = huma.NewMapRegistry("#/components/schemas/", func(t reflect.Type, hint string) string {
-		name := huma.DefaultSchemaNamer(t, hint)
-		for t.Kind() == reflect.Pointer || t.Kind() == reflect.Slice {
-			t = t.Elem()
-		}
-		pkg := t.PkgPath()
-		if i := strings.LastIndex(pkg, "/src/"); i >= 0 {
-			pkg = pkg[i+5:]
-		}
-		return strings.NewReplacer("/", "_", "-", "_", ".", "_").Replace(pkg) + "_" + name
-	})
-	return cfg
 }
 
 // category groups SQLite declared types the way values are stored (better-auth's matchType for sqlite).
@@ -363,20 +344,11 @@ func hasFK(t table, f fk) bool {
 	return false
 }
 
-// knownGaps are differences of plugins that still create their tables from GORM structs: fixing them
-// means changing GORM tags, which makes GORM's AutoMigrate alter (on SQLite: rebuild) the tables of every
-// existing deployment. They disappear when the plugins declare their tables through SchemaProvider
-// (missing-tasks 2.9). Organization rows written by a TypeScript server fail on the goauth-only NOT NULL
-// updatedAt columns until then.
-var knownGaps = map[string]bool{
-	"invitation.updatedAt (goauth only) is NOT NULL without default":                         true,
-	"member.updatedAt (goauth only) is NOT NULL without default":                             true,
-	"organization.updatedAt (goauth only) is NOT NULL without default":                       true,
-	"teamMember.updatedAt (goauth only) is NOT NULL without default":                         true,
-	"organizationRole.updatedAt is NOT NULL without default; better-auth leaves it nullable": true,
-	"team.updatedAt is NOT NULL without default; better-auth leaves it nullable":             true,
-	"teamMember.createdAt is NOT NULL without default; better-auth leaves it nullable":       true,
-}
+// knownGaps are accepted differences that break a TypeScript better-auth server sharing the database. Every
+// plugin declares its tables through SchemaProvider now (missing-tasks 2.9), so there are none; a database
+// created by an older goauth (GORM AutoMigrate of the plugin structs) keeps NOT NULL updatedAt columns on
+// the organization tables until the operator relaxes them (see _docs/schema-and-migrations.md).
+var knownGaps = map[string]bool{}
 
 // TestCamelSchemaMatchesBetterAuth checks that goauth with ColumnCase camel creates every table and column
 // better-auth 1.6.16 creates (core, every implemented plugin, rateLimit) with compatible types, no NOT NULL
@@ -398,7 +370,7 @@ func TestCamelSchemaMatchesBetterAuth(t *testing.T) {
 	var unexpected []string
 	for _, h := range hard {
 		if knownGaps[h] {
-			t.Log("known gap (missing-tasks 2.9):", h)
+			t.Log("known gap:", h)
 			continue
 		}
 		unexpected = append(unexpected, h)
@@ -407,15 +379,16 @@ func TestCamelSchemaMatchesBetterAuth(t *testing.T) {
 }
 
 // TestRenderedCamelSchemaMatchesBetterAuth runs goauth's generated desired-state SQL (what Atlas, goose
-// and golang-migrate users get from goauth.GenerateSQL) for camel case on SQLite and compares the
-// registry's tables with better-auth's: this path has no GORM involved and no known gaps.
+// and golang-migrate users get from goauth.GenerateSQL) for camel case and every plugin on SQLite and
+// compares every table with better-auth's: this path has no GORM involved and no known gaps.
 func TestRenderedCamelSchemaMatchesBetterAuth(t *testing.T) {
 	ba := betterAuthSchema(t)
+	require.True(t, ba.Passkey, "client-passkey/node_modules is needed for the passkey table")
 	// Step 1: goauth's SQL with the same plugins as the TypeScript schema (plugin columns of the core tables
 	// exist only for installed plugins), executed on a fresh database
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:rendered_%s?mode=memory&cache=shared", uuid.NewString())), &gorm.Config{Logger: logger.Discard})
 	require.NoError(t, err)
-	sql, err := goauth.GenerateSQL(goauth.GoAuthOptions{Plugins: plugins(t, db), AuthConfig: config.AuthConfig{
+	sql, err := goauth.GenerateSQL(goauth.GoAuthOptions{Plugins: plugins(t), AuthConfig: config.AuthConfig{
 		GoAuth:    config.GoAuthConfig{ColumnCase: schema.Camel},
 		RateLimit: config.RateLimitOptions{Storage: ratelimit.StorageDatabase},
 	}}, render.SQLite)
@@ -424,14 +397,8 @@ func TestRenderedCamelSchemaMatchesBetterAuth(t *testing.T) {
 	require.NoError(t, err)
 	_, err = sqlDB.Exec(sql)
 	require.NoError(t, err)
-	// Step 2: compare the registry's tables only (plugin tables still come from GORM structs)
+	// Step 2: compare every table (core, plugins, rateLimit)
 	ga := readSchema(t, db)
-	registryTables := map[string]bool{"user": true, "session": true, "account": true, "verification": true, "rateLimit": true}
-	for name := range ba.Tables {
-		if !registryTables[name] {
-			delete(ba.Tables, name)
-		}
-	}
 	hard, notes := diff(ba, ga)
 	for _, n := range notes {
 		t.Log("difference:", n)

@@ -21,6 +21,7 @@ import (
 	accesstokensvc "github.com/better-go-auth/goauth/src/plugins/access-token/services"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	adminsvc "github.com/better-go-auth/goauth/src/plugins/admin/services"
 	"github.com/better-go-auth/goauth/src/plugins/bearer"
 	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
@@ -141,12 +142,12 @@ func SetupTestEnvWithDB(t *testing.T, dbType DatabaseType) *TestEnv {
 	mux := http.NewServeMux()
 	api := humago.New(mux, huma.DefaultConfig("Better Go Auth Test API", "1.0.0"))
 
-	adminPlugin, err := admin.NewWithGorm(gormDB)
+	adminPlugin, err := admin.New(adminrepo.AdminRepositories{})
 	if err != nil {
 		t.Fatalf("failed to initialize admin plugin: %v", err)
 	}
 
-	orgPlugin, err := org.NewWithGorm(gormDB, orgconfig.OrgConfig{})
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{}})
 	if err != nil {
 		t.Fatalf("failed to initialize org plugin: %v", err)
 	}

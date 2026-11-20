@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/better-go-auth/goauth/src/common/consts"
-	"github.com/better-go-auth/goauth/src/common/middleware"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 
 	humaadapter "github.com/better-go-auth/goauth/src/app/adapters/huma"
@@ -18,30 +17,40 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
+	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	"github.com/better-go-auth/goauth/src/providers/access"
+	"github.com/danielgtaylor/huma/v2"
 )
 
-// rawBodyMeta marks an org operation so its JSON body reaches the client as better-auth sends it
-// (no Huma "$schema" link field).
-func rawBodyMeta() map[string]any {
-	return map[string]any{humatypes.RawBodyMetaKey: true}
-}
-
-// OrgHandler holds org-domain services and embeds AuthHandler for authentication.
+// OrgHandler holds org-domain services; its routes are mounted through pluginkit.
 type OrgHandler struct {
-	Org        orgsvc.IOrgService
-	Cfg        config.AuthConfig
-	MiddleWare *middleware.AuthMiddleware
-	authFn     authenticator.AuthenticateFunc
+	Org orgsvc.IOrgService
+	Cfg config.AuthConfig
+	// Kit is the plugin runtime the routes are registered with (session resolver, origin check, disabled
+	// routes, rate limiter, cookies).
+	Kit    *pluginkit.Kit
+	authFn authenticator.AuthenticateFunc
 }
 
-// NewOrgHandler creates a new OrgHandler.
-func NewOrgHandler(org orgsvc.IOrgService, mdlware *middleware.AuthMiddleware, authFn ...authenticator.AuthenticateFunc) *OrgHandler {
+// NewOrgHandler creates a new OrgHandler. authFn authenticates direct handler calls that carry the
+// credentials in their AuthHeaders instead of going through the HTTP session middleware.
+func NewOrgHandler(org orgsvc.IOrgService, kit *pluginkit.Kit, authFn ...authenticator.AuthenticateFunc) *OrgHandler {
 	var af authenticator.AuthenticateFunc
 	if len(authFn) > 0 {
 		af = authFn[0]
 	}
-	return &OrgHandler{Org: org, MiddleWare: mdlware, authFn: af}
+	return &OrgHandler{Org: org, Kit: kit, authFn: af}
+}
+
+// register mounts an organization endpoint through pluginkit like every other plugin: goauth's one
+// session resolver (cookie, bearer and access-token sessions; 401 UNAUTHORIZED without a session), the
+// origin / CSRF check, disabled routes (DisabledPaths / DisabledOps) and better-auth's raw JSON bodies.
+// op.Path is relative to BasePath.
+func register[I, O any](api huma.API, h *OrgHandler, op huma.Operation, handler func(context.Context, *I) (*O, error)) {
+	pluginkit.Register(h.Kit, api, pluginkit.Route{
+		OperationID: op.OperationID, Method: op.Method, Path: op.Path, Summary: op.Summary,
+		Description: op.Description, Tags: op.Tags, DefaultStatus: op.DefaultStatus, Access: pluginkit.Session,
+	}, handler)
 }
 
 // opErrors are the errors the equivalent better-auth endpoint returns when no organization is given
@@ -253,13 +262,14 @@ func defaultPagi() models.Pagination {
 	return models.Pagination{Limit: 50, Offset: 0, SortBy: "createdAt", SortDir: "desc"}
 }
 
-// Authenticate delegates authentication to the core authenticate function.
-// It first checks if the request was already authenticated into context by middleware.
+// Authenticate returns the caller's session: the one goauth's session resolver attached to the request (a
+// full session with the user, also for access-token JWTs), else the claims a token middleware put in the
+// context, else authFn for direct handler calls.
 func (h *OrgHandler) Authenticate(ctx context.Context, auth humatypes.AuthHeaders) (*dtos.SessionWithUser, error) {
-	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
+	if sess, ok := humaadapter.FromContext(ctx); ok && sess != nil {
 		return sess, nil
 	}
-	if sess, ok := humaadapter.FromContext(ctx); ok && sess != nil {
+	if sess, ok := authenticator.SessionFromContext(ctx); ok && sess != nil {
 		return sess, nil
 	}
 	if h.authFn != nil {

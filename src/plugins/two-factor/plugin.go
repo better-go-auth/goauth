@@ -13,9 +13,11 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	humatf "github.com/better-go-auth/goauth/src/plugins/two-factor/adapters/huma"
 	tfconfig "github.com/better-go-auth/goauth/src/plugins/two-factor/config"
+	tfmodels "github.com/better-go-auth/goauth/src/plugins/two-factor/models"
 	"github.com/better-go-auth/goauth/src/plugins/two-factor/repository"
 	"github.com/better-go-auth/goauth/src/plugins/two-factor/services"
 	"github.com/better-go-auth/goauth/src/providers/ratelimit"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 // PluginID is better-auth's plugin id.
@@ -35,12 +37,13 @@ var (
 	_ plugins.Plugin            = (*Plugin)(nil)
 	_ plugins.HookProvider      = (*Plugin)(nil)
 	_ plugins.RateLimitProvider = (*Plugin)(nil)
+	_ plugins.SchemaProvider    = (*Plugin)(nil)
 )
 
 // Option configures the plugin.
 type Option func(*Plugin)
 
-// WithRepo sets a custom twoFactor repository (default: GORM on the auth database).
+// WithRepo sets a custom twoFactor repository (default: the twoFactor table through InitContext.Adapter).
 func WithRepo(repo repository.ITwoFactorRepo) Option {
 	return func(p *Plugin) { p.repo = repo }
 }
@@ -78,12 +81,16 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 		return err
 	}
 	p.kit = kit
-	// Step 2: twoFactor table repository
+	// Step 2: twoFactor table repository on the storage adapter (the table comes from Schema)
 	if p.repo == nil {
-		if ictx.DB == nil {
-			return errors.New("two-factor plugin: a *gorm.DB or WithRepo is required")
+		if ictx.Adapter == nil {
+			return errors.New("two-factor plugin: a storage adapter (GoAuthOptions.Conn or adapter-based Repositories) or WithRepo is required")
 		}
-		p.repo = repository.NewGormRepo(ictx.DB)
+		repo, err := repository.New(ictx.Adapter, ictx.Schema)
+		if err != nil {
+			return err
+		}
+		p.repo = repo
 	}
 	// Step 3: service, lifecycle hooks and the sign-in challenge
 	p.service = services.New(p.config, kit, p.repo)
@@ -99,13 +106,11 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	return nil
 }
 
-// Migrator creates the twoFactor table.
-func (p *Plugin) Migrator() migration.IMigrator {
-	if p.repo == nil {
-		return nil
-	}
-	return p.repo.Migrator()
-}
+// Schema declares better-auth's twoFactor table (plugins.SchemaProvider); goauth's migrator creates it.
+func (p *Plugin) Schema() schema.PluginSchema { return tfmodels.Schema() }
+
+// Migrator returns nil: the twoFactor table is declared by Schema and created by goauth's migrator.
+func (p *Plugin) Migrator() migration.IMigrator { return nil }
 
 // Services exposes the two-factor service.
 func (p *Plugin) Services() map[string]any {

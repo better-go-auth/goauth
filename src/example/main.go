@@ -19,6 +19,7 @@ import (
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/plugins/org"
@@ -92,12 +93,12 @@ func main() {
 	}
 
 	emailSender := &ConsoleEmailSender{}
-	adminPlugin, err := admin.NewWithGorm(db)
+	adminPlugin, err := admin.New(adminrepo.AdminRepositories{})
 	if err != nil {
 		log.Fatalf("failed to create admin plugin: %v", err)
 	}
 
-	orgPlugin, err := org.NewWithGorm(db, config.OrgConfig{
+	orgPlugin, err := org.New(org.OrgOptions{Config: config.OrgConfig{
 		OrgNeedsApproval: true,
 		InvitaionConfig: config.InvitaionConfig{
 			SendOrgInvitation: func(ctx context.Context, to, inviterName, orgName, inviteURL string) error {
@@ -105,7 +106,7 @@ func main() {
 				return nil
 			},
 		},
-	})
+	}})
 	if err != nil {
 		log.Fatalf("failed to create org plugin: %v", err)
 	}

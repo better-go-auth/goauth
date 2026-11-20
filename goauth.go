@@ -424,12 +424,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// config: DatabaseHooks run after the plugins' database hooks (better-auth's order)
 	dbHooks.Add("user", opts.DatabaseHooks)
 
-	// Phase 2: Run migrations for all plugins (now fully configured with DB). Plugins storing GORM structs
-	// migrate them here in auto mode only (verify / off leave the schema to the operator); plugins declaring
-	// their tables with SchemaProvider were migrated with the registry above
-	if err := checkDatabaseIDs(reg, opts.Plugins); err != nil {
-		return nil, err
-	}
+	// Phase 2: Run migrations for all plugins (now fully configured with DB). Third-party plugins storing
+	// GORM structs migrate them here in auto mode only (verify / off leave the schema to the operator);
+	// plugins declaring their tables with SchemaProvider (every goauth plugin) were migrated with the
+	// registry above
 	for _, p := range opts.Plugins {
 		if p == nil || migrationMode != config.MigrationsAuto {
 			continue

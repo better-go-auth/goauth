@@ -14,8 +14,9 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgmiddleware "github.com/better-go-auth/goauth/src/plugins/org/middleware"
 	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
-	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
+	"github.com/better-go-auth/goauth/src/plugins/org/repository/adapterorg"
 	orgsvc "github.com/better-go-auth/goauth/src/plugins/org/services"
+	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	"github.com/better-go-auth/goauth/src/providers/access"
 	"github.com/better-go-auth/goauth/src/providers/authenticator"
 	sec_storage "github.com/better-go-auth/goauth/src/providers/sec-storage"
@@ -24,7 +25,7 @@ import (
 
 const PluginID = "org"
 
-// OrgPlugin implements the plugins.OrgPlugin interface for multi-tenancy / organizations.
+// OrgPlugin implements plugin.Plugin and plugin.SchemaProvider for multi-tenancy / organizations.
 type OrgPlugin struct {
 	Config     config.OrgConfig
 	authConfig authconf.AuthConfig
@@ -38,6 +39,11 @@ type OrgPlugin struct {
 	secStorage    sec_storage.SecondaryStorage
 	middleware    *orgmiddleware.OrgAuthMiddleware
 }
+
+var (
+	_ plugin.Plugin         = (*OrgPlugin)(nil)
+	_ plugin.SchemaProvider = (*OrgPlugin)(nil)
+)
 
 type Option func(*OrgPlugin)
 
@@ -61,17 +67,20 @@ func WithRoles(roles map[string]access.Role) Option {
 	}
 }
 
-// NewWithGorm creates a new Org plugin directly backed by GORM.
-func NewWithGorm(db *gorm.DB, cfg config.OrgConfig, opts ...Option) (*OrgPlugin, error) {
-	repos := gormorg.NewOrgRepos(db)
-	orgOptions := OrgOptions{
-		Repo:   repos,
-		Config: cfg,
-	}
-	return New(orgOptions, opts...)
+// NewWithGorm creates the Org plugin. db is not used: the organization tables are declared with Schema
+// and stored through goauth's storage adapter (GoAuthOptions.Conn or adapter-based Repositories).
+//
+// Deprecated: use New(OrgOptions{Config: cfg}, opts...). NewWithGorm is removed in the next release.
+func NewWithGorm(_ *gorm.DB, cfg config.OrgConfig, opts ...Option) (*OrgPlugin, error) {
+	return New(OrgOptions{Config: cfg}, opts...)
 }
 
+// OrgOptions configures New.
 type OrgOptions struct {
+	// Repo replaces the default repositories (the organization tables through InitContext.Adapter). Leave
+	// it empty to use the defaults; when set, OrgRepo, MemberRepo and InviteRepo are required (plus the team
+	// and role repositories when those features are enabled), and its IMigrator, if any, runs in
+	// GoAuth.Migrations.Mode auto.
 	Repo   orgrepo.OrgRepositories
 	Config config.OrgConfig
 }
@@ -84,27 +93,44 @@ func New(options OrgOptions, opts ...Option) (*OrgPlugin, error) {
 		opt(p)
 	}
 
-	// Step 1: Ensure core repositories and migrator are provided
-	if p.orgRepos.IOrgRepo == nil || p.orgRepos.IMemberRepo == nil || p.orgRepos.IInvitationRepo == nil || p.orgRepos.IMigrator == nil {
-		return nil, fmt.Errorf("org plugin: OrgRepo, MemberRepo, InviteRepo and Migrator are required")
-	}
-
-	// Step 2: Ensure team repositories are provided when teams feature is enabled
-	if p.Config.Teams != nil && p.Config.Teams.Enabled {
-		if p.orgRepos.ITeamRepo == nil || p.orgRepos.ITeamMemberRepo == nil {
-			return nil, fmt.Errorf("org plugin: TeamRepo and TeamMemberRepo are required when teams are enabled")
+	// Step 1: custom repositories must be complete (the defaults are built in Init from the adapter)
+	if p.hasCustomRepos() {
+		if err := p.checkRepos(); err != nil {
+			return nil, err
 		}
 	}
-
-	// Step 3: Ensure organization role repository is provided when dynamic access control is enabled
-	if p.Config.DynamicAccessControl != nil && p.Config.DynamicAccessControl.Enabled {
-		if p.orgRepos.IOrganizationRoleRepo == nil {
-			return nil, fmt.Errorf("org plugin: OrganizationRoleRepo is required when dynamic access control is enabled")
-		}
-	}
-
 	p.migrator = p.orgRepos.IMigrator
 	return p, nil
+}
+
+// hasCustomRepos reports whether OrgOptions.Repo set any repository.
+func (p *OrgPlugin) hasCustomRepos() bool {
+	r := p.orgRepos
+	return r.IOrgRepo != nil || r.IMemberRepo != nil || r.IInvitationRepo != nil || r.ITeamRepo != nil ||
+		r.ITeamMemberRepo != nil || r.IOrganizationRoleRepo != nil
+}
+
+// checkRepos ensures the repositories the configured features need are present.
+func (p *OrgPlugin) checkRepos() error {
+	// Step 1: core repositories
+	if p.orgRepos.IOrgRepo == nil || p.orgRepos.IMemberRepo == nil || p.orgRepos.IInvitationRepo == nil {
+		return fmt.Errorf("org plugin: OrgRepo, MemberRepo and InviteRepo are required")
+	}
+	// Step 2: team repositories when the teams feature is enabled
+	if p.teamsEnabled() && (p.orgRepos.ITeamRepo == nil || p.orgRepos.ITeamMemberRepo == nil) {
+		return fmt.Errorf("org plugin: TeamRepo and TeamMemberRepo are required when teams are enabled")
+	}
+	// Step 3: organization role repository when dynamic access control is enabled
+	if p.dynamicACEnabled() && p.orgRepos.IOrganizationRoleRepo == nil {
+		return fmt.Errorf("org plugin: OrganizationRoleRepo is required when dynamic access control is enabled")
+	}
+	return nil
+}
+
+func (p *OrgPlugin) teamsEnabled() bool { return p.Config.Teams != nil && p.Config.Teams.Enabled }
+
+func (p *OrgPlugin) dynamicACEnabled() bool {
+	return p.Config.DynamicAccessControl != nil && p.Config.DynamicAccessControl.Enabled
 }
 
 func WithOrgConfig(orgConfig config.OrgConfig) Option {
@@ -118,7 +144,25 @@ func (p *OrgPlugin) ID() string {
 }
 
 func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
-	// 2. Resolve Migrator
+	if ictx == nil {
+		return fmt.Errorf("org plugin: init context is required")
+	}
+	// 1. Default repositories: the organization tables (Schema) through the storage adapter
+	if !p.hasCustomRepos() {
+		if ictx.Adapter == nil {
+			return fmt.Errorf("org plugin: a storage adapter (GoAuthOptions.Conn or adapter-based Repositories) or OrgOptions.Repo is required")
+		}
+		repos, err := adapterorg.NewRepos(ictx.Adapter, ictx.Schema)
+		if err != nil {
+			return fmt.Errorf("org plugin: %w", err)
+		}
+		p.orgRepos = repos
+		if err := p.checkRepos(); err != nil {
+			return err
+		}
+	}
+
+	// 2. Resolve Migrator (custom repositories only; the default tables come from Schema)
 	p.migrator = p.orgRepos.IMigrator
 
 	var sessionServ serv_interfaces.ISessionManager
@@ -126,12 +170,12 @@ func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
 		sessionServ = ictx.SessionManager
 	}
 
-	// 3. Create Org Service
+	// 3. Create Org Service (transactions: GoAuthOptions.TxManager, else the adapter's)
 	svc := orgsvc.New(
 		p.orgRepos.IOrgRepo,
 		p.orgRepos.IMemberRepo,
 		p.orgRepos.IInvitationRepo,
-		ictx.TxManager,
+		pluginkit.TxManager(ictx.TxManager, ictx.Adapter),
 		ictx.IAuthRepos,
 		sessionServ,
 	)
@@ -157,13 +201,20 @@ func (p *OrgPlugin) Init(ictx *plugin.InitContext) error {
 		}
 	}
 
-	if ictx != nil && ictx.Api != nil {
-		p.SetupHumaRoutes(ictx.Api, ictx.MiddleWare)
+	// 4. HTTP endpoints through pluginkit (one session resolver, origin check, disabled routes, rate limit)
+	if ictx.Api != nil {
+		kit, err := pluginkit.New(ictx)
+		if err != nil {
+			return fmt.Errorf("org plugin: %w", err)
+		}
+		p.SetupHumaRoutes(ictx.Api, kit)
 	}
 
 	return nil
 }
 
+// Migrator returns the migrator of custom repositories (OrgOptions.Repo.IMigrator), else nil: the default
+// tables are declared by Schema and created by goauth's migrator.
 func (p *OrgPlugin) Migrator() migration.IMigrator {
 	return p.migrator
 }
@@ -184,6 +235,12 @@ func (p *OrgPlugin) Hooks() plugin.HookService {
 // Migrating to RouteDescriptors is tracked in _docs/plugins/authoring-guide.md.
 func (p *OrgPlugin) Routes() []plugin.RouteDescriptor {
 	return nil
+}
+
+// Repositories returns the plugin's repositories (OrgOptions.Repo, else the defaults on the storage adapter,
+// available after Init), e.g. for a Teams.DefaultTeam.CustomCreateDefaultTeam callback that stores a team.
+func (p *OrgPlugin) Repositories() orgrepo.OrgRepositories {
+	return p.orgRepos
 }
 
 // Service returns the initialized IOrgService interface.

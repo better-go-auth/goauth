@@ -38,7 +38,7 @@ func setupTeamsEnvWithDB(t *testing.T, db *gorm.DB, cfg orgconfig.OrgConfig, ext
 		db = helpers.SetupTestDB(t, helpers.DBTypeSQLite)
 	}
 
-	orgPlugin, err := org.NewWithGorm(db, cfg)
+	orgPlugin, err := org.New(org.OrgOptions{Config: cfg})
 	require.NoError(t, err)
 
 	mux := http.NewServeMux()

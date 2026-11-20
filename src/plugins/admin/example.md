@@ -40,16 +40,20 @@ Those roles are separate from `user.role`, which is the one the admin plugin che
 import (
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	adminconfig "github.com/better-go-auth/goauth/src/plugins/admin/config"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	"github.com/better-go-auth/goauth/src/providers/access"
 )
 
+// the plugin reads and writes users, sessions and accounts through goauth's storage adapter (any database
+// GoAuthOptions.Conn points at, or adapter-based Repositories); an empty repository bundle uses that
+
 // default roles (admin / user): nothing to configure
-adminPlugin, err := admin.NewWithGorm(db)
+adminPlugin, err := admin.New(adminrepo.AdminRepositories{})
 
 // or custom roles, with an app-specific resource
 statements := adminconfig.DefaultStatements.Merge(access.Statements{"report": {"read", "export"}})
 ac := access.NewAccessControl(statements)
-adminPlugin, err := admin.NewWithGorm(db,
+adminPlugin, err := admin.New(adminrepo.AdminRepositories{},
 	admin.WithAccessControl(ac),
 	admin.WithRoles(map[string]access.Role{
 		"admin":   ac.NewRole(adminconfig.AdminAC.Statements().Merge(access.Statements{"report": {"read", "export"}})),

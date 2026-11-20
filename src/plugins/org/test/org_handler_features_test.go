@@ -12,12 +12,12 @@ import (
 	"time"
 
 	serv_interfaces "github.com/better-go-auth/goauth/src/app/services/interfaces"
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/models/enums"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
-	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -227,11 +227,13 @@ func TestOrgHandlers_TeamsAndHooks(t *testing.T) {
 				Enabled: &enabled,
 				CustomCreateDefaultTeam: func(ctx context.Context, org *orgmodels.Organization) (*orgmodels.Team, error) {
 					now := coremodels.TimeNow()
-					return gormorg.NewTeamRepo(db).CreateTeam(ctx, &orgmodels.Team{
+					team := &orgmodels.Team{
 						Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 						Name:           "Default-" + org.Name,
 						OrganizationID: org.ID,
-					})
+					}
+					// the hook runs inside the plugin's transaction (ctx)
+					return team, gormutil.GetDB(ctx, db).Create(team).Error
 				},
 			},
 			MaximumTeamsFn: func(ctx context.Context, data orgconfig.TeamLimitData) (int, error) {

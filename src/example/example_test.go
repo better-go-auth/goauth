@@ -16,6 +16,7 @@ import (
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	accesstokendtos "github.com/better-go-auth/goauth/src/plugins/access-token/dtos"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	emailotp "github.com/better-go-auth/goauth/src/plugins/email-otp"
 	emailotpconfig "github.com/better-go-auth/goauth/src/plugins/email-otp/config"
 	"github.com/better-go-auth/goauth/src/plugins/org"
@@ -48,12 +49,12 @@ func TestExample_LegacyAuthEndpoint(t *testing.T) {
 	}
 
 	emailSender := &ConsoleEmailSender{}
-	adminPlugin, err := admin.NewWithGorm(db)
+	adminPlugin, err := admin.New(adminrepo.AdminRepositories{})
 	if err != nil {
 		t.Fatalf("failed to create admin plugin: %v", err)
 	}
 
-	orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{OrgNeedsApproval: false})
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{OrgNeedsApproval: false}})
 	if err != nil {
 		t.Fatalf("failed to create org plugin: %v", err)
 	}

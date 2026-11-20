@@ -4,52 +4,58 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/better-go-auth/goauth/src/common/types"
+	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
 	"github.com/danielgtaylor/huma/v2"
 )
 
-// RegisterRoutes registers the JWT plugin endpoints onto the Huma API (GET /jwks and GET /token).
-func RegisterRoutes(api huma.API, basePath string, jwksPath string, handler *JWTHandler) {
-	if basePath == "" {
-		basePath = "/api/auth"
+// Operation IDs (better-auth's endpoint keys), usable in AuthConfig.DisabledOps.
+const (
+	OpGetJWKS     = "getJSONWebKeySet"
+	OpGetJWKSRoot = "getJSONWebKeySetRoot"
+	OpGetToken    = "getJSONWebToken"
+)
+
+// RegisterRoutes registers the JWT plugin endpoints through pluginkit (GET <BasePath><jwksPath> and
+// GET <BasePath>/token), plus GET <jwksPath> at the server root when jwksPath is not below BasePath.
+func RegisterRoutes(api huma.API, kit *pluginkit.Kit, jwksPath string, handler *JWTHandler) {
+	if api == nil {
+		return
 	}
-	basePath = strings.TrimSuffix(basePath, "/")
 	if jwksPath == "" {
 		jwksPath = "/jwks"
 	}
 	if !strings.HasPrefix(jwksPath, "/") {
 		jwksPath = "/" + jwksPath
 	}
+	tags := []string{"JWT"}
 
-	// 1. GET /jwks (primary path under basePath)
-	huma.Register(api, huma.Operation{
-		OperationID: "getJSONWebKeySet",
-		Method:      http.MethodGet,
-		Path:        basePath + jwksPath,
-		Summary:     "Get the JSON Web Key Set",
-		Description: "Get the JSON Web Key Set",
-		Tags:        []string{"JWT"},
+	// Step 1: GET /jwks (public, under BasePath)
+	pluginkit.Register(kit, api, pluginkit.Route{
+		OperationID: OpGetJWKS, Method: http.MethodGet, Path: jwksPath,
+		Summary: "Get the JSON Web Key Set", Description: "Get the JSON Web Key Set", Tags: tags,
+		Access: pluginkit.Public,
 	}, handler.GetJWKS)
 
-	// Also register on root jwksPath if basePath is non-empty and jwksPath doesn't already start with basePath
-	if basePath != "" && !strings.HasPrefix(jwksPath, basePath) {
+	// Step 2: the same key set at the server root (well-known style), outside goauth's base path
+	rootDisabled := pluginkit.Route{OperationID: OpGetJWKSRoot, Path: jwksPath}
+	if kit.BasePath != "" && !strings.HasPrefix(jwksPath, kit.BasePath) && !kit.Disabled(rootDisabled) {
 		huma.Register(api, huma.Operation{
-			OperationID: "getJSONWebKeySetRoot",
+			OperationID: OpGetJWKSRoot,
 			Method:      http.MethodGet,
 			Path:        jwksPath,
 			Summary:     "Get the JSON Web Key Set (Root)",
 			Description: "Get the JSON Web Key Set at root path",
-			Tags:        []string{"JWT"},
+			Tags:        tags,
+			Metadata:    map[string]any{types.RawBodyMetaKey: true},
 		}, handler.GetJWKS)
 	}
 
-	// 2. GET /token
-	huma.Register(api, huma.Operation{
-		OperationID: "getJSONWebToken",
-		Method:      http.MethodGet,
-		Path:        basePath + "/token",
-		Summary:     "Get a JWT token",
-		Description: "Get a JWT token for the current session",
-		Tags:        []string{"JWT"},
+	// Step 3: GET /token (session required)
+	pluginkit.Register(kit, api, pluginkit.Route{
+		OperationID: OpGetToken, Method: http.MethodGet, Path: "/token",
+		Summary: "Get a JWT token", Description: "Get a JWT token for the current session", Tags: tags,
+		Access: pluginkit.Session,
 	}, handler.GetToken)
 
 	// POST /sign-jwt and POST /verify-jwt are SERVER_ONLY in better-auth and are deliberately not

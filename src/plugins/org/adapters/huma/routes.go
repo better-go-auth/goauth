@@ -142,467 +142,378 @@ var OrgRoutePermissions = map[consts.OperationId]access.Request{
 
 // SetupOrgRoutes registers all organization, invitation, and member endpoints.
 func SetupOrgRoutes(api huma.API, h *OrgHandler) {
-	path := h.Cfg.BasePath
 	orgTags := []string{"Organizations"}
 
 	// Org
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrCreateOrg.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/create",
+		Path:        "/organization/create",
 		Summary:     "Create Organization",
 		Description: "Creates a new organization and registers the creator as its owner.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.CreateOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrGetOrg.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/get-full-organization",
+		Path:        "/organization/get-full-organization",
 		Summary:     "Get Organization Details",
 		Description: "Fetches details for an organization.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.GetOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrUpdateOrg.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/update",
+		Path:        "/organization/update",
 		Summary:     "Update Organization",
 		Description: "Updates metadata and fields for an organization (admin/owner required).",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.UpdateOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID:   OrDeleteOrg.Str(),
 		Method:        http.MethodDelete,
-		Path:          path + "/organization/delete",
+		Path:          "/organization/delete",
 		Summary:       "Delete Organization",
 		Description:   "Deletes an organization and all its memberships.",
 		Tags:          orgTags,
 		DefaultStatus: http.StatusOK,
-		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:      rawBodyMeta(),
 	}, h.DeleteOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID:   OrDeleteOrg.Str() + "-Post",
 		Method:        http.MethodPost,
-		Path:          path + "/organization/delete",
+		Path:          "/organization/delete",
 		Summary:       "Delete Organization (Better Auth POST alias)",
 		Description:   "Deletes an organization and all its memberships.",
 		Tags:          orgTags,
 		DefaultStatus: http.StatusOK,
-		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:      rawBodyMeta(),
 	}, h.DeleteOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: "Or-CheckSlug",
 		Method:      http.MethodPost,
-		Path:        path + "/organization/check-slug",
+		Path:        "/organization/check-slug",
 		Summary:     "Check Organization Slug",
 		Description: "Checks whether an organization slug is available.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.CheckSlug)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListOrgs.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/list",
+		Path:        "/organization/list",
 		Summary:     "List User Organizations",
 		Description: "Lists all organizations where the authenticated user is a member.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListOrgs)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrSetActiveOrg.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/set-active",
+		Path:        "/organization/set-active",
 		Summary:     "Set Active Organization",
 		Description: "Marks an organization as active for the current session.",
 		Tags:        orgTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.SetActiveOrg)
 
 	invitationTags := []string{"Org-Invitation"}
 	// Invitation
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrInviteMember.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/invite-member",
+		Path:        "/organization/invite-member",
 		Summary:     "Invite Member",
 		Description: "Sends an organization invitation to an email address.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.InviteMember)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrGetInvitation.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/get-invitation",
+		Path:        "/organization/get-invitation",
 		Summary:     "Get Invitation Details",
 		Description: "Fetches details of a specific invitation.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.GetInvitation)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrAcceptInvitation.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/accept-invitation",
+		Path:        "/organization/accept-invitation",
 		Summary:     "Accept Invitation",
 		Description: "Accepts an invitation to join an organization.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.AcceptInvitation)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrRejectInvitation.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/reject-invitation",
+		Path:        "/organization/reject-invitation",
 		Summary:     "Reject Invitation",
 		Description: "Rejects an organization invitation.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.RejectInvitation)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrCancelInvitation.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/cancel-invitation",
+		Path:        "/organization/cancel-invitation",
 		Summary:     "Cancel Invitation",
 		Description: "Cancels a pending invitation.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.CancelInvitation)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListInvitations.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/list-invitations",
+		Path:        "/organization/list-invitations",
 		Summary:     "List Organization Invitations",
 		Description: "Lists all pending and processed invitations for an organization.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListInvitations)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListUserInvitations.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/list-user-invitations",
+		Path:        "/organization/list-user-invitations",
 		Summary:     "List User Invitations",
 		Description: "Lists pending invitations addressed to the authenticated user's email.",
 		Tags:        invitationTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListUserInvitations)
 
 	memberTags := []string{"Org-Members"}
 	// Member
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrGetMember.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/get-member",
+		Path:        "/organization/get-member",
 		Summary:     "Get Member Details",
 		Description: "Returns details of an organization member.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.GetMember)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListMembers.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/list-members",
+		Path:        "/organization/list-members",
 		Summary:     "List Organization Members",
 		Description: "Returns a list of members in the organization.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListMembers)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrUpdateMemberRole.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/update-member-role",
+		Path:        "/organization/update-member-role",
 		Summary:     "Update Member Role",
 		Description: "Changes an organization member's role (owner required).",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.UpdateMemberRole)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrRemoveMember.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/remove-member",
+		Path:        "/organization/remove-member",
 		Summary:     "Remove Member",
 		Description: "Removes a member from the organization.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.RemoveMember)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrLeaveOrg.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/leave",
+		Path:        "/organization/leave",
 		Summary:     "Leave Organization",
 		Description: "Allows the authenticated member to voluntarily leave an organization.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.LeaveOrganization)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrGetActiveMember.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/get-active-member",
+		Path:        "/organization/get-active-member",
 		Summary:     "Get Active Member",
 		Description: "Returns the caller's membership (with user) in the active organization.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.GetActiveMember)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrGetActiveMemberRole.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/get-active-member-role",
+		Path:        "/organization/get-active-member-role",
 		Summary:     "Get Active Member Role",
 		Description: "Returns the role of the caller (or of userId) in the active or given organization.",
 		Tags:        memberTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.GetActiveMemberRole)
 
 	teamTags := []string{"Teams"}
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrCreateTeam.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/team/create",
+		Path:        "/organization/team/create",
 		Summary:     "Create Team",
 		Description: "Creates a new team within an organization.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.CreateTeam)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrUpdateTeam.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/team/update",
+		Path:        "/organization/team/update",
 		Summary:     "Update Team",
 		Description: "Updates an existing team's details.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.UpdateTeam)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrDeleteTeam.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/team/delete",
+		Path:        "/organization/team/delete",
 		Summary:     "Delete Team",
 		Description: "Deletes a team from an organization.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.DeleteTeam)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListTeams.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/team/list",
+		Path:        "/organization/team/list",
 		Summary:     "List Teams",
 		Description: "Returns all teams within an organization.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListTeams)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrAddTeamMember.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/team/add-member",
+		Path:        "/organization/team/add-member",
 		Summary:     "Add Team Member",
 		Description: "Adds an existing organization member to a team.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.AddTeamMember)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrRemoveTeamMember.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/team/remove-member",
+		Path:        "/organization/team/remove-member",
 		Summary:     "Remove Team Member",
 		Description: "Removes a member from a team.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.RemoveTeamMember)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrSetActiveTeam.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/set-active-team",
+		Path:        "/organization/set-active-team",
 		Summary:     "Set Active Team",
 		Description: "Sets or unsets the active team for the session.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.SetActiveTeam)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListTeamMembers.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/team/list-members",
+		Path:        "/organization/team/list-members",
 		Summary:     "List Team Members",
 		Description: "Returns all members of a team with user details.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListTeamMembers)
 
 	// Better Auth canonical team route aliases (/organization/*-team)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrCreateTeam.Str() + "-BA",
 		Method:      http.MethodPost,
-		Path:        path + "/organization/create-team",
+		Path:        "/organization/create-team",
 		Summary:     "Create Team (Better Auth)",
 		Description: "Creates a new team within an organization.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.CreateTeam)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrUpdateTeam.Str() + "-BA",
 		Method:      http.MethodPost,
-		Path:        path + "/organization/update-team",
+		Path:        "/organization/update-team",
 		Summary:     "Update Team (Better Auth)",
 		Description: "Updates an existing team's details.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.UpdateTeam)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrDeleteTeam.Str() + "-BA",
 		Method:      http.MethodPost,
-		Path:        path + "/organization/remove-team",
+		Path:        "/organization/remove-team",
 		Summary:     "Remove Team (Better Auth)",
 		Description: "Deletes a team from an organization.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.DeleteTeam)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListTeams.Str() + "-BA",
 		Method:      http.MethodGet,
-		Path:        path + "/organization/list-teams",
+		Path:        "/organization/list-teams",
 		Summary:     "List Teams (Better Auth)",
 		Description: "Returns all teams within an organization.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListTeams)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrAddTeamMember.Str() + "-BA",
 		Method:      http.MethodPost,
-		Path:        path + "/organization/add-team-member",
+		Path:        "/organization/add-team-member",
 		Summary:     "Add Team Member (Better Auth)",
 		Description: "Adds an existing organization member to a team.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.AddTeamMember)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrRemoveTeamMember.Str() + "-BA",
 		Method:      http.MethodPost,
-		Path:        path + "/organization/remove-team-member",
+		Path:        "/organization/remove-team-member",
 		Summary:     "Remove Team Member (Better Auth)",
 		Description: "Removes a member from a team.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.RemoveTeamMember)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListTeamMembers.Str() + "-BA",
 		Method:      http.MethodGet,
-		Path:        path + "/organization/list-team-members",
+		Path:        "/organization/list-team-members",
 		Summary:     "List Team Members (Better Auth)",
 		Description: "Returns all members of a team with user details.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListTeamMembers)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListUserTeams.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/list-user-teams",
+		Path:        "/organization/list-user-teams",
 		Summary:     "List User Teams",
 		Description: "Returns every team the caller belongs to, in organizations they are a member of.",
 		Tags:        teamTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListUserTeams)
 
 	adminTags := []string{"Admin-Orgs"}
 	// Admin Org Management
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID:   OrAdminCreateOrg.Str(),
 		Method:        http.MethodPost,
-		Path:          path + "/admin/organization/create",
+		Path:          "/admin/organization/create",
 		Summary:       "[Admin] Create Organization",
 		Description:   "Creates an active organization immediately, optionally assigning an ownerUserId. Requires system Admin role.",
 		Tags:          adminTags,
 		DefaultStatus: http.StatusCreated,
-		Middlewares:   huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:      rawBodyMeta(),
 	}, h.AdminCreateOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrAdminGetOrg.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/admin/organization/get",
+		Path:        "/admin/organization/get",
 		Summary:     "[Admin] Get Organization",
 		Description: "Returns organization details by organizationId. Requires system Admin role.",
 		Tags:        adminTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.AdminGetOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrAdminApproveOrg.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/admin/organization/approve",
+		Path:        "/admin/organization/approve",
 		Summary:     "[Admin] Approve Organization",
 		Description: "Approves a pending organization, setting its status to active. Requires system Admin role.",
 		Tags:        adminTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.AdminApproveOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrAdminBlockOrg.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/admin/organization/block",
+		Path:        "/admin/organization/block",
 		Summary:     "[Admin] Block Organization",
 		Description: "Suspends an organization. Requires system Admin role.",
 		Tags:        adminTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.AdminBlockOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrAdminUnblockOrg.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/admin/organization/unblock",
+		Path:        "/admin/organization/unblock",
 		Summary:     "[Admin] Unblock Organization",
 		Description: "Re-activates a suspended or inactive organization. Requires system Admin role.",
 		Tags:        adminTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.AdminUnblockOrg)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrAdminListOrgs.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/admin/organization/list",
+		Path:        "/admin/organization/list",
 		Summary:     "[Admin] List All Organizations",
 		Description: "Returns all organizations with optional status filter. Requires system Admin role.",
 		Tags:        adminTags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.AdminListOrgs)
 
 	// Access control
-	setupAccessControlRoutes(api, h, path)
+	setupAccessControlRoutes(api, h)
 }

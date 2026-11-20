@@ -231,27 +231,6 @@ func restoreTag(f *gormschema.Field, key, value string) {
 	}
 }
 
-// checkDatabaseIDs refuses plugins that store their own tables through GORM structs with goauth-generated
-// string ids when the database creates ids (Advanced.Database.IDFormat database / serial): their rows would
-// get empty ids, and their varchar references can't point at integer ids. Plugins declaring their tables
-// with SchemaProvider and using the adapter are fine.
-func checkDatabaseIDs(reg *schema.Registry, list []plugin.Plugin) error {
-	if !reg.IDStrategy().DatabaseGenerated() {
-		return nil
-	}
-	var bad []string
-	for _, p := range list {
-		if p != nil && p.Migrator() != nil {
-			bad = append(bad, p.ID())
-		}
-	}
-	if len(bad) == 0 {
-		return nil
-	}
-	return fmt.Errorf("goauth: Advanced.Database.IDFormat %q needs every table on the schema registry, but plugins %s "+
-		"still store GORM structs with goauth-generated string ids; use another IDFormat with them", reg.IDStrategy(), strings.Join(bad, ", "))
-}
-
 // checkGORMRepositories refuses configuration additionalFields with GoAuthOptions.GORMRepositories: the
 // hand-written GORM repositories insert and read the Go structs only, so the values would be lost. Plugin
 // SchemaProvider fields on the core models (e.g. last-login-method's lastLoginMethod) are written by updates

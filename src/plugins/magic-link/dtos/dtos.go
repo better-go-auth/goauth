@@ -13,10 +13,14 @@ type SignInMagicLinkInput struct {
 	Metadata           map[string]any `json:"metadata,omitempty" doc:"Additional metadata to pass to sendMagicLink"`
 }
 
-// StatusResponse is better-auth's { status: true }.
-type StatusResponse struct {
+// MagicLinkStatusResponse is better-auth's { status: true }. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type MagicLinkStatusResponse struct {
 	Status bool `json:"status"`
 }
+
+// StatusResponse is MagicLinkStatusResponse (the name earlier goauth versions used).
+type StatusResponse = MagicLinkStatusResponse
 
 // VerifyMagicLinkResponse is the JSON body of GET /magic-link/verify without callbackURL.
 type VerifyMagicLinkResponse struct {

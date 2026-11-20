@@ -39,71 +39,59 @@ type GetRoleInput struct {
 
 // setupAccessControlRoutes registers /organization/has-permission and, when dynamic access control
 // is enabled (like better-auth), the role CRUD endpoints.
-func setupAccessControlRoutes(api huma.API, h *OrgHandler, path string) {
+func setupAccessControlRoutes(api huma.API, h *OrgHandler) {
 	tags := []string{"Org-AccessControl"}
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrHasPermission.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/has-permission",
+		Path:        "/organization/has-permission",
 		Summary:     "Check Organization Permission",
 		Description: "Checks whether the caller's member role in the organization grants the permissions.",
 		Tags:        tags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.HasPermission)
 
 	if !h.Org.DynamicAccessControlEnabled() {
 		return
 	}
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrCreateRole.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/create-role",
+		Path:        "/organization/create-role",
 		Summary:     "Create Organization Role",
 		Description: "Creates a dynamic role (requires ac:create and every granted permission).",
 		Tags:        tags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.CreateRole)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrDeleteRole.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/delete-role",
+		Path:        "/organization/delete-role",
 		Summary:     "Delete Organization Role",
 		Description: "Deletes a dynamic role by roleName or roleId (requires ac:delete).",
 		Tags:        tags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.DeleteRole)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrListRoles.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/list-roles",
+		Path:        "/organization/list-roles",
 		Summary:     "List Organization Roles",
 		Description: "Lists the organization's dynamic roles (requires ac:read).",
 		Tags:        tags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.ListRoles)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrGetRole.Str(),
 		Method:      http.MethodGet,
-		Path:        path + "/organization/get-role",
+		Path:        "/organization/get-role",
 		Summary:     "Get Organization Role",
 		Description: "Reads a dynamic role by roleName or roleId (requires ac:read).",
 		Tags:        tags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.GetRole)
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: OrUpdateRole.Str(),
 		Method:      http.MethodPost,
-		Path:        path + "/organization/update-role",
+		Path:        "/organization/update-role",
 		Summary:     "Update Organization Role",
 		Description: "Updates a dynamic role's permission and/or name (requires ac:update and every granted permission).",
 		Tags:        tags,
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
-		Metadata:    rawBodyMeta(),
 	}, h.UpdateRole)
 }
 

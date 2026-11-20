@@ -12,6 +12,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	tfconfig "github.com/better-go-auth/goauth/src/plugins/two-factor/config"
+	tfmodels "github.com/better-go-auth/goauth/src/plugins/two-factor/models"
 	"github.com/better-go-auth/goauth/src/plugins/two-factor/services"
 	"github.com/better-go-auth/goauth/src/providers/authcrypto"
 	compattest "github.com/better-go-auth/goauth/src/tests/compat"
@@ -157,7 +158,7 @@ func TestEnable_StoresEncryptedSecretAndCodes(t *testing.T) {
 	}
 	// re-enabling replaced the row (still one row)
 	var n int64
-	e.s.DB.Table("twoFactor").Where("user_id = ?", id).Count(&n)
+	e.s.DB.Model(&tfmodels.TwoFactor{}).Where(&tfmodels.TwoFactor{UserID: id}).Count(&n)
 	if n != 1 {
 		t.Fatalf("want 1 twoFactor row, got %d", n)
 	}
@@ -195,7 +196,7 @@ func TestEnable_AllowPasswordless(t *testing.T) {
 
 func removePassword(t *testing.T, e *env, userID string) {
 	t.Helper()
-	if err := e.s.DB.Model(&models.Account{}).Where("user_id = ?", userID).Update("password", nil).Error; err != nil {
+	if err := e.s.DB.Model(&models.Account{}).Where(&models.Account{UserID: userID}).Update("Password", nil).Error; err != nil {
 		t.Fatalf("remove password: %v", err)
 	}
 }
@@ -311,7 +312,7 @@ func TestSignIn_ChallengeThenVerifyTOTP(t *testing.T) {
 		t.Fatalf("expected one 2fa verification row, got %+v", rows)
 	}
 	var sessions int64
-	e.s.DB.Model(&models.Session{}).Where("user_id = ?", id).Count(&sessions)
+	e.s.DB.Model(&models.Session{}).Where(&models.Session{UserID: id}).Count(&sessions)
 	if sessions != 0 {
 		t.Fatalf("the sign-in session must be deleted, found %d", sessions)
 	}
@@ -889,9 +890,11 @@ func TestMigrationTableName(t *testing.T) {
 	if !e.s.DB.Migrator().HasTable("twoFactor") {
 		t.Fatal(`table "twoFactor" missing`)
 	}
-	for _, col := range []string{"id", "secret", "backup_codes", "user_id", "verified"} {
-		if !e.s.DB.Migrator().HasColumn("twoFactor", col) {
-			t.Errorf("column %s missing", col)
+	// the columns follow GoAuth.ColumnCase (backup_codes / backupCodes, ...)
+	for _, field := range []string{"id", "secret", "backupCodes", "userId", "verified"} {
+		col := e.s.Auth.Schema().Column(tfmodels.ModelTwoFactor, field)
+		if col == "" || !e.s.DB.Migrator().HasColumn("twoFactor", col) {
+			t.Errorf("column of %s (%q) missing", field, col)
 		}
 	}
 }

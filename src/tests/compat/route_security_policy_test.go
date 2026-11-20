@@ -16,6 +16,7 @@ import (
 	accesstokenconfig "github.com/better-go-auth/goauth/src/plugins/access-token/config"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
 	humaadmin "github.com/better-go-auth/goauth/src/plugins/admin/adapters/huma"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 	"github.com/better-go-auth/goauth/src/plugins/bearer"
 	bearerconfig "github.com/better-go-auth/goauth/src/plugins/bearer/config"
 	"github.com/better-go-auth/goauth/src/plugins/org"
@@ -40,9 +41,9 @@ func setupSecurityPolicyServer(t *testing.T, secCfg config.SecurityConfig, atOve
 		atOverride(&atCfg)
 	}
 
-	adminPlugin, err := admin.NewWithGorm(db)
+	adminPlugin, err := admin.New(adminrepo.AdminRepositories{})
 	require.NoError(t, err)
-	orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{})
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{}})
 	require.NoError(t, err)
 
 	return NewServer(t,

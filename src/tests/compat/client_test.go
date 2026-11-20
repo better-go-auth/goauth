@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	bearer "github.com/better-go-auth/goauth/src/plugins/bearer"
@@ -26,7 +27,6 @@ import (
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
-	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -154,7 +154,7 @@ func TestOfficialBetterAuthClient_Org(t *testing.T) {
 	reinviteTrue := true
 	defaultTeamEnabled := true
 
-	orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 		OrganizationLimit:                    &orgLimit,
 		MembershipLimit:                      &memLimit,
 		InvitationLimit:                      &invLimit,
@@ -173,11 +173,13 @@ func TestOfficialBetterAuthClient_Org(t *testing.T) {
 				Enabled: &defaultTeamEnabled,
 				CustomCreateDefaultTeam: func(ctx context.Context, o *orgmodels.Organization) (*orgmodels.Team, error) {
 					now := coremodels.TimeNow()
-					return gormorg.NewTeamRepo(db).CreateTeam(ctx, &orgmodels.Team{
+					team := &orgmodels.Team{
 						Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 						Name:           "Core-" + o.Name,
 						OrganizationID: o.ID,
-					})
+					}
+					// the hook runs inside the plugin's transaction (ctx)
+					return team, gormutil.GetDB(ctx, db).Create(team).Error
 				},
 			},
 			MaximumTeams:          &maxTeams,
@@ -290,7 +292,7 @@ func TestOfficialBetterAuthClient_Org(t *testing.T) {
 				return nil
 			},
 		},
-	})
+	}})
 	if err != nil {
 		t.Fatalf("org plugin init: %v", err)
 	}
@@ -312,10 +314,13 @@ func TestOfficialBetterAuthClient_Org(t *testing.T) {
 			http.Error(w, "userId required", http.StatusBadRequest)
 			return
 		}
-		if err := s.DB.Model(&coremodels.User{}).Where("id = ?", uid).Update("email_verified", true).Error; err != nil {
+		// like verify-email: store the flag and refresh the user copy cached in the user's sessions
+		user, err := s.Auth.Repositories().UpdateUser(r.Context(), uid, map[string]any{"emailVerified": true})
+		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
+		s.Auth.Sessions().RefreshUser(r.Context(), user)
 		w.WriteHeader(http.StatusOK)
 	})
 
@@ -325,12 +330,12 @@ func TestOfficialBetterAuthClient_Org(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open restricted sqlite: %v", err)
 	}
-	rOrgPlugin, err := org.NewWithGorm(rdb, orgconfig.OrgConfig{
+	rOrgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 		AllowUserToCreateOrganizationFn: func(ctx context.Context, user *coremodels.User) (bool, error) {
 			return user != nil && user.Email == "restricted-owner@example.com", nil
 		},
 		DisableOrganizationDeletion: true,
-	})
+	}})
 	if err != nil {
 		t.Fatalf("restricted org plugin init: %v", err)
 	}

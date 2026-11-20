@@ -8,8 +8,17 @@ import (
 	"testing"
 	"time"
 
+	bettergoauth "github.com/better-go-auth/goauth"
+	"github.com/better-go-auth/goauth/src/adapter/gormadapter"
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	coremigrator "github.com/better-go-auth/goauth/src/models/migration/core-migration"
-	orgmigrator "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm/gorm_migrator"
+	plugin "github.com/better-go-auth/goauth/src/plugins"
+	"github.com/better-go-auth/goauth/src/plugins/org"
+	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
+	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
+	orgrepo "github.com/better-go-auth/goauth/src/plugins/org/repository"
+	"github.com/better-go-auth/goauth/src/plugins/org/repository/adapterorg"
+	"github.com/better-go-auth/goauth/src/schema"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -194,18 +203,62 @@ func setupMySQLDB(t *testing.T) *gorm.DB {
 	return db
 }
 
-// RunMigrations runs all core and org schema migrations on the given database.
+// OrgRegistry returns goauth's schema registry with the organization plugin (teams and dynamic access
+// control enabled, so every organization table exists), in the default snake_case column case.
+func OrgRegistry(t *testing.T) *schema.Registry {
+	t.Helper()
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
+		Teams:                &orgconfig.TeamsConfig{Enabled: true},
+		DynamicAccessControl: &orgconfig.DynamicAccessControlConfig{Enabled: true},
+	}})
+	require.NoError(t, err)
+	reg, err := bettergoauth.Schema(bettergoauth.GoAuthOptions{Plugins: []plugin.Plugin{orgPlugin}})
+	require.NoError(t, err)
+	return reg
+}
+
+// RunMigrations runs all core and org schema migrations on the given database: GORM's naming follows the
+// registry of OrgRegistry (so goauth's GORM structs and the adapter use the same tables), the core GORM
+// bootstrap runs, and goauth's migrator creates the organization tables.
 func RunMigrations(t *testing.T, db *gorm.DB) {
 	t.Helper()
 	ctx := context.Background()
+	reg := OrgRegistry(t)
 
-	// Step 1: Run core migrations (User, Session, Account, Verification)
+	// Step 1: GORM names tables and columns like the registry (what SetupGoAuth does)
+	db.Config.NamingStrategy = gormutil.NewNamingStrategy("", nil, gormutil.WithRegistry(reg))
+	gormutil.RegisterCallbacks(db)
+
+	// Step 2: Run core migrations (User, Session, Account, Verification)
 	err := coremigrator.NewGORMAdminMigrator(db).Migrate(ctx)
 	require.NoError(t, err, "core migration failed on %s", db.Dialector.Name())
 
-	// Step 2: Run org migrations (Organization, Member, Invitation, Team, TeamMember, OrganizationRole)
-	err = orgmigrator.NewGORMOrgMigrator(db).Migrate(ctx)
-	require.NoError(t, err, "org migration failed on %s", db.Dialector.Name())
+	// Step 3: Run the registry migrator for the organization tables only (Organization, Member,
+	// Invitation, Team, TeamMember, OrganizationRole), like the org GORM migrator did before
+	b := gormadapter.NewBackend(db)
+	plan, err := b.Plan(ctx, reg)
+	require.NoError(t, err, "org migration plan failed on %s", db.Dialector.Name())
+	orgModels := map[string]bool{}
+	for model := range orgmodels.Schema(true, true) {
+		orgModels[model] = true
+	}
+	changes := plan.Changes[:0]
+	for _, c := range plan.Changes {
+		if orgModels[c.Model] {
+			changes = append(changes, c)
+		}
+	}
+	plan.Changes = changes
+	require.NoError(t, b.Apply(ctx, plan), "org migration failed on %s", db.Dialector.Name())
+}
+
+// OrgRepos returns the organization plugin's repositories on db (after RunMigrations).
+func OrgRepos(t *testing.T, db *gorm.DB) orgrepo.OrgRepositories {
+	t.Helper()
+	reg := OrgRegistry(t)
+	repos, err := adapterorg.NewRepos(gormadapter.New(db, reg), reg)
+	require.NoError(t, err)
+	return repos
 }
 
 // RunForEachDB executes the test function against SQLite, PostgreSQL, and MySQL.

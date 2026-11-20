@@ -90,185 +90,162 @@ var RoutePermissions = map[consts.OperationId]access.Request{
 
 // SetupAdminRoutes mounts all Better Auth Admin plugin endpoints onto a Huma API instance.
 func SetupAdminRoutes(api huma.API, h *AdminHandler) {
-	basePath := h.Cfg.BasePath
-	if basePath == "" {
-		basePath = "/api/auth"
-	}
-	basePath = basePath + "/admin"
-
 	// 1. User Management
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminListUsersQuery.Str(),
 		Method:      http.MethodGet,
-		Path:        basePath + "/list-users",
+		Path:        "/admin/list-users",
 		Summary:     "List Users (Admin)",
 		Description: "Search, filter, and paginate users with sorting and advanced field operators.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.ListUsersQuery)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminListUsers.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/list-users",
+		Path:        "/admin/list-users",
 		Summary:     "List Users (Admin) [Legacy]",
 		Description: "Search, filter, and paginate users via POST body.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.ListUsers)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminCreateUser.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/create-user",
+		Path:        "/admin/create-user",
 		Summary:     "Create User (Admin)",
 		Description: "Directly creates a new user with a specified role and password.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.CreateUser)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminSetRole.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/set-role",
+		Path:        "/admin/set-role",
 		Summary:     "Set User Role (Admin)",
 		Description: "Updates the role of a user.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.SetUserRole)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminSetUserRole.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/set-user-role",
+		Path:        "/admin/set-user-role",
 		Summary:     "Set User Role (Admin) [Legacy]",
 		Description: "Updates the role of a user.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.SetUserRole)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminGetUser.Str(),
 		Method:      http.MethodGet,
-		Path:        basePath + "/get-user",
+		Path:        "/admin/get-user",
 		Summary:     "Get User (Admin)",
 		Description: "Retrieves details of an existing user.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.GetUser)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminUpdateUser.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/update-user",
+		Path:        "/admin/update-user",
 		Summary:     "Update User (Admin)",
 		Description: "Updates fields of an existing user.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.UpdateUser)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminHasPermission.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/has-permission",
+		Path:        "/admin/has-permission",
 		Summary:     "Check User Permission (Admin)",
 		Description: "Checks if a user or role has the specified permissions.",
 		Tags:        []string{"Admin"},
 		// any authenticated user: the session user's own role is checked (better-auth)
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.HasPermission)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminSetUserPassword.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/set-user-password",
+		Path:        "/admin/set-user-password",
 		Summary:     "Set User Password (Admin)",
 		Description: "Overrides a user's password directly.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.SetUserPassword)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminRemoveUser.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/remove-user",
+		Path:        "/admin/remove-user",
 		Summary:     "Remove User (Admin)",
 		Description: "Permanently deletes a user and all their sessions and accounts.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.RemoveUser)
 
 	// 2. Moderation & Bans
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminBanUser.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/ban-user",
+		Path:        "/admin/ban-user",
 		Summary:     "Ban User (Admin)",
 		Description: "Bans a user and immediately revokes all their active sessions.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.BanUser)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminUnbanUser.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/unban-user",
+		Path:        "/admin/unban-user",
 		Summary:     "Unban User (Admin)",
 		Description: "Removes a ban from a user.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.UnbanUser)
 
 	// 3. Impersonation
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminImpersonateUser.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/impersonate-user",
+		Path:        "/admin/impersonate-user",
 		Summary:     "Impersonate User (Admin)",
 		Description: "Creates an authenticated session acting as the target user with impersonatedBy recorded.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.ImpersonateUser)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminStopImpersonating.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/stop-impersonating",
+		Path:        "/admin/stop-impersonating",
 		Summary:     "Stop Impersonating (Admin)",
 		Description: "Terminates the active impersonation session and clears session cookies.",
 		Tags:        []string{"Admin"},
 		// the caller holds the impersonated user's token, so no admin role check; the service verifies impersonatedBy
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.StopImpersonating)
 
 	// 4. Session Control
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminListUserSessions.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/list-user-sessions",
+		Path:        "/admin/list-user-sessions",
 		Summary:     "List User Sessions (Admin)",
 		Description: "Lists all active sessions for a given user.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.ListUserSessions)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminRevokeUserSession.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/revoke-user-session",
+		Path:        "/admin/revoke-user-session",
 		Summary:     "Revoke User Session (Admin)",
 		Description: "Terminates a specific session for a user by token or ID.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.RevokeUserSession)
 
-	huma.Register(api, huma.Operation{
+	register(api, h, huma.Operation{
 		OperationID: AdminRevokeUserSessions.Str(),
 		Method:      http.MethodPost,
-		Path:        basePath + "/revoke-user-sessions",
+		Path:        "/admin/revoke-user-sessions",
 		Summary:     "Revoke All User Sessions (Admin)",
 		Description: "Terminates all active sessions for a target user.",
 		Tags:        []string{"Admin"},
-		Middlewares: huma.Middlewares{h.MiddleWare.Authenticate()},
 	}, h.RevokeUserSessions)
 }

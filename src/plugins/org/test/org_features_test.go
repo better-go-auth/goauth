@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
 	orgerrors "github.com/better-go-auth/goauth/src/plugins/org/org-errors"
-	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	"github.com/better-go-auth/goauth/src/tests/helpers"
 	"github.com/stretchr/testify/require"
 )
@@ -494,7 +494,7 @@ func TestOrgConfig_Teams_CustomDefaultTeam(t *testing.T) {
 						Name:           "Core Engineering",
 						OrganizationID: org.ID,
 					}
-					return gormorg.NewTeamRepo(db).CreateTeam(ctx, team)
+					return team, gormutil.GetDB(ctx, db).Create(team).Error
 				},
 			},
 		},

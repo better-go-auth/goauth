@@ -43,9 +43,14 @@ type InitContext struct {
 	Authenticator    authenticator.AuthenticateFunc
 	Hooks            HookRegistry
 	SecondaryStorage sec_storage.SecondaryStorage
-	DB               *gorm.DB
-	CookieManager    *cookies.Manager
-	GenerateID       func() string
+	// DB is GoAuthOptions.Conn (nil without it).
+	//
+	// Deprecated: declare plugin tables with SchemaProvider and read and write them through Adapter (any
+	// database, either column case, database-generated ids). goauth's own plugins no longer use DB; it is
+	// removed in the next release.
+	DB            *gorm.DB
+	CookieManager *cookies.Manager
+	GenerateID    func() string
 	// RateLimiter is goauth's one rate limiter (AuthConfig.RateLimit). Plugins add rules with
 	// RateLimitProvider (or pluginkit.Route.RateLimit); nil outside SetupGoAuth.
 	RateLimiter *ratelimit.Limiter

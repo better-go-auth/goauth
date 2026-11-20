@@ -76,10 +76,14 @@ type ActiveMemberRoleResponse struct {
 	Role string `json:"role"`
 }
 
-// MessageResponse is the {message} body of better-auth's remove-team and remove-team-member.
-type MessageResponse struct {
+// OrgMessageResponse is the {message} body of better-auth's remove-team and remove-team-member. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type OrgMessageResponse struct {
 	Message string `json:"message"`
 }
+
+// MessageResponse is OrgMessageResponse (the name earlier goauth versions used).
+type MessageResponse = OrgMessageResponse
 
 // InvitationResponse is the public invitation response.
 type InvitationResponse struct {

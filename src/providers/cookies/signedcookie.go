@@ -34,9 +34,10 @@ func VerifyCookieValue(signed, secret string) (string, bool) {
 	return value, true
 }
 
-// EncodeCookieValue escapes like JavaScript's encodeURIComponent for the base64 alphabet.
+// EncodeCookieValue escapes like JavaScript's encodeURIComponent for the base64 alphabet. A space becomes
+// "%20" (encodeURIComponent), not QueryEscape's "+", which DecodeCookieValue keeps as a literal '+'.
 func EncodeCookieValue(v string) string {
-	return url.QueryEscape(v)
+	return strings.ReplaceAll(url.QueryEscape(v), "+", "%20")
 }
 
 // DecodeCookieValue reverses EncodeCookieValue without turning '+' into a space.

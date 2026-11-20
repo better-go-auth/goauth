@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/better-go-auth/goauth/src/common/gormutil"
 	"github.com/better-go-auth/goauth/src/config"
 	coremodels "github.com/better-go-auth/goauth/src/models"
 	bearer "github.com/better-go-auth/goauth/src/plugins/bearer"
@@ -18,7 +19,6 @@ import (
 	orgconfig "github.com/better-go-auth/goauth/src/plugins/org/config"
 	orgdtos "github.com/better-go-auth/goauth/src/plugins/org/dtos"
 	orgmodels "github.com/better-go-auth/goauth/src/plugins/org/models"
-	gormorg "github.com/better-go-auth/goauth/src/plugins/org/repository/gorm"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -43,7 +43,7 @@ func TestGoMirror_Org(t *testing.T) {
 	orgLimit, memLimit, invLimit, maxTeams, maxTeamMembers := 2, 3, 5, 2, 2
 	reinviteTrue, defaultTeamEnabled := true, true
 
-	orgPlugin, err := org.NewWithGorm(db, orgconfig.OrgConfig{
+	orgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 		OrganizationLimit:                    &orgLimit,
 		MembershipLimit:                      &memLimit,
 		InvitationLimit:                      &invLimit,
@@ -62,11 +62,13 @@ func TestGoMirror_Org(t *testing.T) {
 				Enabled: &defaultTeamEnabled,
 				CustomCreateDefaultTeam: func(ctx context.Context, o *orgmodels.Organization) (*orgmodels.Team, error) {
 					now := coremodels.TimeNow()
-					return gormorg.NewTeamRepo(db).CreateTeam(ctx, &orgmodels.Team{
+					team := &orgmodels.Team{
 						Base:           coremodels.Base{ID: coremodels.NewID(), CreatedAt: now, UpdatedAt: now},
 						Name:           "Core-" + o.Name,
 						OrganizationID: o.ID,
-					})
+					}
+					// the hook runs inside the plugin's transaction (ctx)
+					return team, gormutil.GetDB(ctx, db).Create(team).Error
 				},
 			},
 			MaximumTeams:          &maxTeams,
@@ -179,7 +181,7 @@ func TestGoMirror_Org(t *testing.T) {
 				return nil
 			},
 		},
-	})
+	}})
 	require.NoError(t, err)
 
 	s := NewServer(t,
@@ -300,7 +302,10 @@ func TestGoMirror_Org(t *testing.T) {
 	res = invitee.post(t, "/api/auth/organization/accept-invitation", map[string]any{"invitationId": inv2.ID})
 	require.Equal(t, http.StatusForbidden, res.Status)
 
-	require.NoError(t, s.DB.Model(&coremodels.User{}).Where("id = ?", inviteeUserID).Update("email_verified", true).Error)
+	// like verify-email: store the flag and refresh the user copy cached in the invitee's sessions
+	verified, err := s.Auth.Repositories().UpdateUser(context.Background(), inviteeUserID, map[string]any{"emailVerified": true})
+	require.NoError(t, err)
+	s.Auth.Sessions().RefreshUser(context.Background(), verified)
 
 	res = invitee.get(t, "/api/auth/organization/list-user-invitations")
 	require.Equal(t, http.StatusOK, res.Status, string(res.Body))
@@ -445,12 +450,12 @@ func TestGoMirror_Org(t *testing.T) {
 	rdb, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:gomirror_org_res_%d?mode=memory&cache=shared", time.Now().UnixNano())),
 		&gorm.Config{Logger: logger.Discard})
 	require.NoError(t, err)
-	rOrgPlugin, err := org.NewWithGorm(rdb, orgconfig.OrgConfig{
+	rOrgPlugin, err := org.New(org.OrgOptions{Config: orgconfig.OrgConfig{
 		AllowUserToCreateOrganizationFn: func(ctx context.Context, user *coremodels.User) (bool, error) {
 			return user != nil && user.Email == "restricted-owner@example.com", nil
 		},
 		DisableOrganizationDeletion: true,
-	})
+	}})
 	require.NoError(t, err)
 	rs := NewServer(t,
 		WithDB(rdb),

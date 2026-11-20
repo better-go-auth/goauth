@@ -104,7 +104,7 @@ func (s *JWTService) CreateKey(ctx context.Context) (*models.JWK, error) {
 		expiresAt = &exp
 	}
 
-	keyID := idgen.GenerateID()
+	keyID := idgen.RecordID()
 	jwkRecord := &models.JWK{
 		ID:         keyID,
 		PublicKey:  string(pubBytes),

@@ -9,9 +9,11 @@ import (
 	"github.com/better-go-auth/goauth/src/plugins"
 	humapasskey "github.com/better-go-auth/goauth/src/plugins/passkey/adapters/huma"
 	pkconfig "github.com/better-go-auth/goauth/src/plugins/passkey/config"
+	pkmodels "github.com/better-go-auth/goauth/src/plugins/passkey/models"
 	"github.com/better-go-auth/goauth/src/plugins/passkey/repository"
 	"github.com/better-go-auth/goauth/src/plugins/passkey/services"
 	"github.com/better-go-auth/goauth/src/plugins/pluginkit"
+	"github.com/better-go-auth/goauth/src/schema"
 )
 
 // PluginID is better-auth's plugin id.
@@ -27,8 +29,9 @@ type Plugin struct {
 }
 
 var (
-	_ plugins.Plugin       = (*Plugin)(nil)
-	_ plugins.HookProvider = (*Plugin)(nil)
+	_ plugins.Plugin         = (*Plugin)(nil)
+	_ plugins.HookProvider   = (*Plugin)(nil)
+	_ plugins.SchemaProvider = (*Plugin)(nil)
 )
 
 // Option configures the passkey plugin.
@@ -50,7 +53,7 @@ func WithAuthenticatorSelection(sel pkconfig.AuthenticatorSelection) Option {
 	return func(p *Plugin) { p.config.AuthenticatorSelection = &sel }
 }
 
-// WithRepository replaces the GORM passkey repository.
+// WithRepository replaces the passkey repository (default: the passkey table through InitContext.Adapter).
 func WithRepository(repo repository.IPasskeyRepo) Option { return func(p *Plugin) { p.repo = repo } }
 
 // New creates the passkey plugin.
@@ -78,12 +81,16 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	if err != nil {
 		return fmt.Errorf("passkey plugin: %w", err)
 	}
-	// Step 2: storage
+	// Step 2: storage on the adapter (the passkey table comes from Schema)
 	if p.repo == nil {
-		if ictx.DB == nil {
-			return fmt.Errorf("passkey plugin: a *gorm.DB is required")
+		if ictx.Adapter == nil {
+			return fmt.Errorf("passkey plugin: a storage adapter (GoAuthOptions.Conn or adapter-based Repositories) or WithRepository is required")
 		}
-		p.repo = repository.NewGormPasskeyRepo(ictx.DB)
+		repo, err := repository.New(ictx.Adapter, ictx.Schema)
+		if err != nil {
+			return fmt.Errorf("passkey plugin: %w", err)
+		}
+		p.repo = repo
 	}
 	// Step 3: service and routes
 	p.service = services.NewPasskeyService(p.config, kit, p.repo)
@@ -92,13 +99,11 @@ func (p *Plugin) Init(ictx *plugins.InitContext) error {
 	return nil
 }
 
-// Migrator creates the passkey table.
-func (p *Plugin) Migrator() migration.IMigrator {
-	if p.repo == nil {
-		return nil
-	}
-	return p.repo.Migrator()
-}
+// Schema declares better-auth's passkey table (plugins.SchemaProvider); goauth's migrator creates it.
+func (p *Plugin) Schema() schema.PluginSchema { return pkmodels.Schema() }
+
+// Migrator returns nil: the passkey table is declared by Schema and created by goauth's migrator.
+func (p *Plugin) Migrator() migration.IMigrator { return nil }
 
 // Services exposes the passkey service.
 func (p *Plugin) Services() map[string]any { return map[string]any{"passkey": p.service} }

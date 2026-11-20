@@ -102,8 +102,8 @@ type AdvancedDatabase struct {
 	// default), IDFormatDatabase or IDFormatSerial. With the last two the database creates primary keys:
 	// generated DDL gives the id column a default (database) or makes it auto-increment (serial, where
 	// every reference to an id is an integer column too), and goauth reads the new id back after insert.
-	// Plugins that still store their own tables through GORM structs with goauth-generated string ids
-	// (organization, two-factor, passkey, jwt, admin) can't be used with them yet (SetupGoAuth refuses).
+	// Every goauth plugin stores its tables through the schema registry and works with them; third-party
+	// plugins that create GORM structs with string ids of their own don't.
 	IDFormat string
 }
 

@@ -12,6 +12,7 @@ import (
 	"github.com/better-go-auth/goauth/src/config"
 	"github.com/better-go-auth/goauth/src/models"
 	"github.com/better-go-auth/goauth/src/plugins/admin"
+	adminrepo "github.com/better-go-auth/goauth/src/plugins/admin/repository"
 )
 
 type mailbox struct {
@@ -250,7 +251,7 @@ func TestOriginChecks(t *testing.T) {
 
 func TestAdminPluginBlocksBannedSignIn(t *testing.T) {
 	s := NewServer(t, WithConfig(compatMode), func(o *goauth.GoAuthOptions) {
-		p, err := admin.NewWithGorm(o.Conn)
+		p, err := admin.New(adminrepo.AdminRepositories{})
 		if err != nil {
 			t.Fatal(err)
 		}

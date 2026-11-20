@@ -44,10 +44,14 @@ type TotpURIResponse struct {
 	TotpURI string `json:"totpURI"`
 }
 
-// StatusResponse is {status}.
-type StatusResponse struct {
+// TwoFactorStatusResponse is {status}. The name is unique among goauth's
+// plugins because Huma names OpenAPI schemas after the Go type.
+type TwoFactorStatusResponse struct {
 	Status bool `json:"status"`
 }
+
+// StatusResponse is TwoFactorStatusResponse (the name earlier goauth versions used).
+type StatusResponse = TwoFactorStatusResponse
 
 // BackupCodesResponse is {status, backupCodes}.
 type BackupCodesResponse struct {
