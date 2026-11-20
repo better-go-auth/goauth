@@ -1,0 +1,112 @@
+// goauth schema, Prisma (sqlite). Generated from goauth's schema registry (core models,
+// additionalFields and plugin schemas); regenerate instead of editing.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id                    String    @id
+  name                  String
+  email                 String
+  email_verified        Boolean   @default(false)
+  image                 String?
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  role                  String?
+  banned                Boolean?  @default(false)
+  ban_reason            String?
+  ban_expires           DateTime?
+  phone_number          String?
+  phone_number_verified Boolean?
+  two_factor_enabled    Boolean?  @default(false)
+  username              String?
+  display_username      String?
+  is_anonymous          Boolean?  @default(false)
+  first_name            String?
+  last_name             String?
+  display_name          String?
+  bio                   String?
+  date_of_birth         DateTime?
+  gender                String?
+  locale                String?   @default("en")
+  timezone              String?
+  last_login_ip         String?
+  last_login_at         DateTime?
+  last_seen             DateTime?
+  deleted_at            DateTime?
+  sessions              Session[]
+  accounts              Account[]
+
+  @@unique([email])
+  @@unique([phone_number])
+  @@unique([username])
+  @@index([deleted_at])
+  @@map("user")
+}
+
+model Session {
+  id                       String    @id
+  expires_at               DateTime
+  token                    String
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
+  ip_address               String?
+  user_agent               String?
+  user_id                  String
+  user                     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  impersonated_by          String?
+  active_organization_id   String?
+  active_team_id           String?
+  active_organization_type String?
+  active_organization_role String?
+  device_token             String?
+  device_id                String?
+  device_name              String?
+  device_type              String?
+  last_used_at             DateTime?
+
+  @@unique([token])
+  @@index([user_id])
+  @@map("session")
+}
+
+model Account {
+  id                       String    @id
+  account_id               String
+  provider_id              String
+  user_id                  String
+  user                     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  access_token             String?
+  refresh_token            String?
+  id_token                 String?
+  access_token_expires_at  DateTime?
+  refresh_token_expires_at DateTime?
+  scope                    String?
+  password                 String?
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
+
+  @@unique([provider_id, account_id])
+  @@index([user_id])
+  @@map("account")
+}
+
+model Verification {
+  id           String   @id
+  identifier   String
+  value        String
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  user_id      String?
+  callback_url String?
+
+  @@index([identifier])
+  @@map("verification")
+}

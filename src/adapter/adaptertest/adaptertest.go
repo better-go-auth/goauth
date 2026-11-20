@@ -34,6 +34,12 @@ type Config struct {
 	CaseInsensitiveEquality bool
 	// SkipConcurrency skips the concurrent compare-and-swap check.
 	SkipConcurrency bool
+	// IDLength is the length of generated ids (0 = 32, better-auth's random ids; MongoDB's ObjectId hex
+	// strings have 24).
+	IDLength int
+	// NonAtomicTransactions is set for backends whose Transaction can't roll back (MongoDB without a
+	// replica set): the contract then skips the rollback checks.
+	NonAtomicTransactions bool
 }
 
 // Registry returns the registry the contract runs on: the core models (with a config additionalField on
@@ -130,13 +136,17 @@ func slugs(recs []adapter.Record) []string {
 	return out
 }
 
-func testCreateFind(t *testing.T, a adapter.Adapter, _ Config) {
+func testCreateFind(t *testing.T, a adapter.Adapter, cfg Config) {
 	ctx := context.Background()
 	// Step 1: create generates an id and applies defaults
 	before := time.Now().Add(-time.Second)
 	rec := widget(t, a, "first", adapter.Record{"score": 1.5, "count": 3})
 	id, _ := rec["id"].(string)
-	require.Len(t, id, 32, "better-auth's 32-char ids")
+	idLen := cfg.IDLength
+	if idLen == 0 {
+		idLen = 32
+	}
+	require.Len(t, id, idLen, "generated ids")
 	require.Equal(t, false, rec["active"])
 	require.Equal(t, 1.5, rec["score"])
 	require.Equal(t, int64(3), rec["count"])
@@ -453,10 +463,24 @@ func testDelete(t *testing.T, a adapter.Adapter, _ Config) {
 	require.Zero(t, remaining)
 }
 
-func testTransactions(t *testing.T, a adapter.Adapter, _ Config) {
+func testTransactions(t *testing.T, a adapter.Adapter, cfg Config) {
 	ctx := context.Background()
 	boom := errors.New("boom")
 	keep := widget(t, a, "keep", adapter.Record{"score": 1})
+	if cfg.NonAtomicTransactions {
+		// Step 0: without atomicity, Transaction still runs fn with a ctx that works and returns its error
+		err := a.Transaction(ctx, func(ctx context.Context) error {
+			_, err := a.Create(ctx, Widget, adapter.Record{"name": "n", "slug": "non-atomic"})
+			if err != nil {
+				return err
+			}
+			return boom
+		})
+		require.ErrorIs(t, err, boom)
+		_, err = a.FindOne(ctx, Widget, []adapter.Where{{Field: "slug", Value: "non-atomic"}})
+		require.NoError(t, err, "a non-atomic transaction keeps its writes")
+		return
+	}
 
 	// Step 1: an error rolls back every write, nested transactions included
 	err := a.Transaction(ctx, func(ctx context.Context) error {

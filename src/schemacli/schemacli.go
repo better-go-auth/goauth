@@ -1,9 +1,19 @@
 // Package schemacli implements goauth's schema commands, for an app-side main (the schema depends on the
 // app's configuration: additionalFields, renames, plugins) or the stock `src/cmd/goauth` binary:
 //
-//	schema  [--dialect postgres|mysql|sqlite] [--out file]
-//	    prints the desired-state DDL (CREATE TABLE / CREATE INDEX). Use it as an Atlas
-//	    `data "external_schema"` program, for `atlas schema apply` / `atlas migrate diff`, or as sqlc input.
+//	schema  [--format sql|hcl|ent|go|prisma|mongo] [--dialect postgres|mysql|sqlite] [--out file|dir]
+//	    prints the schema (default: the desired-state DDL, CREATE TABLE / CREATE INDEX). Use the SQL as an
+//	    Atlas `data "external_schema"` program, for `atlas schema apply` / `atlas migrate diff`, or as sqlc
+//	    input. Other formats:
+//	      --format hcl [--schema name]   Atlas HCL for --dialect (schema "public", "main" on SQLite,
+//	                                     "goauth" on MySQL: pass the database name with --schema)
+//	      --format ent [--package schema] [--out dir]
+//	                                     Ent schemas, one file per model (entsql.Skip: goauth migrates)
+//	      --format go [--go-style gorm|plain] [--package models]
+//	                                     Go structs; with an explicit --dialect, GORM type tags of that dialect
+//	      --format prisma [--provider postgresql|mysql|sqlite|mongodb]
+//	                                     schema.prisma like better-auth's generator (provider from --dialect)
+//	      --format mongo                 MongoDB collections and indexes (partial unique, TTL) as JSON
 //	migrate generate --dir ./migrations [--name goauth] [--database-url URL] [--dialect d] [--format plain|goose]
 //	    diffs the live database against the schema and writes one timestamped, additive SQL file
 //	    (<timestamp>_<name>.sql, or <timestamp>_<name>.up.sql for golang-migrate with --format golang-migrate).
@@ -29,6 +39,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -72,41 +83,147 @@ func Main(ctx context.Context, args []string, opts goauth.GoAuthOptions, out io.
 
 // Usage is the help text.
 const Usage = `usage:
-  schema [--dialect postgres|mysql|sqlite] [--out file]
+  schema [--format sql|hcl|ent|go|prisma|mongo] [--dialect postgres|mysql|sqlite] [--out file|dir]
+         [--schema name] [--provider postgresql|mysql|sqlite|mongodb] [--go-style gorm|plain] [--package name]
   migrate generate --dir DIR [--name goauth] [--format plain|goose|golang-migrate] [--database-url URL] [--dialect D]
   migrate status [--database-url URL] [--dialect D]
 `
 
 func usage() error { return errors.New(Usage) }
 
-// schemaCmd prints the desired-state SQL.
+// schemaFlags are the flags of the schema command.
+type schemaFlags struct {
+	format, dialect, out string
+	hclSchema, provider  string
+	goStyle, pkg         string
+	// dialectSet reports whether --dialect was given (--format go adds GORM type tags only then).
+	dialectSet bool
+}
+
+// rendered is a rendered schema: one text, or several files (file name → content) for formats like ent.
+type rendered struct {
+	text  string
+	files map[string]string
+}
+
+// schemaCmd prints the schema in the format of --format (the desired-state SQL by default).
 func schemaCmd(args []string, opts goauth.GoAuthOptions, out io.Writer) error {
 	// Step 1: flags
 	fs := flag.NewFlagSet("schema", flag.ContinueOnError)
-	dialect := fs.String("dialect", "postgres", "postgres, mysql or sqlite")
-	file := fs.String("out", "", "write to this file instead of stdout")
+	sf := schemaFlags{}
+	fs.StringVar(&sf.format, "format", "sql", "sql, hcl, ent, go, prisma or mongo")
+	fs.StringVar(&sf.dialect, "dialect", "postgres", "postgres, mysql or sqlite (sql, hcl, go; prisma's default provider)")
+	fs.StringVar(&sf.out, "out", "", "write to this file (a directory for --format ent) instead of stdout")
+	fs.StringVar(&sf.hclSchema, "schema", "", "hcl: schema name (default public, main on sqlite, goauth on mysql)")
+	fs.StringVar(&sf.provider, "provider", "", "prisma: postgresql, mysql, sqlite or mongodb (default: from --dialect)")
+	fs.StringVar(&sf.goStyle, "go-style", render.GoStyleGORM, "go: gorm or plain")
+	fs.StringVar(&sf.pkg, "package", "", "go: package name (default models); ent: package name (default schema)")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	d, err := render.ParseDialect(*dialect)
+	fs.Visit(func(f *flag.Flag) { sf.dialectSet = sf.dialectSet || f.Name == "dialect" })
+	// Step 2: render in the requested format
+	r, err := renderSchema(sf, opts)
 	if err != nil {
 		return err
 	}
-	// Step 2: render
-	sql, err := goauth.GenerateSQL(opts, d)
+	// Step 3: write the file(s) or print
+	return writeSchema(r, sf.out, out)
+}
+
+// renderSchema renders opts' schema in the format of sf. Each format is one case; a new format only needs
+// its own case (and its flags in schemaCmd).
+func renderSchema(sf schemaFlags, opts goauth.GoAuthOptions) (rendered, error) {
+	// Step 1: the SQL dialect (sql, hcl, go) and the registry (every other format)
+	if sf.format == "sql" {
+		d, err := render.ParseDialect(sf.dialect)
+		if err != nil {
+			return rendered{}, err
+		}
+		sql, err := goauth.GenerateSQL(opts, d)
+		return rendered{text: sql}, err
+	}
+	reg, err := goauth.Schema(opts)
 	if err != nil {
+		return rendered{}, err
+	}
+	// Step 2: the other formats
+	switch sf.format {
+	case "hcl":
+		d, err := render.ParseDialect(sf.dialect)
+		if err != nil {
+			return rendered{}, err
+		}
+		text, err := render.HCLSchema(reg, d, sf.hclSchema)
+		return rendered{text: text}, err
+	case "go":
+		goOpts := render.GoOptions{Package: sf.pkg, Style: sf.goStyle}
+		// GORM type tags only for an explicit --dialect: the default keeps the structs dialect-neutral
+		if sf.dialectSet {
+			if goOpts.Dialect, err = render.ParseDialect(sf.dialect); err != nil {
+				return rendered{}, err
+			}
+		}
+		text, err := render.Go(reg, goOpts)
+		return rendered{text: text}, err
+	case "prisma":
+		provider := sf.provider
+		if provider == "" {
+			provider = sf.dialect
+		}
+		text, err := render.Prisma(reg, provider)
+		return rendered{text: text}, err
+	case "ent":
+		files, err := render.Ent(reg, render.EntOptions{Package: sf.pkg})
+		return rendered{files: files}, err
+	case "mongo":
+		// collections and indexes (partial unique, TTL) as JSON, what the mongo adapter's migrator creates
+		text, err := render.Mongo(reg)
+		return rendered{text: text}, err
+	}
+	return rendered{}, fmt.Errorf("goauth: unknown schema --format %q (use sql, hcl, ent, go, prisma or mongo)", sf.format)
+}
+
+// writeSchema writes a rendered schema to the file (or, for several files, the directory) file, or to out
+// when file is empty.
+func writeSchema(r rendered, file string, out io.Writer) error {
+	// Step 1: single-file formats
+	if r.files == nil {
+		if file != "" {
+			return os.WriteFile(file, []byte(r.text), 0o644)
+		}
+		_, err := io.WriteString(out, r.text)
 		return err
 	}
-	if *file != "" {
-		return os.WriteFile(*file, []byte(sql), 0o644)
+	names := make([]string, 0, len(r.files))
+	for name := range r.files {
+		names = append(names, name)
 	}
-	_, err = io.WriteString(out, sql)
-	return err
+	sort.Strings(names)
+	// Step 2: several files into the directory
+	if file != "" {
+		if err := os.MkdirAll(file, 0o755); err != nil {
+			return err
+		}
+		for _, name := range names {
+			if err := os.WriteFile(filepath.Join(file, name), []byte(r.files[name]), 0o644); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	// Step 3: several files on stdout, each behind a "// ==== name ====" line
+	for _, name := range names {
+		if _, err := io.WriteString(out, "// ==== "+name+" ====\n"+r.files[name]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // connect returns opts with Conn from --database-url when it isn't set yet.
 func connect(opts goauth.GoAuthOptions, url, dialect string) (goauth.GoAuthOptions, error) {
-	if opts.Conn != nil {
+	if opts.Conn != nil || (opts.Adapter != nil && url == "") {
 		return opts, nil
 	}
 	if url == "" {

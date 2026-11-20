@@ -1,0 +1,138 @@
+// goauth schema, Prisma (postgresql). Generated from goauth's schema registry (core models,
+// additionalFields and plugin schemas); regenerate instead of editing.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Users {
+  id                  Int       @id @default(autoincrement())
+  name                String
+  email               String
+  emailVerified       Boolean   @default(false)
+  image               String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  role                String?
+  banned              Boolean?  @default(false)
+  banReason           String?
+  banExpires          DateTime?
+  phoneNumber         String?
+  phoneNumberVerified Boolean?
+  twoFactorEnabled    Boolean?  @default(false)
+  username            String?
+  displayUsername     String?
+  isAnonymous         Boolean?  @default(false)
+  firstName           String?
+  lastName            String?
+  displayName         String?
+  bio                 String?
+  dateOfBirth         DateTime?
+  gender              String?
+  locale              String?   @default("en")
+  timezone            String?
+  lastLoginIP         String?
+  lastLoginAt         DateTime?
+  lastSeen            DateTime?
+  deletedAt           DateTime?
+  loyaltyTier         String    @default("bronze")
+  score               Float?
+  tags                String[]
+  sessions            Session[]
+  accounts            Account[]
+  notes               Note[]
+
+  @@unique([email])
+  @@unique([phoneNumber])
+  @@unique([username])
+  @@index([deletedAt])
+  @@map("users")
+}
+
+model Session {
+  id                     Int       @id @default(autoincrement())
+  expiresAt              DateTime
+  token                  String
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+  ipAddress              String?
+  userAgent              String?
+  userId                 Int
+  users                  Users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonatedBy         String?
+  activeOrganizationId   String?
+  activeTeamId           String?
+  activeOrganizationType String?
+  activeOrganizationRole String?
+  deviceToken            String?
+  deviceId               String?
+  deviceName             String?
+  deviceType             String?
+  lastUsedAt             DateTime?
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    Int       @id @default(autoincrement())
+  accountId             String
+  providerId            String
+  userId                Int
+  users                 Users     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@unique([providerId, accountId])
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id          Int      @id @default(autoincrement())
+  identifier  String
+  value       String
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  userId      String?
+  callbackUrl String?
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model RateLimit {
+  id          Int    @id @default(autoincrement())
+  key         String
+  count       BigInt
+  lastRequest BigInt
+
+  @@unique([key])
+  @@map("rateLimit")
+}
+
+model Note {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+  pinned    Boolean? @default(false)
+  title     String
+  userId    Int
+  users     Users    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, title])
+  @@map("note")
+}

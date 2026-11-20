@@ -67,16 +67,22 @@ func GenerateSQL(opts GoAuthOptions, dialect render.Dialect) (string, error) {
 	return render.SQL(reg, dialect)
 }
 
-// PlanMigration compares opts' schema with the database behind opts.Conn and returns the additive changes
-// it needs (missing tables, columns and indexes; nothing is ever dropped or altered).
+// PlanMigration compares opts' schema with the database behind opts.Conn (or opts.Adapter) and returns the
+// additive changes it needs (missing tables, columns and indexes; nothing is ever dropped or altered). The
+// dialect is "" for backends that aren't SQL (MongoDB: collections and indexes).
 func PlanMigration(ctx context.Context, opts GoAuthOptions) (*schema.Plan, render.Dialect, error) {
-	if opts.Conn == nil {
-		return nil, "", errors.New("goauth: PlanMigration needs GoAuthOptions.Conn")
+	if opts.Conn == nil && opts.Adapter == nil {
+		return nil, "", errors.New("goauth: PlanMigration needs GoAuthOptions.Conn or GoAuthOptions.Adapter")
 	}
 	reg, err := Schema(opts)
 	if err != nil {
 		return nil, "", err
 	}
+	// Step 1: without GORM, the adapter's own migrator
+	if opts.Conn == nil {
+		return planWithAdapter(ctx, opts.Adapter, reg)
+	}
+	// Step 2: the GORM backend
 	b := gormadapter.NewBackend(opts.Conn)
 	d, err := b.Dialect()
 	if err != nil {
@@ -89,7 +95,33 @@ func PlanMigration(ctx context.Context, opts GoAuthOptions) (*schema.Plan, rende
 	return plan, d, nil
 }
 
-// GenerateMigration returns the additive SQL that brings the database behind opts.Conn to opts' schema, or
+// planWithAdapter plans reg's migration through the Migrator of the adapter bound from binder.
+func planWithAdapter(ctx context.Context, binder adapter.Binder, reg *schema.Registry) (*schema.Plan, render.Dialect, error) {
+	a, err := binder.Bind(reg)
+	if err != nil {
+		return nil, "", fmt.Errorf("goauth: adapter: %w", err)
+	}
+	mig, ok := adapter.As[adapter.Migrator](a)
+	if !ok {
+		return nil, "", fmt.Errorf("goauth: the %s adapter has no migrator", a.ID())
+	}
+	plan, err := mig.Plan(ctx, reg)
+	if err != nil {
+		return nil, "", fmt.Errorf("goauth: inspect database: %w", err)
+	}
+	var d render.Dialect
+	if dd, ok := adapter.As[sqlDialecter](a); ok {
+		d, _ = dd.Dialect()
+	}
+	return plan, d, nil
+}
+
+// sqlDialecter is implemented by SQL backends (GORM, database/sql): their render dialect.
+type sqlDialecter interface {
+	Dialect() (render.Dialect, error)
+}
+
+// GenerateMigration returns the additive SQL that brings the database behind opts.Conn (or a SQL opts.Adapter) to opts' schema, or
 // "" when it is up to date: one migration for goose, golang-migrate or any SQL migration runner (like
 // better-auth's `generate` for Kysely). Renames and drops stay human (or Atlas) decisions.
 func GenerateMigration(ctx context.Context, opts GoAuthOptions) (string, error) {
@@ -97,13 +129,17 @@ func GenerateMigration(ctx context.Context, opts GoAuthOptions) (string, error) 
 	if err != nil {
 		return "", err
 	}
+	if d == "" {
+		return "", errors.New("goauth: GenerateMigration needs a SQL database (the mongo adapter's migrator creates MongoDB collections and indexes; the schema command's --format mongo prints them)")
+	}
 	return render.PlanSQL(plan, d)
 }
 
 // Schema returns the schema registry SetupGoAuth built (see goauth.Schema).
 func (g *GoAuth) Schema() *schema.Registry { return g.schema }
 
-// Adapter returns the storage adapter over the registry (nil without Conn and adapter-based Repositories).
+// Adapter returns the storage adapter over the registry: GoAuthOptions.Adapter bound to it, the GORM adapter
+// on Conn, or the adapter behind adapter-based Repositories (nil when there is none).
 func (g *GoAuth) Adapter() adapter.Adapter { return g.adapter }
 
 // syncNaming makes the GORM-based code agree with the registry: models.SetTableNames (prefix plus every

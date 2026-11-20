@@ -1,0 +1,144 @@
+[
+  {
+    "model": "user",
+    "collection": "user",
+    "indexes": [
+      {
+        "key": {
+          "email": 1
+        },
+        "name": "idx_user_email",
+        "fields": [
+          "email"
+        ],
+        "unique": true
+      },
+      {
+        "key": {
+          "phoneNumber": 1
+        },
+        "partialFilterExpression": {
+          "phoneNumber": {
+            "$type": "string"
+          }
+        },
+        "name": "idx_user_phone_number",
+        "fields": [
+          "phoneNumber"
+        ],
+        "unique": true
+      },
+      {
+        "key": {
+          "username": 1
+        },
+        "partialFilterExpression": {
+          "username": {
+            "$type": "string"
+          }
+        },
+        "name": "idx_user_username",
+        "fields": [
+          "username"
+        ],
+        "unique": true
+      },
+      {
+        "key": {
+          "deletedAt": 1
+        },
+        "name": "idx_user_deleted_at",
+        "fields": [
+          "deletedAt"
+        ]
+      }
+    ]
+  },
+  {
+    "model": "session",
+    "collection": "session",
+    "indexes": [
+      {
+        "key": {
+          "token": 1
+        },
+        "name": "idx_session_token",
+        "fields": [
+          "token"
+        ],
+        "unique": true
+      },
+      {
+        "key": {
+          "userId": 1
+        },
+        "name": "idx_session_user_id",
+        "fields": [
+          "userId"
+        ]
+      },
+      {
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "idx_session_expires_at",
+        "fields": [
+          "expiresAt"
+        ],
+        "expireAfterSeconds": 0
+      }
+    ]
+  },
+  {
+    "model": "account",
+    "collection": "account",
+    "indexes": [
+      {
+        "key": {
+          "userId": 1
+        },
+        "name": "idx_account_user_id",
+        "fields": [
+          "userId"
+        ]
+      },
+      {
+        "key": {
+          "providerId": 1,
+          "accountId": 1
+        },
+        "name": "idx_provider_account",
+        "fields": [
+          "providerId",
+          "accountId"
+        ],
+        "unique": true
+      }
+    ]
+  },
+  {
+    "model": "verification",
+    "collection": "verification",
+    "indexes": [
+      {
+        "key": {
+          "identifier": 1
+        },
+        "name": "idx_verification_identifier",
+        "fields": [
+          "identifier"
+        ]
+      },
+      {
+        "key": {
+          "expiresAt": 1
+        },
+        "name": "idx_verification_expires_at",
+        "fields": [
+          "expiresAt"
+        ],
+        "expireAfterSeconds": 0
+      }
+    ]
+  }
+]

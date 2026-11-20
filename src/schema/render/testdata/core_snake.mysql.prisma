@@ -1,0 +1,112 @@
+// goauth schema, Prisma (mysql). Generated from goauth's schema registry (core models,
+// additionalFields and plugin schemas); regenerate instead of editing.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String    @id
+  name                  String    @db.Text
+  email                 String
+  email_verified        Boolean   @default(false)
+  image                 String?   @db.Text
+  created_at            DateTime  @default(now())
+  updated_at            DateTime  @updatedAt
+  role                  String?   @db.Text
+  banned                Boolean?  @default(false)
+  ban_reason            String?   @db.Text
+  ban_expires           DateTime?
+  phone_number          String?
+  phone_number_verified Boolean?
+  two_factor_enabled    Boolean?  @default(false)
+  username              String?
+  display_username      String?   @db.Text
+  is_anonymous          Boolean?  @default(false)
+  first_name            String?   @db.Text
+  last_name             String?   @db.Text
+  display_name          String?   @db.Text
+  bio                   String?   @db.Text
+  date_of_birth         DateTime?
+  gender                String?   @db.Text
+  locale                String?   @db.Text
+  timezone              String?   @db.Text
+  last_login_ip         String?   @db.Text
+  last_login_at         DateTime?
+  last_seen             DateTime?
+  deleted_at            DateTime?
+  sessions              Session[]
+  accounts              Account[]
+
+  @@unique([email])
+  @@unique([phone_number])
+  @@unique([username])
+  @@index([deleted_at])
+  @@map("user")
+}
+
+model Session {
+  id                       String    @id
+  expires_at               DateTime
+  token                    String
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
+  ip_address               String?   @db.Text
+  user_agent               String?   @db.Text
+  user_id                  String
+  user                     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  impersonated_by          String?   @db.Text
+  active_organization_id   String?   @db.Text
+  active_team_id           String?   @db.Text
+  active_organization_type String?   @db.Text
+  active_organization_role String?   @db.Text
+  device_token             String?   @db.Text
+  device_id                String?   @db.Text
+  device_name              String?   @db.Text
+  device_type              String?   @db.Text
+  last_used_at             DateTime?
+
+  @@unique([token])
+  @@index([user_id(length: 191)])
+  @@map("session")
+}
+
+model Account {
+  id                       String    @id
+  account_id               String    @db.Text
+  provider_id              String    @db.Text
+  user_id                  String
+  user                     User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  access_token             String?   @db.Text
+  refresh_token            String?   @db.Text
+  id_token                 String?   @db.Text
+  access_token_expires_at  DateTime?
+  refresh_token_expires_at DateTime?
+  scope                    String?   @db.Text
+  password                 String?   @db.Text
+  created_at               DateTime  @default(now())
+  updated_at               DateTime  @updatedAt
+
+  @@unique([provider_id(length: 191), account_id(length: 191)])
+  @@index([user_id(length: 191)])
+  @@map("account")
+}
+
+model Verification {
+  id           String   @id
+  identifier   String   @db.Text
+  value        String   @db.Text
+  expires_at   DateTime
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+  user_id      String?  @db.Text
+  callback_url String?  @db.Text
+
+  @@index([identifier(length: 191)])
+  @@map("verification")
+}

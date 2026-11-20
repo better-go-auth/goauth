@@ -97,6 +97,12 @@ func (g *GoAuth) Cookies() *cookies.Manager                          { return g.
 type GoAuthOptions struct {
 	config.AuthConfig
 	Conn *gorm.DB
+	// Adapter runs goauth without GORM on another storage backend: sqladapter.New(sqlDB, dialect)
+	// (database/sql: Bun, sqlx, pgx, sqlc and Ent applications) or mongoadapter.New(database). SetupGoAuth
+	// binds it to the schema registry it builds, uses the generic repositories on it, runs the migrations
+	// through its Migrator and gives it to plugins as InitContext.Adapter (InitContext.DB stays nil, so plugins
+	// that still need a *gorm.DB fail at setup). Conn must be nil when Adapter is set.
+	Adapter adapter.Binder
 	// Repositories replaces the default repositories (the generic adapter repositories on Conn).
 	Repositories repo_interfaces.IAuthRepos
 	// GORMRepositories uses the hand-written GORM repositories (gormauth) instead of the adapter-based
@@ -169,8 +175,14 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// config: OnAPIError.OnError / Throw receive the errors better-auth's router hands to onError
 	api.UseMiddleware(humaadapter.APIErrorReporter(opts.OnAPIError))
 
-	if opts.Conn == nil && opts.Repositories == nil {
-		return nil, errors.New("goauth: either Conn (*gorm.DB) or Repositories (repo_interfaces.IAuthRepos) must be provided")
+	if opts.Conn == nil && opts.Repositories == nil && opts.Adapter == nil {
+		return nil, errors.New("goauth: one of Conn (*gorm.DB), Adapter (adapter.Binder) or Repositories (repo_interfaces.IAuthRepos) must be provided")
+	}
+	if opts.Conn != nil && opts.Adapter != nil {
+		return nil, errors.New("goauth: Conn and Adapter are mutually exclusive (Adapter replaces the GORM adapter on Conn)")
+	}
+	if opts.Adapter != nil && opts.GORMRepositories {
+		return nil, errors.New("goauth: GORMRepositories needs Conn; with Adapter the generic repositories are used")
 	}
 	migrationMode, err := opts.GoAuth.Migrations.EffectiveMode()
 	if err != nil {
@@ -197,6 +209,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	if err != nil {
 		return nil, fmt.Errorf("goauth: %w", err)
 	}
+	// an Adapter backend may prefer its own ids when none are configured (MongoDB: ObjectIds)
+	if gen := adapterIDGenerator(opts); gen != nil {
+		generateID = gen
+	}
 	idgen.SetDatabaseIDs(reg.IDStrategy().DatabaseGenerated())
 	if reg.IDStrategy().DatabaseGenerated() {
 		idgen.SetGenerator(nil)
@@ -213,7 +229,12 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	// adapter (additionalFields, renames, database ids); GORMRepositories keeps the hand-written ones, and
 	// Repositories replaces both
 	var store adapter.Adapter
-	if opts.Conn != nil {
+	switch {
+	case opts.Adapter != nil:
+		if store, err = opts.Adapter.Bind(reg, adapter.WithIDGenerator(generateID)); err != nil {
+			return nil, fmt.Errorf("goauth: adapter: %w", err)
+		}
+	case opts.Conn != nil:
 		store = gormadapter.New(opts.Conn, reg, adapter.WithIDGenerator(generateID))
 	}
 	repos := opts.Repositories
@@ -268,6 +289,10 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 	txManager := opts.TxManager
 	if txManager == nil && opts.Conn != nil {
 		txManager = gormutil.NewGormTxManager(opts.Conn)
+	}
+	// without GORM, transactions are the adapter's (it joins the request's transaction through the context)
+	if txManager == nil && store != nil {
+		txManager = store
 	}
 	// database after hooks wait until the outermost transaction committed (better-auth's runWithTransaction)
 	txManager = dbhooks.WrapTx(txManager)
@@ -363,8 +388,8 @@ func SetupGoAuth(ctx context.Context, api huma.API, opts GoAuthOptions) (*GoAuth
 		if _, already := pluginMap[p.ID()]; already {
 			return nil
 		}
-		if err := p.Init(initCtx); err != nil {
-			return fmt.Errorf("goauth: plugin initialization failed for %s: %w", p.ID(), err)
+		if err := initWithoutGORM(p, initCtx); err != nil {
+			return err
 		}
 		if hp, ok := p.(plugin.HookProvider); ok && hp.Hooks() != nil {
 			hooks.Register(hp.Hooks())

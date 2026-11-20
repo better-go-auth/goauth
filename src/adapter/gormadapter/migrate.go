@@ -40,22 +40,8 @@ func (b *Backend) Plan(ctx context.Context, reg *schema.Registry) (*schema.Plan,
 }
 
 // RequiredColumnError reports required fields without a default that would be added to tables that
-// already have rows: existing rows would have no value, so goauth refuses to add them.
-type RequiredColumnError struct {
-	// Changes are the AddColumn changes that can't be applied.
-	Changes []schema.Change
-	// SQL is the statement for each change, for an operator who backfills the column themselves.
-	SQL []string
-}
-
-func (e *RequiredColumnError) Error() string {
-	var lines []string
-	for i, c := range e.Changes {
-		lines = append(lines, fmt.Sprintf("  %s.%s on table %q (would run: %s)", c.Model, c.Field.Name, c.Table, e.SQL[i]))
-	}
-	return "goauth migrations: these required fields have no default and their tables already have rows; give " +
-		"each a Default, make it optional, or add and backfill the column yourself, then restart:\n" + strings.Join(lines, "\n")
-}
+// already have rows (adapter.RequiredColumnError, shared by every SQL backend).
+type RequiredColumnError = adapter.RequiredColumnError
 
 // Apply runs the additive DDL of plan (adapter.Migrator): CREATE TABLE, ADD COLUMN, CREATE INDEX. It never
 // drops or alters anything. A required field without a default can only be added to an empty table

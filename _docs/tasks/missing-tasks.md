@@ -147,10 +147,10 @@ Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
 
 ## Stage 7 – Other databases (L, when needed)
 
-- [ ] **7.1 `database/sql` adapter** (covers Bun, sqlx, pgx, sqlc and Ent apps). *(04 §7 step 7)* – after 2.9
-- [ ] **7.2 MongoDB adapter** with partial unique indexes for nullable unique fields, TTL indexes and ObjectId/UUID
+- [x] **7.1 `database/sql` adapter** (covers Bun, sqlx, pgx, sqlc and Ent apps). *(04 §7 step 7)* – after 2.9
+- [x] **7.2 MongoDB adapter** with partial unique indexes for nullable unique fields, TTL indexes and ObjectId/UUID
   IDs. *(04 §7 step 8)* – after 2.9
-- [ ] **7.3 Extra schema renderers:** `atlas-hcl`, `ent`, `go`, `prisma`. *(04 §7 step 9)* – after 2.7
+- [x] **7.3 Extra schema renderers:** `atlas-hcl`, `ent`, `go`, `prisma`. *(04 §7 step 9)* – after 2.7
 - [x] **7.4 Plugin repository contract tests** (two-factor, passkey, org) like `repotest`, and fuzz tests for
   cookie parsing, OAuth state decoding and WebAuthn payloads. *(01 §4.3–4.4)*
 

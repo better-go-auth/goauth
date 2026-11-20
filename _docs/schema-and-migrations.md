@@ -3,8 +3,9 @@
 goauth declares its database schema once, in the **schema registry** (`src/schema`): better-auth's core
 tables, goauth's own columns, your `AdditionalFields`, `ModelName` / `Fields` renames, `GoAuth.ColumnCase`,
 the id strategy, the `rateLimit` table and every plugin that declares tables. Everything else reads it: the
-storage adapter (`src/adapter`), the default repositories, the SQL renderer (`src/schema/render`), goauth's
-own migrator and the `goauth` CLI.
+storage adapters (`src/adapter`: GORM, `database/sql`, MongoDB), the default repositories, the renderers
+(`src/schema/render`: SQL, Atlas HCL, Ent, Go structs, Prisma, MongoDB indexes), goauth's own migrator and
+the `goauth` CLI.
 
 ## Naming: snake or camel, renames
 
@@ -55,6 +56,146 @@ With `database` and `serial`, goauth creates records without an id and reads the
 plugin works with them (their tables are on the registry); third-party plugins that create GORM structs with
 string ids of their own don't.
 
+## Running without GORM: `database/sql` and MongoDB
+
+`GoAuthOptions.Conn` (a `*gorm.DB`) is one way to give goauth a database. `GoAuthOptions.Adapter` is the
+other: a storage backend that SetupGoAuth binds to the schema registry it builds. goauth then uses the
+generic repositories on it, migrates through its `Migrator` (`Migrations.Mode` auto / verify / off work the
+same), and hands it to plugins as `InitContext.Adapter`. `Conn` and `Adapter` are mutually exclusive.
+
+| Backend | Package | Constructor |
+|---|---|---|
+| Postgres, MySQL, SQLite through any `database/sql` driver | `src/adapter/sqladapter` | `sqladapter.New(sqlDB, sqladapter.Postgres)` (an empty dialect is detected from the driver) |
+| MongoDB (official driver v2) | `src/adapter/mongoadapter` | `mongoadapter.New(client.Database("app"))` |
+
+```go
+db, _ := sql.Open("pgx", os.Getenv("DATABASE_URL")) // or "mysql", "sqlite3", "sqlite", ...
+auth, err := goauth.SetupGoAuth(ctx, api, goauth.GoAuthOptions{
+	AuthConfig: cfg,
+	Adapter:    sqladapter.New(db, sqladapter.Postgres),
+})
+```
+
+Plugins that still keep GORM structs and need `InitContext.DB` (organization, admin, two-factor, passkey, jwt
+until they move onto the registry) can't run this way yet: SetupGoAuth fails with a `*goauth.GORMRequiredError`
+naming the plugin. Plugins that declare their tables with `SchemaProvider` (last-login-method, ...) work on
+every adapter.
+
+### The `database/sql` adapter
+
+- **Dialects**: `postgres` (`$n` placeholders), `mysql`, `sqlite` (`?`). Identifiers are quoted per dialect;
+  `contains` / `starts_with` / `ends_with` use escaped `LIKE … ESCAPE '!'` patterns (GLOB on SQLite and a
+  binary comparison on MySQL when case-sensitive), case-insensitive conditions compare `LOWER(…)`.
+- **Values**: Postgres and MySQL store dates and booleans natively; SQLite stores dates as ISO 8601 text with
+  milliseconds (`2030-06-07T06:09:10.123Z`, better-auth's layout there) and booleans as `1` / `0`. JSON and
+  arrays are JSON text (`jsonb` / `json` / `text` columns). MySQL works with or without `parseTime=true`.
+- **Transactions**: `adapter.Transaction` opens a `*sql.Tx` and stores it in the context; calls made with
+  that context join it. To put goauth's writes into **your** transaction, pass your `*sql.Tx` with
+  `sqladapter.WithTx(ctx, tx)`: goauth never commits or rolls it back.
+- **Ids**: `IDFormat` `database` / `serial` read the id back with `RETURNING` (Postgres, SQLite) or
+  `LastInsertId` (MySQL auto-increment).
+- **Unique violations** of pgx, lib/pq, go-sql-driver/mysql, mattn/go-sqlite3 and modernc.org/sqlite become
+  `*adapter.UniqueError` (with the columns where the driver names them).
+- **Migrations**: `Plan` / `Apply` (`adapter.Migrator`) and `Inspect` (`adapter.Introspector`) use
+  `information_schema` / `pg_index` / `pragma_*` and the same additive DDL as the GORM backend
+  (`src/schema/render`). `goauth.PlanMigration` / `GenerateMigration` and the CLI accept an `Adapter` too.
+
+How each data-access style plugs in (they all end up handing goauth a `*sql.DB`):
+
+**Bun** (`bun.DB` embeds `*sql.DB`; `bun.Tx` embeds `*sql.Tx`):
+
+```go
+sqldb := sql.OpenDB(pgdriver.NewConnector(pgdriver.WithDSN(dsn)))
+bunDB := bun.NewDB(sqldb, pgdialect.New())
+opts.Adapter = sqladapter.New(bunDB.DB, sqladapter.Postgres)
+
+// goauth's writes inside a Bun transaction
+err := bunDB.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+	ctx = sqladapter.WithTx(ctx, tx.Tx)
+	_, err := auth.Repositories().CreateUser(ctx, user) // or any goauth service call with ctx
+	return err
+})
+```
+
+**sqlx** (`sqlx.DB` embeds `*sql.DB`; `sqlx.Tx` embeds `*sql.Tx`):
+
+```go
+sqlxDB := sqlx.MustConnect("mysql", dsn)
+opts.Adapter = sqladapter.New(sqlxDB.DB, sqladapter.MySQL)
+
+tx := sqlxDB.MustBeginTx(ctx, nil)
+ctx = sqladapter.WithTx(ctx, tx.Tx)
+```
+
+**pgx** (a `pgxpool.Pool` through pgx's `database/sql` bridge; a native pgx adapter can come later):
+
+```go
+pool, _ := pgxpool.New(ctx, dsn)
+sqlDB := stdlib.OpenDBFromPool(pool)
+opts.Adapter = sqladapter.New(sqlDB, sqladapter.Postgres)
+```
+
+**sqlc** (goauth owns its tables; sqlc only needs them in its `schema` folder for your own queries):
+
+```go
+sqlDB, _ := sql.Open("pgx", dsn)
+queries := db.New(sqlDB) // sqlc-generated
+opts.Adapter = sqladapter.New(sqlDB, sqladapter.Postgres)
+
+tx, _ := sqlDB.BeginTx(ctx, nil)
+qtx := queries.WithTx(tx)          // your queries
+ctx = sqladapter.WithTx(ctx, tx)   // goauth's writes, same transaction
+```
+
+```sh
+go run ./cmd/goauth-schema schema --dialect postgres > db/schema/goauth.sql   # sqlc's schema input
+```
+
+**Ent** (one `*sql.DB` for Ent's driver and goauth; `schema --format ent` writes Ent schemas for the auth
+tables, marked `entsql.Skip()` so Ent's migration leaves them to goauth):
+
+```go
+sqlDB, _ := sql.Open("pgx", dsn)
+client := ent.NewClient(ent.Driver(entsql.OpenDB(dialect.Postgres, sqlDB)))
+opts.Adapter = sqladapter.New(sqlDB, sqladapter.Postgres)
+```
+
+```sh
+go run ./cmd/goauth-schema schema --format ent --out ./ent/schema   # User, Session, Account, ... schemas
+```
+
+### The MongoDB adapter
+
+```go
+client, _ := mongo.Connect(options.Client().ApplyURI(uri))
+opts.Adapter = mongoadapter.New(client.Database("app")) // mongoadapter.WithStringIDs(), WithoutTTL()
+```
+
+- **Documents** are keyed by the registry's field names in camelCase whatever `ColumnCase` says (explicit
+  `Fields` / `FieldName` renames are kept); one collection per model (`ModelName`, `TablePrefix` apply).
+- **Ids** are ObjectIds in `_id`, exposed as 24-character hex strings; fields referencing an id
+  (`session.userId`, ...) are stored as ObjectIds too. This is the default id generator unless
+  `Advanced.Database.GenerateID` / `IDFormat` is set; ids that aren't ObjectId hex strings are stored as
+  strings. `WithStringIDs()` stores every id as a string. `IDFormat: database` lets MongoDB create the
+  ObjectId; `serial` is refused.
+- **Queries**: `contains` / `starts_with` / `ends_with` are escaped `$regex`es, case-insensitive conditions
+  use the `i` option; `ne` and `not_in` never match missing values (SQL's NULL semantics). `UpdateMany` /
+  `DeleteMany` return matched / deleted counts, so the verification compare-and-swap and atomic consume work.
+- **Transactions** use sessions on a replica set or sharded cluster. On a standalone server `Transaction`
+  runs without atomicity and logs a warning once (better-auth's behaviour). An application session in the
+  context (`mongo.NewSessionContext`) is joined.
+- **"Migrations"** create the collections and the indexes: unique / index fields and multi-field indexes,
+  **partial** unique indexes for optional unique fields (`partialFilterExpression: {phoneNumber: {$type:
+  "string"}}`, so users without a phone number don't conflict), and TTL indexes on `verification.expiresAt` and
+  `session.expiresAt` (MongoDB deletes expired rows itself). `verify` mode lists missing collections and
+  indexes. `goauth schema --format mongo` prints them as JSON.
+- Duplicate keys (E11000) become `*adapter.UniqueError` with the index's fields.
+
+Tests: `go test ./src/adapter/sqladapter/... ./src/adapter/mongoadapter/... ./src/tests/compat/adaptere2e`
+run the adapter contract (`adaptertest`), the repository contract (`repotest`) and a full server on SQLite;
+set `TEST_POSTGRES_URL`, `TEST_MYSQL_URL`, `TEST_MONGO_URL` (standalone) and `TEST_MONGO_RS_URL` (replica
+set, e.g. `mongodb://localhost:27017/?directConnection=true`) for the other backends.
+
 ## Migrations: who owns the schema
 
 `GoAuth.Migrations.Mode`:
@@ -96,7 +237,7 @@ Public API (root package):
 ```go
 reg, err := goauth.Schema(opts)                               // the registry SetupGoAuth would build
 sql, err := goauth.GenerateSQL(opts, render.Postgres)         // desired state: CREATE TABLE / CREATE INDEX
-plan, dialect, err := goauth.PlanMigration(ctx, opts)         // what opts.Conn lacks
+plan, dialect, err := goauth.PlanMigration(ctx, opts)         // what opts.Conn (or opts.Adapter) lacks
 sql, err := goauth.GenerateMigration(ctx, opts)               // additive SQL for opts.Conn ("" = up to date)
 ```
 
@@ -133,6 +274,24 @@ Without app configuration, the stock binary takes the naming options as flags:
 go run github.com/better-go-auth/goauth/src/cmd/goauth --column-case camel --id-format serial \
     --rate-limit-table schema --dialect mysql
 ```
+
+### Other schema formats
+
+`schema --format` renders the same registry for other tools (all from `src/schema/render`):
+
+| `--format` | Output | Go API |
+|---|---|---|
+| `sql` (default) | desired-state DDL for `--dialect` | `render.SQL(reg, d)` |
+| `hcl` | Atlas HCL schema for `--dialect` (`--schema`: the schema / MySQL database name; defaults `public`, `main`, `goauth`) | `render.HCL(reg, d)`, `render.HCLSchema(reg, d, name)` |
+| `ent` | Ent schemas, one file per model (`--out dir`, `--package`); `entsql.Skip()` so Ent doesn't migrate goauth's tables | `render.Ent(reg, render.EntOptions{})` |
+| `go` | Go structs for the auth tables, `--go-style gorm` (column / index / default tags, `TableName()`) or `plain` (`db` + `json` tags); GORM type tags with an explicit `--dialect` | `render.Go(reg, render.GoOptions{})` |
+| `prisma` | `schema.prisma` like better-auth's Prisma generator (`--provider postgresql\|mysql\|sqlite\|mongodb`, default from `--dialect`) | `render.Prisma(reg, provider)` |
+| `mongo` | MongoDB collections and indexes (partial unique, TTL) as JSON | `render.Mongo(reg)`, `render.MongoCollections` |
+
+The golden files are checked against the real tools when they are available: `atlas schema inspect` / `schema
+diff` (SQLite always; Postgres / MySQL with `ATLAS_DEV_POSTGRES_URL` / `ATLAS_DEV_MYSQL_URL`), an offline
+`go build` of the Ent schemas, GORM's schema parser for the structs, and `prisma validate` (with
+`GOAUTH_PRISMA_BIN` or `prisma` in `PATH`).
 
 ## Atlas
 
