@@ -158,6 +158,8 @@ type Route struct {
 	// better-call (validation runs before an endpoint's `use` middlewares): an anonymous request with an invalid
 	// body gets 400 VALIDATION_ERROR instead of 401 UNAUTHORIZED.
 	ValidateFirst bool
+	// AcceptForm also accepts application/x-www-form-urlencoded bodies (see FormBody), like better-call.
+	AcceptForm bool
 }
 
 // Path returns the full mount path of a route path ("/sign-in/x" → "/api/auth/sign-in/x").
@@ -175,7 +177,10 @@ func (k *Kit) Disabled(r Route) bool {
 // done by goauth's global limiter, which runs before every route.
 func (k *Kit) Middlewares(r Route) huma.Middlewares {
 	var mws huma.Middlewares
-	// Step 1: (rate limiting moved to the global limiter, see Register)
+	// Step 1: (rate limiting moved to the global limiter, see Register); form bodies become JSON
+	if r.AcceptForm {
+		mws = append(mws, FormBody)
+	}
 	// Step 2: origin / CSRF check for mutating requests
 	if !r.SkipOriginCheck {
 		mws = append(mws, humaadapter.OriginCheck(k.Conf, k.Origins, r.Access == Form || r.FormCSRF))

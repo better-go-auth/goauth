@@ -140,9 +140,9 @@ Proves the "drop-in replacement" claim. Needs the foundations of stage 2.
 - [ ] **6.1 oidc-provider** (`/.well-known/openid-configuration`, `/oauth2/authorize`, `/consent`, `/token`,
   `/userinfo`, `/register`, `/endsession`; pairs with jwt)
 - [ ] **6.2 mcp** (OAuth authorization server for MCP clients) – after 6.1
-- [ ] **6.3 device-authorization** (RFC 8628, for CLIs and TVs)
+- [x] **6.3 device-authorization** (RFC 8628, for CLIs and TVs)
 - [ ] **6.4 SSO** (SAML/OIDC per organization), then **6.5 SCIM** provisioning – after 6.1
-- [ ] **6.6 siwe** (Sign-In with Ethereum) – niche, last
+- [x] **6.6 siwe** (Sign-In with Ethereum) – niche, last
 
 ## Stage 7 – Other databases (L, when needed)
 
